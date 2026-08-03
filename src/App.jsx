@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { ethers } from "ethers";
 import { ARC, RPC_PROXY } from "./chain.js";
+import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -56,24 +57,9 @@ const CONTACTS = [
 
 const FX_ARS_USD = 1448; // tipo de cambio de referencia (off-chain)
 
-const STACK = [
-  { on: true, name: "Arc L1 (testnet)", role: "Cadena de liquidación de esta demo. Chain ID 5042002, finalidad sub-segundo.", by: "Circle" },
-  { on: true, name: "USDC nativo", role: "Gas y activo de pago en uno: cada envío de esta app es USDC nativo on-chain.", by: "Circle" },
-  { on: true, name: "Referencia on-chain", role: "Cada cobro lleva su número de factura adjunto. Conciliación sin base de datos externa.", by: "Arc" },
-  { on: true, name: "Privy", role: "El login de esta app: email o teléfono → wallet embebida. Sin frases de recuperación.", by: "Ecosistema Arc" },
-  { on: true, name: "ArcScan", role: "Cada pago es verificable en testnet.arcscan.app, con su referencia incluida.", by: "Ecosistema Arc" },
-  { on: true, name: "Faucet Circle", role: "Fondeo de USDC testnet desde faucet.circle.com.", by: "Circle" },
-  { on: false, name: "Memo contract", role: "Migrar la referencia a eventos Memo indexados para analítica y conciliación masiva.", by: "Arc" },
-  { on: false, name: "Gateway / CCTP v2", role: "USDC crosschain: entrada desde Solana o Base, liquidación en Arc.", by: "Circle" },
-  { on: false, name: "Oráculo FX", role: "Hoy el tipo de cambio ARS/USD es de referencia off-chain. Evaluando Stork y RedStone.", by: "Ecosistema Arc" },
-  { on: false, name: "StableFX / EURC", role: "Corredor multi-moneda con el motor FX de Arc para cobros en euros.", by: "Circle" },
-  { on: false, name: "Aave", role: "Rendimiento sobre el float de tesorería en USDC.", by: "Ecosistema Arc" },
-  { on: false, name: "Avenia", role: "Rampas LATAM (PIX y rieles locales) para expansión a Brasil.", by: "Ecosistema Arc" },
-];
-
 // ————— util —————
-const fmt = (n, d = 2) => Number(n).toLocaleString("es-AR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const fmt0 = (n) => Number(n).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+const fmt = (n, d = 2, locale = "en-US") => Number(n).toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmt0 = (n, locale = "en-US") => Number(n).toLocaleString(locale, { maximumFractionDigits: 0 });
 const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
 
 function nuevaFactura() {
@@ -86,20 +72,45 @@ function armarMemo({ factura, alias, currency, amount }) {
   return `MIDATO|v1|inv:${factura}|to:${alias}|cur:${currency}|amt:${amount}`;
 }
 
-function localParse(text) {
+function localParse(text, lang) {
   const t = text.toLowerCase();
-  if (!/(envi|mand|transfer|pag)/.test(t)) return { intent: "unknown" };
+  const intentRe = lang === "en" ? /(send|transfer|pay)/ : /(envi|mand|transfer|pag)/;
+  if (!intentRe.test(t)) return { intent: "unknown" };
   const numMatch = t.replace(/\./g, "").match(/(\d+(?:[.,]\d+)?)/);
   const amount = numMatch ? parseFloat(numMatch[1].replace(",", ".")) : null;
   const currency = /peso|ars/.test(t) ? "ARS" : "USDC";
   let recipient = null;
-  const m = t.match(/\ba\s+([a-záéíóúñ]+)/);
+  const recRe = lang === "en" ? /\bto\s+([a-záéíóúñ]+)/ : /\ba\s+([a-záéíóúñ]+)/;
+  const m = t.match(recRe);
   if (m) recipient = m[1];
   return { intent: "send", amount, currency, recipient };
 }
 
-async function claudeParse(text) {
+async function claudeParse(text, lang) {
   if (!API_KEY) throw new Error("no-key");
+  const prompt =
+    lang === "en"
+      ? `You are MidatoPay's voice payment agent. Extract the intent from this English command and respond ONLY with valid JSON, no markdown or extra text.
+
+Command: "${text}"
+
+Valid contact aliases: ${CONTACTS.map((c) => c.alias).join(", ")}
+
+Exact format:
+{"intent":"send"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
+
+Rules: "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. Match the alias even if misheard (e.g. "caty" → "katy").`
+      : `Sos el agente de pagos por voz de MidatoPay. Extraé la intención de este comando en español rioplatense y respondé SOLO con JSON válido, sin markdown ni texto extra.
+
+Comando: "${text}"
+
+Contactos válidos (alias): ${CONTACTS.map((c) => c.alias).join(", ")}
+
+Formato exacto:
+{"intent":"send"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
+
+Reglas: "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`;
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -111,21 +122,7 @@ async function claudeParse(text) {
     body: JSON.stringify({
       model: "claude-haiku-4-5",
       max_tokens: 300,
-      messages: [
-        {
-          role: "user",
-          content: `Sos el agente de pagos por voz de MidatoPay. Extraé la intención de este comando en español rioplatense y respondé SOLO con JSON válido, sin markdown ni texto extra.
-
-Comando: "${text}"
-
-Contactos válidos (alias): ${CONTACTS.map((c) => c.alias).join(", ")}
-
-Formato exacto:
-{"intent":"send"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
-
-Reglas: "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`,
-        },
-      ],
+      messages: [{ role: "user", content: prompt }],
     }),
   });
   const data = await res.json();
@@ -215,11 +212,41 @@ function Logo({ size = 44 }) {
   return <Mark size={size} />;
 }
 
+// ————— Selector de idioma —————
+function LangToggle({ style }) {
+  const { lang, setLang } = useLanguage();
+  const pill = (id, label) => ({
+    background: lang === id ? C.ink : "transparent",
+    color: lang === id ? "#fff" : C.mut,
+    border: "none",
+    borderRadius: 20,
+    padding: "6px 13px",
+    fontSize: 12.5,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  });
+  return (
+    <div style={{ display: "flex", gap: 4, background: C.bg, borderRadius: 22, padding: 3, ...style }}>
+      <button onClick={() => setLang("en")} style={pill("en")} aria-pressed={lang === "en"}>
+        EN
+      </button>
+      <button onClick={() => setLang("es")} style={pill("es")} aria-pressed={lang === "es"}>
+        ES
+      </button>
+    </div>
+  );
+}
+
 // ————— Login —————
 function Login({ onLogin, ready }) {
+  const { t } = useLanguage();
   return (
     <div className="mp-stage">
       <div className="mp-device" style={{ background: C.card }}>
+        <div style={{ position: "absolute", top: 18, right: 18, zIndex: 5 }}>
+          <LangToggle />
+        </div>
         <div className="mp-scroll" style={{ display: "flex", flexDirection: "column", justifyContent: "center", padding: "32px 26px", gap: 30 }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
             <Mark size={104} />
@@ -228,23 +255,21 @@ function Login({ onLogin, ready }) {
 
           <div style={{ textAlign: "center" }}>
             <h1 style={{ fontSize: 23, fontWeight: 700, letterSpacing: -0.4, margin: 0, color: C.ink, lineHeight: 1.3 }}>
-              Cobrá en dólares<br />sin saber de cripto
+              {t("login.title1")}
+              <br />
+              {t("login.title2")}
             </h1>
-            <p style={{ fontSize: 14.5, color: C.mut, marginTop: 10, lineHeight: 1.55 }}>
-              Entrá con tu email o tu teléfono. Tu cuenta se crea sola.
-            </p>
+            <p style={{ fontSize: 14.5, color: C.mut, marginTop: 10, lineHeight: 1.55 }}>{t("login.subtitle")}</p>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button onClick={onLogin} disabled={!ready} style={{ ...btnOrange, opacity: ready ? 1 : 0.5 }}>
-              {ready ? "Iniciar sesión" : "Cargando…"}
+              {ready ? t("login.loginBtn") : t("login.loadingBtn")}
             </button>
             <button onClick={onLogin} disabled={!ready} style={{ ...btnOutline, opacity: ready ? 1 : 0.5 }}>
-              Crear cuenta
+              {t("login.createAccountBtn")}
             </button>
-            <p style={{ fontSize: 11, color: C.mut, textAlign: "center", marginTop: 4 }}>
-              Arc Testnet · fondos de prueba sin valor
-            </p>
+            <p style={{ fontSize: 11, color: C.mut, textAlign: "center", marginTop: 4 }}>{t("login.footer")}</p>
           </div>
         </div>
       </div>
@@ -254,6 +279,7 @@ function Login({ onLogin, ready }) {
 
 // ————— Inicio —————
 function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice }) {
+  const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
   const [copied, setCopied] = useState(false);
   const ars = balance === null ? null : balance * FX_ARS_USD;
@@ -270,7 +296,7 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Logo />
-        <div style={{ fontSize: 21, fontWeight: 700, color: C.ink, flex: 1 }}>Hola, {nombre}</div>
+        <div style={{ fontSize: 21, fontWeight: 700, color: C.ink, flex: 1 }}>{t("home.greeting", nombre)}</div>
         <button onClick={onRefresh} style={{ width: 42, height: 42, borderRadius: "50%", background: C.orangeSoft, border: "none", cursor: "pointer", color: C.orange, fontSize: 17 }}>
           {refreshing ? "·" : "↻"}
         </button>
@@ -278,12 +304,12 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: C.mut }}>Disponible</span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: C.mut }}>{t("home.available")}</span>
           <span style={{ fontSize: 15, fontWeight: 700, color: C.mut }}>ARS</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
           <div style={{ fontSize: 38, fontWeight: 700, letterSpacing: -1, color: C.ink }}>
-            {ars === null ? "—" : oculto ? "$ ••••••" : `$ ${fmt0(ars)}`}
+            {ars === null ? "—" : oculto ? "$ ••••••" : `$ ${fmt0(ars, locale)}`}
           </div>
           <button onClick={() => setOculto(!oculto)} style={{ background: "none", border: "none", cursor: "pointer", color: C.mut, fontSize: 17 }}>
             {oculto ? "🙈" : "👁"}
@@ -291,56 +317,52 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
         </div>
 
         <div style={{ display: "flex", gap: 6, marginTop: 20 }}>
-          <CircleAction icon="↓" label="Cobrar" onClick={goVoice} />
-          <CircleAction icon="⇄" label="Convertir" onClick={goVoice} />
-          <CircleAction icon="🎙" label="Pagar" onClick={goVoice} tone={C.orange} />
+          <CircleAction icon="↓" label={t("home.actionReceive")} onClick={goVoice} />
+          <CircleAction icon="⇄" label={t("home.actionConvert")} onClick={goVoice} />
+          <CircleAction icon="🎙" label={t("home.actionPay")} onClick={goVoice} tone={C.orange} />
         </div>
       </Card>
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>Fondos</span>
+          <span style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{t("home.fundsTitle")}</span>
           <a href={`${ARC.explorer}/address/${address}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: C.orange, background: C.orangeSoft, padding: "5px 12px", borderRadius: 20, textDecoration: "none" }}>
-            Ver todo
+            {t("home.viewAll")}
           </a>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#2775CA", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 15 }}>$</div>
           <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>USDC</div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{ars === null ? "—" : `$${fmt0(ars)}`}</div>
-            <div style={{ fontSize: 14, color: C.mut }}>{balance === null ? "" : `${fmt(balance)} USDC`}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{ars === null ? "—" : `$${fmt0(ars, locale)}`}</div>
+            <div style={{ fontSize: 14, color: C.mut }}>{balance === null ? "" : `${fmt(balance, 2, locale)} USDC`}</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
           <span style={{ color: C.violet, fontSize: 14 }}>ⓘ</span>
-          <span style={{ fontSize: 13.5, color: C.violet, flex: 1 }}>Tu dinero se encuentra en activos digitales.</span>
+          <span style={{ fontSize: 13.5, color: C.violet, flex: 1 }}>{t("home.infoDigitalAssets")}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12.5, color: C.mut }}>
           <span style={{ fontFamily: "ui-monospace, monospace" }}>{short(address)}</span>
           <button onClick={copy} style={{ background: C.bg, border: "none", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, color: C.ink, cursor: "pointer", fontFamily: "inherit" }}>
-            {copied ? "copiada ✓" : "copiar"}
+            {copied ? t("home.copied") : t("home.copy")}
           </button>
         </div>
       </Card>
 
       {balance !== null && balance < 0.5 && (
         <Card style={{ background: "#16161A", color: "#fff" }}>
-          <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.35 }}>Cargá saldo de prueba para empezar</div>
-          <div style={{ fontSize: 13.5, opacity: 0.75, marginTop: 8, lineHeight: 1.5 }}>
-            Copiá tu dirección y pedí USDC en el faucet de Circle eligiendo Arc Testnet.
-          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.35 }}>{t("home.faucetCardTitle")}</div>
+          <div style={{ fontSize: 13.5, opacity: 0.75, marginTop: 8, lineHeight: 1.5 }}>{t("home.faucetCardBody")}</div>
           <a href={ARC.faucet} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 16, background: C.orange, color: "#fff", padding: "11px 22px", borderRadius: 12, fontSize: 14.5, fontWeight: 700, textDecoration: "none" }}>
-            Ir al faucet
+            {t("home.faucetCardBtn")}
           </a>
         </Card>
       )}
 
-      <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginTop: 4 }}>Actividad</div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginTop: 4 }}>{t("home.activityTitle")}</div>
       {txs.length === 0 ? (
-        <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>
-          Todavía no hay movimientos. Probá un pago por voz — cada envío queda registrado en Arc Testnet con su factura.
-        </Card>
+        <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
         txs.map((tx) => (
           <Card key={tx.hash} style={{ padding: 16, display: "flex", alignItems: "center", gap: 13 }}>
@@ -348,10 +370,10 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{tx.who}</div>
               <a href={`${ARC.explorer}/tx/${tx.hash}`} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: C.mut, textDecoration: "none" }}>
-                Factura {tx.factura} · ver ↗
+                {t("home.invoiceLink", tx.factura)}
               </a>
             </div>
-            <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>−{fmt(tx.amt)}</div>
+            <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>−{fmt(tx.amt, 2, locale)}</div>
           </Card>
         ))
       )}
@@ -361,6 +383,7 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
 
 // ————— Voz —————
 function Voice({ sendPayment, balance, onDone }) {
+  const { t, lang, locale } = useLanguage();
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
   const [parsed, setParsed] = useState(null);
@@ -369,43 +392,46 @@ function Voice({ sendPayment, balance, onDone }) {
   const recRef = useRef(null);
   const supported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  const analyze = useCallback(async (text) => {
-    setTranscript(text);
-    setPhase("parsing");
-    let result;
-    try {
-      result = await claudeParse(text);
-    } catch {
-      result = localParse(text);
-    }
-    if (!result || result.intent !== "send" || !result.amount || !result.recipient) {
-      setErrMsg("No entendí un pago en ese comando. Probá: «enviar 1 dólar a katy».");
-      setPhase("error");
-      return;
-    }
-    const contact =
-      CONTACTS.find((c) => c.alias === (result.recipient || "").toLowerCase()) ||
-      CONTACTS.find((c) => (result.recipient || "").toLowerCase().includes(c.alias));
-    if (!contact) {
-      setErrMsg(`No encontré el alias «${result.recipient}» en tus contactos.`);
-      setPhase("error");
-      return;
-    }
-    const usdc = result.currency === "ARS" ? result.amount / FX_ARS_USD : result.amount;
-    if (balance !== null && usdc > balance) {
-      setErrMsg(`Saldo insuficiente: querés enviar ${fmt(usdc)} USDC y tenés ${fmt(balance)}.`);
-      setPhase("error");
-      return;
-    }
-    setParsed({ ...result, contact, usdc, factura: nuevaFactura() });
-    setPhase("confirm");
-  }, [balance]);
+  const analyze = useCallback(
+    async (text) => {
+      setTranscript(text);
+      setPhase("parsing");
+      let result;
+      try {
+        result = await claudeParse(text, lang);
+      } catch {
+        result = localParse(text, lang);
+      }
+      if (!result || result.intent !== "send" || !result.amount || !result.recipient) {
+        setErrMsg(t("voice.noPaymentUnderstood"));
+        setPhase("error");
+        return;
+      }
+      const contact =
+        CONTACTS.find((c) => c.alias === (result.recipient || "").toLowerCase()) ||
+        CONTACTS.find((c) => (result.recipient || "").toLowerCase().includes(c.alias));
+      if (!contact) {
+        setErrMsg(t("voice.aliasNotFound", result.recipient));
+        setPhase("error");
+        return;
+      }
+      const usdc = result.currency === "ARS" ? result.amount / FX_ARS_USD : result.amount;
+      if (balance !== null && usdc > balance) {
+        setErrMsg(t("voice.insufficientBalance", fmt(usdc, 2, locale), fmt(balance, 2, locale)));
+        setPhase("error");
+        return;
+      }
+      setParsed({ ...result, contact, usdc, factura: nuevaFactura() });
+      setPhase("confirm");
+    },
+    [balance, lang, locale, t]
+  );
 
   const listen = () => {
     setErrMsg("");
     setTranscript("");
     if (!supported) {
-      setErrMsg("Tu navegador no soporta reconocimiento de voz. Usá Chrome o el modo texto.");
+      setErrMsg(t("voice.micUnsupported"));
       setPhase("error");
       return;
     }
@@ -414,38 +440,32 @@ function Voice({ sendPayment, balance, onDone }) {
       const rec = new SR();
       recRef.current = rec;
       const isSafari = /^((?!chrome|android|crios|edg).)*safari/i.test(navigator.userAgent);
-      rec.lang = "es-AR";
+      rec.lang = lang === "en" ? "en-US" : "es-AR";
       rec.interimResults = !isSafari;
       rec.continuous = false;
       rec.maxAlternatives = 1;
       rec.onresult = (e) => {
-        const t = Array.from(e.results).map((r) => r[0].transcript).join(" ");
-        setTranscript(t);
+        const txt = Array.from(e.results).map((r) => r[0].transcript).join(" ");
+        setTranscript(txt);
         if (e.results[e.results.length - 1].isFinal) {
           rec.stop();
-          analyze(t);
+          analyze(txt);
         }
       };
       rec.onnomatch = () => {
-        setErrMsg("No se entendió el audio. Hablá más cerca del micrófono.");
+        setErrMsg(t("voice.noSpeechMatch"));
         setPhase("error");
       };
       rec.onerror = (e) => {
-        const msgs = {
-          "not-allowed": "Permiso de micrófono denegado. En Safari: Configuración → Sitios web → Micrófono → localhost: Permitir. Y activá Dictado en Configuración del Sistema → Teclado.",
-          "service-not-allowed": "Safari necesita el Dictado activado: Configuración del Sistema → Teclado → Dictado.",
-          "audio-capture": "No se detectó micrófono.",
-          "no-speech": "No escuché nada. Tocá el botón y hablá enseguida.",
-          network: "Verificá tu conexión a internet.",
-        };
-        setErrMsg(msgs[e.error] || "Error de micrófono: " + e.error);
+        const msgs = t("voice.micErrors");
+        setErrMsg(msgs[e.error] || t("voice.micErrGeneric", e.error));
         setPhase("error");
       };
       rec.onend = () => setPhase((p) => (p === "listening" ? "idle" : p));
       rec.start();
       setPhase("listening");
     } catch {
-      setErrMsg("El reconocimiento de voz no está disponible. Usá el modo texto.");
+      setErrMsg(t("voice.micUnavailable"));
       setPhase("error");
     }
   };
@@ -458,13 +478,13 @@ function Voice({ sendPayment, balance, onDone }) {
     } catch (err) {
       const m = String(err?.message || err);
       if (m.includes("limit reached") || m.includes("-32011") || m.includes("429")) {
-        setErrMsg("El RPC de Arc está limitando las consultas. Esperá unos segundos y reintentá.");
+        setErrMsg(t("voice.rpcLimited"));
       } else if (m.includes("insufficient funds")) {
-        setErrMsg("Fondos insuficientes on-chain. Fondeá en faucet.circle.com → Arc Testnet.");
+        setErrMsg(t("voice.insufficientFundsOnchain"));
       } else if (m.includes("rejected") || m.includes("denied")) {
-        setErrMsg("Cancelaste la firma.");
+        setErrMsg(t("voice.signatureCancelled"));
       } else {
-        setErrMsg("La transacción falló: " + m.slice(0, 130));
+        setErrMsg(t("voice.txFailed", m.slice(0, 130)));
       }
       setPhase("error");
     }
@@ -488,8 +508,8 @@ function Voice({ sendPayment, balance, onDone }) {
       `}</style>
 
       <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>Pagar por voz</h2>
-        <p style={{ fontSize: 15, color: C.mut, marginTop: 6 }}>Decilo y el agente arma la transacción.</p>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("voice.title")}</h2>
+        <p style={{ fontSize: 15, color: C.mut, marginTop: 6 }}>{t("voice.subtitle")}</p>
       </div>
 
       {(phase === "idle" || phase === "listening" || phase === "parsing") && (
@@ -511,39 +531,39 @@ function Voice({ sendPayment, balance, onDone }) {
                   animation: active ? "mp-pulse 1.2s ease-in-out infinite" : "none",
                   transition: "background .25s",
                 }}
-                aria-label={active ? "Detener" : "Hablar"}
+                aria-label={active ? t("voice.listening") : t("nav.voiceAria")}
               >
                 {phase === "parsing" ? "···" : "🎙"}
               </button>
             </div>
             <div style={{ marginTop: 18, textAlign: "center", minHeight: 42 }}>
-              {phase === "idle" && <span style={{ fontSize: 14.5, color: C.mut }}>Tocá el micrófono y decí el pago</span>}
+              {phase === "idle" && <span style={{ fontSize: 14.5, color: C.mut }}>{t("voice.idleHint")}</span>}
               {active && (
                 <>
-                  <div style={{ fontSize: 15.5, color: C.ink, fontWeight: 600 }}>{transcript || "Escuchando…"}</div>
-                  <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4 }}>Al terminar, esperá un segundo</div>
+                  <div style={{ fontSize: 15.5, color: C.ink, fontWeight: 600 }}>{transcript || t("voice.listening")}</div>
+                  <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4 }}>{t("voice.listeningHint")}</div>
                 </>
               )}
-              {phase === "parsing" && <span style={{ fontSize: 14.5, color: C.violet, fontWeight: 600 }}>Interpretando «{transcript}»…</span>}
+              {phase === "parsing" && <span style={{ fontSize: 14.5, color: C.violet, fontWeight: 600 }}>{t("voice.parsing", transcript)}</span>}
             </div>
           </Card>
 
           <Card>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginBottom: 10 }}>O escribilo</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginBottom: 10 }}>{t("voice.orType")}</div>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 value={manual}
                 onChange={(e) => setManual(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && manual.trim() && analyze(manual.trim())}
-                placeholder="enviar 1 dólar a katy"
+                placeholder={t("voice.inputPlaceholder")}
                 style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 14px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit" }}
               />
               <button onClick={() => manual.trim() && analyze(manual.trim())} style={{ ...btnOrange, width: 52, padding: 0, fontSize: 19 }}>→</button>
             </div>
-            <button onClick={() => analyze("enviar 1 dólar a katy")} style={{ background: "none", border: "none", color: C.violet, fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 12, padding: 0, fontFamily: "inherit" }}>
-              ▶ Probar «enviar 1 dólar a katy»
+            <button onClick={() => analyze(t("voice.exampleCommand"))} style={{ background: "none", border: "none", color: C.violet, fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 12, padding: 0, fontFamily: "inherit" }}>
+              {t("voice.tryExample")}
             </button>
-            {!API_KEY && <div style={{ fontSize: 12, color: C.mut, marginTop: 10 }}>Sin API key: usando intérprete local.</div>}
+            {!API_KEY && <div style={{ fontSize: 12, color: C.mut, marginTop: 10 }}>{t("voice.noApiKeyHint")}</div>}
           </Card>
         </>
       )}
@@ -563,11 +583,11 @@ function Voice({ sendPayment, balance, onDone }) {
             </div>
             <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 16, display: "grid", gap: 10 }}>
               {[
-                ["Monto", `${fmt(parsed.usdc)} USDC`],
-                parsed.currency === "ARS" ? ["Equivale a", `$${fmt0(parsed.amount)} ARS`] : ["Equivale a", `$${fmt0(parsed.usdc * FX_ARS_USD)} ARS`],
-                ["Tipo de cambio", `1 USDC = $${fmt0(FX_ARS_USD)}`],
-                ["Factura", parsed.factura],
-                ["Red", "Arc Testnet"],
+                [t("voice.amount"), `${fmt(parsed.usdc, 2, locale)} USDC`],
+                parsed.currency === "ARS" ? [t("voice.equals"), `$${fmt0(parsed.amount, locale)} ARS`] : [t("voice.equals"), `$${fmt0(parsed.usdc * FX_ARS_USD, locale)} ARS`],
+                [t("voice.exchangeRate"), `1 USDC = $${fmt0(FX_ARS_USD, locale)}`],
+                [t("voice.invoice"), parsed.factura],
+                [t("voice.network"), "Arc Testnet"],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
                   <span style={{ color: C.mut }}>{k}:</span>
@@ -576,20 +596,20 @@ function Voice({ sendPayment, balance, onDone }) {
               ))}
             </div>
             <div style={{ background: C.bg, borderRadius: 12, padding: "12px 14px", marginTop: 16, fontSize: 12.5, color: C.mut, lineHeight: 1.5 }}>
-              La factura viaja adjunta al pago y queda visible en ArcScan. El comercio concilia sin base de datos externa.
+              {t("voice.memoNote")}
             </div>
           </Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button onClick={execute} style={btnOrange}>Confirmar y enviar</button>
-            <button onClick={reset} style={{ ...btnOutline, border: "none", color: C.mut }}>Cancelar</button>
+            <button onClick={execute} style={btnOrange}>{t("voice.confirmSend")}</button>
+            <button onClick={reset} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("voice.cancel")}</button>
           </div>
         </>
       )}
 
       {phase === "sending" && (
         <Card style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>Enviando…</div>
-          <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>Firmando y esperando finalidad en Arc</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{t("voice.sending")}</div>
+          <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>{t("voice.sendingHint")}</div>
         </Card>
       )}
 
@@ -598,7 +618,7 @@ function Voice({ sendPayment, balance, onDone }) {
           <Card style={{ borderLeft: `4px solid ${C.red}` }}>
             <div style={{ fontSize: 15, color: C.ink, lineHeight: 1.5 }}>{errMsg}</div>
           </Card>
-          <button onClick={reset} style={btnOrange}>Reintentar</button>
+          <button onClick={reset} style={btnOrange}>{t("voice.retry")}</button>
         </>
       )}
     </div>
@@ -607,18 +627,19 @@ function Voice({ sendPayment, balance, onDone }) {
 
 // ————— Éxito a pantalla completa —————
 function Success({ receipt, onClose }) {
+  const { t, locale } = useLanguage();
   const [detalle, setDetalle] = useState(false);
   const [splash, setSplash] = useState(true);
 
   useEffect(() => {
-    const t = setTimeout(() => setSplash(false), 1800);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setSplash(false), 1800);
+    return () => clearTimeout(timer);
   }, []);
 
   if (splash) {
     return (
       <div className="mp-overlay" style={{ background: C.green, flexDirection: "column", gap: 24 }}>
-        <div style={{ fontSize: 30, fontWeight: 700, color: "#fff", textAlign: "center", padding: "0 24px" }}>¡Pago enviado!</div>
+        <div style={{ fontSize: 30, fontWeight: 700, color: "#fff", textAlign: "center", padding: "0 24px" }}>{t("success.splashTitle")}</div>
         <div style={{ width: 74, height: 74, borderRadius: "50%", background: "#fff", display: "grid", placeItems: "center", color: C.green, fontSize: 38 }}>✓</div>
       </div>
     );
@@ -629,31 +650,31 @@ function Success({ receipt, onClose }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
         <div style={{ width: 44, height: 44, borderRadius: "50%", background: C.green, display: "grid", placeItems: "center", color: "#fff", fontSize: 22 }}>✓</div>
-        <div style={{ fontSize: 26, fontWeight: 700, color: C.ink }}>¡Hecho!</div>
+        <div style={{ fontSize: 26, fontWeight: 700, color: C.ink }}>{t("success.doneTitle")}</div>
       </div>
 
       <Card>
         <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.35 }}>
-          Enviaste {fmt(p.usdc)} USDC a {p.contact.name}
+          {t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name)}
         </div>
         <button
           onClick={() => setDetalle(!detalle)}
           style={{ background: C.violetSoft, color: C.violet, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 12, fontFamily: "inherit" }}
         >
-          Ver detalle {detalle ? "⌃" : "⌄"}
+          {t("success.viewDetail")} {detalle ? "⌃" : "⌄"}
         </button>
 
         {detalle && (
           <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 14 }}>Operación:</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{t("success.operation")}</div>
             <div style={{ display: "grid", gap: 10, fontSize: 14.5 }}>
               {[
-                ["Monto enviado", `${fmt(p.usdc)} USDC`],
-                ["Equivale a", `$${fmt0(p.usdc * FX_ARS_USD)} ARS`],
-                ["Tipo de cambio", `1 USDC = $${fmt0(FX_ARS_USD)}`],
-                ["Fee de red", receipt.fee ? `${Number(receipt.fee).toFixed(6)} USDC` : "—"],
-                receipt.block ? ["Bloque", String(receipt.block)] : null,
-                ["Hora", receipt.ts],
+                [t("success.amountSent"), `${fmt(p.usdc, 2, locale)} USDC`],
+                [t("success.equals"), `$${fmt0(p.usdc * FX_ARS_USD, locale)} ARS`],
+                [t("success.exchangeRate"), `1 USDC = $${fmt0(FX_ARS_USD, locale)}`],
+                [t("success.networkFee"), receipt.fee ? `${Number(receipt.fee).toFixed(6)} USDC` : "—"],
+                receipt.block ? [t("success.block"), String(receipt.block)] : null,
+                [t("success.time"), receipt.ts],
               ].filter(Boolean).map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: C.mut }}>{k}:</span>
@@ -663,23 +684,21 @@ function Success({ receipt, onClose }) {
             </div>
             <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 16, paddingTop: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
-                <span style={{ color: C.mut }}>Factura:</span>
-                <span style={{ color: C.green, fontWeight: 700 }}>{receipt.factura} · on-chain ✓</span>
+                <span style={{ color: C.mut }}>{t("success.invoiceLabel")}</span>
+                <span style={{ color: C.green, fontWeight: 700 }}>{receipt.factura} · {t("success.onchainCheck")}</span>
               </div>
               <a href={`${ARC.explorer}/tx/${receipt.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: C.violet, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" }}>
-                {short(receipt.hash)} — ver en ArcScan ↗
+                {t("success.viewOnArcScan", short(receipt.hash))}
               </a>
-              <div style={{ fontSize: 12, color: C.mut, marginTop: 8, lineHeight: 1.5 }}>
-                En ArcScan abrí <b>Input Data</b> y pasalo a UTF-8: ahí está la referencia completa del cobro.
-              </div>
+              <div style={{ fontSize: 12, color: C.mut, marginTop: 8, lineHeight: 1.5 }}>{t("success.utf8Hint")}</div>
             </div>
           </div>
         )}
       </Card>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <button onClick={() => onClose("voice")} style={btnOrange}>Realizar otro pago</button>
-        <button onClick={() => onClose("home")} style={btnOutline}>Volver al inicio</button>
+        <button onClick={() => onClose("voice")} style={btnOrange}>{t("success.anotherPayment")}</button>
+        <button onClick={() => onClose("home")} style={btnOutline}>{t("success.backHome")}</button>
       </div>
     </div>
   );
@@ -687,19 +706,18 @@ function Success({ receipt, onClose }) {
 
 // ————— Movimientos —————
 function Movimientos({ txs, address }) {
+  const { t, locale } = useLanguage();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>Movimientos</h2>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("movs.title")}</h2>
         <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6 }}>
-          {txs.length === 0 ? "Todavía no hay pagos en esta sesión." : `${txs.length} ${txs.length === 1 ? "pago" : "pagos"} en esta sesión`}
+          {txs.length === 0 ? t("movs.countEmpty") : t("movs.countN", txs.length)}
         </p>
       </div>
 
       {txs.length === 0 ? (
-        <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>
-          Cada pago por voz queda registrado en Arc Testnet con su número de factura. Vas a verlos acá con el link al explorador.
-        </Card>
+        <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
       ) : (
         txs.map((tx) => (
           <Card key={tx.hash} style={{ padding: 18 }}>
@@ -707,32 +725,32 @@ function Movimientos({ txs, address }) {
               <div style={{ width: 42, height: 42, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontSize: 17 }}>↑</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{tx.who}</div>
-                <div style={{ fontSize: 13, color: C.mut }}>Pago por voz</div>
+                <div style={{ fontSize: 13, color: C.mut }}>{t("movs.voicePayment")}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>−{fmt(tx.amt)}</div>
+                <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>−{fmt(tx.amt, 2, locale)}</div>
                 <div style={{ fontSize: 12.5, color: C.mut }}>USDC</div>
               </div>
             </div>
             <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 14, paddingTop: 12, display: "grid", gap: 7, fontSize: 13.5 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.mut }}>Factura:</span>
-                <span style={{ color: C.green, fontWeight: 700 }}>{tx.factura} · on-chain ✓</span>
+                <span style={{ color: C.mut }}>{t("movs.invoiceLabel")}</span>
+                <span style={{ color: C.green, fontWeight: 700 }}>{tx.factura} · {t("success.onchainCheck")}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.mut }}>Equivale a:</span>
-                <span style={{ color: C.ink, fontWeight: 600 }}>${fmt0(tx.amt * FX_ARS_USD)} ARS</span>
+                <span style={{ color: C.mut }}>{t("movs.equals")}</span>
+                <span style={{ color: C.ink, fontWeight: 600 }}>${fmt0(tx.amt * FX_ARS_USD, locale)} ARS</span>
               </div>
             </div>
             <a href={`${ARC.explorer}/tx/${tx.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: C.violet, fontWeight: 600, textDecoration: "none" }}>
-              {short(tx.hash)} — ver en ArcScan ↗
+              {t("movs.viewOnArcScan", short(tx.hash))}
             </a>
           </Card>
         ))
       )}
 
       <a href={`${ARC.explorer}/address/${address}`} target="_blank" rel="noreferrer" style={{ ...btnOutline, textDecoration: "none", textAlign: "center", display: "block", border: `1.5px solid ${C.line}`, color: C.ink }}>
-        Ver historial completo en ArcScan
+        {t("movs.viewFullHistory")}
       </a>
     </div>
   );
@@ -740,6 +758,7 @@ function Movimientos({ txs, address }) {
 
 // ————— Más (menú) —————
 function Mas({ email, address, nombre, onLogout, goStack }) {
+  const { t, lang, setLang } = useLanguage();
   const [confirmar, setConfirmar] = useState(false);
 
   const Fila = ({ icon, titulo, sub, onClick, href, danger }) => {
@@ -765,7 +784,7 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>Más</h2>
+      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("mas.title")}</h2>
 
       <Card style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: C.orange, fontSize: 20, fontWeight: 700 }}>
@@ -773,25 +792,38 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{nombre}</div>
-          <div style={{ fontSize: 13, color: C.mut, overflow: "hidden", textOverflow: "ellipsis" }}>{email || "Cuenta sin email"}</div>
+          <div style={{ fontSize: 13, color: C.mut, overflow: "hidden", textOverflow: "ellipsis" }}>{email || t("mas.noEmailAccount")}</div>
           <div style={{ fontSize: 12, color: C.mut, fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{short(address)}</div>
         </div>
       </Card>
 
       <Card style={{ padding: "4px 20px" }}>
-        <Fila icon="◫" titulo="Stack Arc" sub="Qué está implementado y qué falta" onClick={goStack} />
+        <Fila icon="◫" titulo={t("mas.stackTitle")} sub={t("mas.stackSub")} onClick={goStack} />
         <div style={{ height: 1, background: C.line }} />
-        <Fila icon="⛽" titulo="Fondear con el faucet" sub="USDC de prueba en Arc Testnet" href={ARC.faucet} />
+        <Fila icon="⛽" titulo={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={ARC.faucet} />
         <div style={{ height: 1, background: C.line }} />
-        <Fila icon="🔎" titulo="Ver mi cuenta en ArcScan" sub="Explorador público de Arc" href={`${ARC.explorer}/address/${address}`} />
+        <Fila icon="🔎" titulo={t("mas.arcscanTitle")} sub={t("mas.arcscanSub")} href={`${ARC.explorer}/address/${address}`} />
       </Card>
 
       <Card style={{ padding: "4px 20px" }}>
-        <Fila icon="⏻" titulo="Cerrar sesión" danger onClick={() => setConfirmar(true)} />
+        <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 0" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bg, display: "grid", placeItems: "center", fontSize: 17 }}>🌐</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{t("mas.languageTitle")}</div>
+            <div style={{ fontSize: 12.5, color: C.mut, marginTop: 1 }}>{lang === "en" ? "English" : "Español"}</div>
+          </div>
+          <LangToggle />
+        </div>
+      </Card>
+
+      <Card style={{ padding: "4px 20px" }}>
+        <Fila icon="⏻" titulo={t("mas.logoutTitle")} danger onClick={() => setConfirmar(true)} />
       </Card>
 
       <p style={{ fontSize: 11.5, color: C.mut, textAlign: "center", lineHeight: 1.6 }}>
-        MidatoPay × Arc · demo sobre Arc Testnet<br />Fondos de prueba sin valor real
+        {t("mas.footerLine1")}
+        <br />
+        {t("mas.footerLine2")}
       </p>
 
       {confirmar && (
@@ -801,13 +833,11 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
             style={{ background: C.card, borderRadius: "24px 24px 0 0", padding: "26px 22px 30px", width: "100%" }}
           >
             <div style={{ width: 42, height: 4, borderRadius: 4, background: C.line, margin: "0 auto 20px" }} />
-            <div style={{ fontSize: 19, fontWeight: 700, color: C.ink }}>¿Cerrar sesión?</div>
-            <div style={{ fontSize: 14.5, color: C.mut, marginTop: 8, lineHeight: 1.5 }}>
-              Vas a volver a la pantalla de inicio. Podés entrar de nuevo con el mismo email o teléfono y tu cuenta sigue igual.
-            </div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: C.ink }}>{t("mas.logoutConfirmTitle")}</div>
+            <div style={{ fontSize: 14.5, color: C.mut, marginTop: 8, lineHeight: 1.5 }}>{t("mas.logoutConfirmBody")}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 22 }}>
-              <button onClick={onLogout} style={{ ...btnOrange, background: C.red }}>Cerrar sesión</button>
-              <button onClick={() => setConfirmar(false)} style={{ ...btnOutline, border: `1.5px solid ${C.line}`, color: C.ink }}>Cancelar</button>
+              <button onClick={onLogout} style={{ ...btnOrange, background: C.red }}>{t("mas.logoutConfirmBtn")}</button>
+              <button onClick={() => setConfirmar(false)} style={{ ...btnOutline, border: `1.5px solid ${C.line}`, color: C.ink }}>{t("mas.cancel")}</button>
             </div>
           </div>
         </div>
@@ -818,6 +848,8 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
 
 // ————— Stack —————
 function Stack() {
+  const { t, lang } = useLanguage();
+  const STACK = lang === "en" ? STACK_EN : STACK_ES;
   const activos = STACK.filter((s) => s.on);
   const road = STACK.filter((s) => !s.on);
 
@@ -835,23 +867,22 @@ function Stack() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>Stack Arc</h2>
-        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>
-          Lo verde está implementado y funcionando en esta demo. Lo gris todavía no: lo listamos para ser explícitos sobre qué falta.
-        </p>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("stackScreen.title")}</h2>
+        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("stackScreen.subtitle")}</p>
       </div>
 
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginTop: 4 }}>IMPLEMENTADO</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginTop: 4 }}>{t("stackScreen.implemented")}</div>
       {activos.map((s) => <Item key={s.name} s={s} />)}
 
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginTop: 10 }}>ROADMAP</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginTop: 10 }}>{t("stackScreen.roadmap")}</div>
       {road.map((s) => <Item key={s.name} s={s} />)}
     </div>
   );
 }
 
 // ————— App —————
-export default function App() {
+function AppInner() {
+  const { t, locale } = useLanguage();
   const { ready, authenticated, user, login, logout } = usePrivy();
   const { wallets } = useWallets();
   const [tab, setTab] = useState("home");
@@ -915,10 +946,10 @@ export default function App() {
       refreshBalance();
       return {
         hash: tx.hash, block, fee, memo, factura: parsed.factura,
-        ts: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       };
     },
-    [wallet, refreshBalance]
+    [wallet, refreshBalance, locale]
   );
 
   const shell = (children) => (
@@ -928,29 +959,29 @@ export default function App() {
 
         <nav className="mp-nav">
           {[
-            { id: "home", label: "Inicio", icon: "⌂" },
-            { id: "movs", label: "Movimientos", icon: "☰" },
-            { id: "stack", label: "Stack", icon: "◫" },
-            { id: "mas", label: "Más", icon: "⋯" },
-          ].map((t, i) => (
+            { id: "home", label: t("nav.home"), icon: "⌂" },
+            { id: "movs", label: t("nav.movements"), icon: "☰" },
+            { id: "stack", label: t("nav.stack"), icon: "◫" },
+            { id: "mas", label: t("nav.more"), icon: "⋯" },
+          ].map((tItem, i) => (
             <button
-              key={t.id}
-              onClick={() => { setReceipt(null); setTab(t.id); }}
+              key={tItem.id}
+              onClick={() => { setReceipt(null); setTab(tItem.id); }}
               style={{
                 flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
                 alignItems: "center", gap: 3, fontFamily: "inherit", padding: 0,
-                color: tab === t.id ? C.violet : C.mut,
+                color: tab === tItem.id ? C.violet : C.mut,
                 marginRight: i === 1 ? 28 : 0, marginLeft: i === 2 ? 28 : 0,
               }}
             >
-              <span style={{ fontSize: 18 }}>{t.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: 600 }}>{t.label}</span>
+              <span style={{ fontSize: 18 }}>{tItem.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: 600 }}>{tItem.label}</span>
             </button>
           ))}
           <button
             onClick={() => { setReceipt(null); setTab("voice"); }}
             className="mp-fab"
-            aria-label="Pagar por voz"
+            aria-label={t("nav.voiceAria")}
           >
             🎙
           </button>
@@ -964,8 +995,8 @@ export default function App() {
   if (!address) {
     return shell(
       <Card style={{ textAlign: "center", padding: 40, marginTop: 40 }}>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>Creando tu cuenta…</div>
-        <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>Esto tarda unos segundos la primera vez.</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>{t("home.creatingTitle")}</div>
+        <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>{t("home.creatingBody")}</div>
       </Card>
     );
   }
@@ -992,5 +1023,13 @@ export default function App() {
         />
       )}
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppInner />
+    </LanguageProvider>
   );
 }
