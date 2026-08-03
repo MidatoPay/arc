@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+
+# Reemplaza al proxy /rpc de Vite (solo existe en dev) por una function
+# que hace de puente al RPC real, igual que vite.config.js.
+[[redirects]]
+  from = "/rpc"
+  to = "/.netlify/functions/rpc"
+  status = 200
+  force = true
+
+# SPA: cualquier otra ruta sirve index.html (no hay react-router, pero
+# evita 404 si alguien entra directo a una URL que no sea la raíz).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
