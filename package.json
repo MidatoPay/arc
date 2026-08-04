@@ -12,7 +12,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ethers": "^6.13.4",
-    "@privy-io/react-auth": "^2.13.0",
+    "@privy-io/react-auth": "^3.36.1",
     "viem": "^2.21.54",
     "buffer": "^6.0.3"
   },
