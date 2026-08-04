@@ -18,6 +18,8 @@ npm run dev
 | `VITE_PRIVY_APP_ID` | dashboard.privy.io → tu app | Sí, sin esto no hay login |
 | `VITE_ANTHROPIC_API_KEY` | console.anthropic.com | No (sin ella usa parser local) |
 | `VITE_ARC_RPC` | alchemy.com → Arc Testnet | No (sin ella usa el RPC público, que limita) |
+| `VITE_ETH_RPC` | RPC Ethereum Mainnet | No (sin ella usa publicnode; necesario para el FX Chainlink) |
+| `VITE_TREASURY_PRIVATE_KEY` | Wallet recaudadora fondeada en Arc Testnet | Sí para Cobrar / Convertir ARS→USDC (solo testnet) |
 
 ### Configurar Privy (3 minutos)
 
