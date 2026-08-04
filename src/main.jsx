@@ -11,6 +11,8 @@ import ReactDOM from "react-dom/client";
 import { PrivyProvider } from "@privy-io/react-auth";
 import App from "./App.jsx";
 import { arcTestnet } from "./chain.js";
+import "./styles/midato-additions.css";
+import "./styles/midato-balance-fab.css";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID || "";
 

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import VoiceCommandSheet from './VoiceCommandSheet.jsx';
-import ChargeSheet from './ChargeSheet.jsx';
 
 const SpeechRecognition =
   globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition || null;
@@ -8,22 +7,27 @@ const SpeechRecognition =
 /**
  * El micrófono de la barra de abajo. Ahora es la única puerta de entrada a
  * pagar y cobrar, así que este componente se hace cargo del flujo completo:
- * escuchar → interpretar → confirmar → ejecutar.
+ * escuchar → interpretar → confirmar.
  *
  * Importante: como es la única puerta, tiene salida de emergencia. Si el
  * navegador no soporta voz, si el usuario niega el permiso o si está en un
  * local con ruido, se puede escribir el comando. Un comercio no puede quedar
  * sin poder cobrar porque hay ruido.
  */
-export default function VoiceFab({ contacts, myAddress, publicClient, onPay }) {
+export default function VoiceFab({ contacts, onPay, onCharge }) {
   const [state, setState] = useState('idle'); // idle | listening | typing
   const [transcript, setTranscript] = useState(null);
-  const [charge, setCharge] = useState(null);
   const [error, setError] = useState(null);
   const [typed, setTyped] = useState('');
   const recRef = useRef(null);
 
   useEffect(() => () => recRef.current?.abort?.(), []);
+
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 5000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   const listen = () => {
     setError(null);
@@ -138,19 +142,8 @@ export default function VoiceFab({ contacts, myAddress, publicClient, onPay }) {
           transcript={transcript}
           contacts={contacts}
           onPay={(p) => { setTranscript(null); onPay(p); }}
-          onCharge={(c) => { setTranscript(null); setCharge(c); }}
+          onCharge={(c) => { setTranscript(null); onCharge(c); }}
           onCancel={() => setTranscript(null)}
-        />
-      )}
-
-      {charge && (
-        <ChargeSheet
-          myAddress={myAddress}
-          publicClient={publicClient}
-          amount={charge.amount}
-          token={charge.token}
-          counterparty={charge.contact}
-          onClose={() => setCharge(null)}
         />
       )}
     </>

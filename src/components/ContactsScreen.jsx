@@ -1,24 +1,28 @@
 import { useState } from 'react';
-import { useContacts } from '../hooks/useContacts.js';
 import { shortAddress, cleanAliases } from '../lib/contacts.js';
+import ContactQuickActions from './ContactQuickActions.jsx';
 
 const EMPTY = { name: '', address: '', aliases: '', note: '' };
 
 /**
  * Agenda. El alias es lo que hace que la voz funcione, así que la UI
  * lo trata como campo de primera clase, no como un extra escondido.
+ *
+ * Recibe contactos y mutadores por prop (fuente única: el useContacts()
+ * de App.jsx) para que VoiceFab vea siempre la misma agenda que esta pantalla.
  */
-export default function ContactsScreen({ onPick, pickMode = false }) {
-  const { contacts, ready, add, update, remove, search } = useContacts();
+export default function ContactsScreen({ contacts, ready, add, update, remove, search, onPick, pickMode = false, onPay, onCharge }) {
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState(null); // null = formulario cerrado
   const [editingId, setEditingId] = useState(null);
   const [errors, setErrors] = useState({});
+  const [acting, setActing] = useState(null); // contacto con acciones rápidas abiertas
 
   const visible = search(query);
 
   const openNew = () => { setDraft(EMPTY); setEditingId(null); setErrors({}); };
   const openEdit = (c) => {
+    setActing(null);
     setDraft({ name: c.name, address: c.address, aliases: (c.aliases || []).join(', '), note: c.note || '' });
     setEditingId(c.id);
     setErrors({});
@@ -30,6 +34,12 @@ export default function ContactsScreen({ onPick, pickMode = false }) {
     const res = editingId ? update(editingId, payload) : add(payload);
     if (res.ok) close();
     else setErrors(res.errors);
+  };
+
+  const deleteEditing = () => {
+    if (!editingId) return;
+    remove(editingId);
+    close();
   };
 
   if (!ready) return <div className="mp-agenda"><p className="mp-muted">Cargando agenda…</p></div>;
@@ -71,7 +81,7 @@ export default function ContactsScreen({ onPick, pickMode = false }) {
           <li key={c.id} className="mp-card">
             <button
               className="mp-card__main"
-              onClick={() => (pickMode ? onPick?.(c) : openEdit(c))}
+              onClick={() => (pickMode ? onPick?.(c) : setActing(c))}
             >
               <span className="mp-avatar" aria-hidden="true">{c.name.slice(0, 1).toUpperCase()}</span>
               <span className="mp-card__text">
@@ -84,15 +94,6 @@ export default function ContactsScreen({ onPick, pickMode = false }) {
                 <span className="mp-mono mp-muted">{shortAddress(c.address)}</span>
               </span>
             </button>
-            {!pickMode && (
-              <button
-                className="mp-btn mp-btn--ghost"
-                onClick={() => remove(c.id)}
-                aria-label={`Borrar ${c.name}`}
-              >
-                Borrar
-              </button>
-            )}
           </li>
         ))}
       </ul>
@@ -155,7 +156,22 @@ export default function ContactsScreen({ onPick, pickMode = false }) {
               {editingId ? 'Guardar cambios' : 'Agregar contacto'}
             </button>
           </div>
+          {editingId && (
+            <button className="mp-btn mp-btn--ghost mp-btn--wide" onClick={deleteEditing}>
+              Borrar contacto
+            </button>
+          )}
         </div>
+      )}
+
+      {acting && (
+        <ContactQuickActions
+          contact={acting}
+          onPay={onPay}
+          onCharge={onCharge}
+          onEdit={() => openEdit(acting)}
+          onClose={() => setActing(null)}
+        />
       )}
     </div>
   );

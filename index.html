@@ -55,34 +55,6 @@
       }
       .mp-scroll::-webkit-scrollbar { width: 0; }
 
-      /* Barra inferior, anclada al marco */
-      .mp-nav {
-        position: absolute;
-        left: 0; right: 0; bottom: 0;
-        background: #fff;
-        border-top: 1px solid #ECECF0;
-        padding: 9px 18px 12px;
-        display: flex;
-        align-items: center;
-      }
-      .mp-fab {
-        position: absolute;
-        left: 50%;
-        transform: translate(-50%, -25px);
-        width: 60px; height: 60px;
-        border-radius: 50%;
-        background: #FF5A00;
-        border: 4px solid #F4F4F6;
-        color: #fff;
-        font-size: 23px;
-        cursor: pointer;
-        display: grid;
-        place-items: center;
-        box-shadow: 0 8px 22px rgba(255, 90, 0, .34);
-        transition: transform .15s ease;
-      }
-      .mp-fab:active { transform: translate(-50%, -25px) scale(.94); }
-
       /* Overlays dentro del marco */
       .mp-overlay {
         position: absolute;
@@ -108,7 +80,6 @@
           border-radius: 0;
           box-shadow: none;
         }
-        .mp-nav { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
       }
     </style>
   </head>
