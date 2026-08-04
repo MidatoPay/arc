@@ -13,6 +13,12 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/eth-rpc"
+  to = "/.netlify/functions/eth-rpc"
+  status = 200
+  force = true
+
 # SPA: cualquier otra ruta sirve index.html (no hay react-router, pero
 # evita 404 si alguien entra directo a una URL que no sea la raíz).
 [[redirects]]

@@ -6,6 +6,8 @@ export default defineConfig(({ mode }) => {
   // RPC de Arc Testnet. Poné VITE_ARC_RPC en .env con tu URL de Alchemy
   // para no depender del RPC público (que limita las consultas).
   const target = env.VITE_ARC_RPC || "https://rpc.testnet.arc.network";
+  // RPC de Ethereum Mainnet para el Price Feed Chainlink USD/ARS.
+  const ethTarget = env.VITE_ETH_RPC || "https://ethereum.publicnode.com";
 
   return {
     plugins: [react()],
@@ -22,6 +24,11 @@ export default defineConfig(({ mode }) => {
           target,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/rpc/, ""),
+        },
+        "/eth-rpc": {
+          target: ethTarget,
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/eth-rpc/, ""),
         },
       },
     },
