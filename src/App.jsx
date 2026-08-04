@@ -99,7 +99,7 @@ Valid contact aliases: ${CONTACTS.map((c) => c.alias).join(", ")}
 Exact format:
 {"intent":"send"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
 
-Rules: "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. Match the alias even if misheard (e.g. "caty" → "katy").`
+Rules: "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. If the currency isn't stated or is unclear, default to USDC — never guess ARS. Match the alias even if misheard (e.g. "caty" → "katy").`
       : `Sos el agente de pagos por voz de MidatoPay. Extraé la intención de este comando en español rioplatense y respondé SOLO con JSON válido, sin markdown ni texto extra.
 
 Comando: "${text}"
@@ -109,7 +109,7 @@ Contactos válidos (alias): ${CONTACTS.map((c) => c.alias).join(", ")}
 Formato exacto:
 {"intent":"send"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
 
-Reglas: "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`;
+Reglas: "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Si la moneda no está clara o no se menciona, default a USDC — nunca asumas ARS. Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -416,6 +416,11 @@ function Voice({ sendPayment, balance, onDone }) {
         return;
       }
       const usdc = result.currency === "ARS" ? result.amount / FX_ARS_USD : result.amount;
+      if (usdc < 0.01) {
+        setErrMsg(t("voice.amountTooLow", result.amount, result.currency));
+        setPhase("error");
+        return;
+      }
       if (balance !== null && usdc > balance) {
         setErrMsg(t("voice.insufficientBalance", fmt(usdc, 2, locale), fmt(balance, 2, locale)));
         setPhase("error");
@@ -918,7 +923,7 @@ function AppInner() {
 
   const sendPayment = useCallback(
     async (parsed) => {
-      if (!wallet) throw new Error("No hay wallet disponible.");
+      if (!wallet) throw new Error("No wallet available.");
       await wallet.switchChain(ARC.chainId);
       const eip1193 = await wallet.getEthereumProvider();
       const browserProvider = new ethers.BrowserProvider(eip1193, ARC.chainId);
