@@ -48,8 +48,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             walletList: [],
           },
           embeddedWallets: {
-            createOnLogin: "users-without-wallets",
-            requireUserPasswordOnCreate: false,
+            ethereum: {
+              createOnLogin: "users-without-wallets",
+            },
             showWalletUIs: false,
           },
           defaultChain: arcTestnet,
