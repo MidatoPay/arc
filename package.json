@@ -17,7 +17,7 @@
     "buffer": "^6.0.3"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.10"
+    "@vitejs/plugin-react": "^6.0.5",
+    "vite": "^8.2.0"
   }
 }
