@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy, useWallets, useCreateWallet } from "@privy-io/react-auth";
 import { ethers } from "ethers";
 import { ARC, RPC_PROXY } from "./chain.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
@@ -895,11 +895,23 @@ function AppInner() {
   const [refreshing, setRefreshing] = useState(false);
   const [txs, setTxs] = useState([]);
   const [receipt, setReceipt] = useState(null);
+  const [walletError, setWalletError] = useState("");
 
   const wallet = useMemo(() => wallets.find((w) => w.walletClientType === "privy") || wallets[0], [wallets]);
   const address = wallet?.address || "";
   const email = user?.email?.address || user?.phone?.number || "";
   const nombre = email ? email.split("@")[0].split(/[.\-_]/)[0].replace(/^./, (c) => c.toUpperCase()) : "👋";
+
+  const { createWallet } = useCreateWallet({
+    onError: (err) => setWalletError(String(err?.message || err)),
+  });
+  const walletCreateAttempted = useRef(false);
+
+  useEffect(() => {
+    if (!ready || !authenticated || wallets.length > 0 || walletCreateAttempted.current) return;
+    walletCreateAttempted.current = true;
+    createWallet().catch((err) => setWalletError(String(err?.message || err)));
+  }, [ready, authenticated, wallets.length, createWallet]);
 
   const refreshBalance = useCallback(async () => {
     if (!address) return;
@@ -1002,6 +1014,11 @@ function AppInner() {
       <Card style={{ textAlign: "center", padding: 40, marginTop: 40 }}>
         <div style={{ fontSize: 17, fontWeight: 700 }}>{t("home.creatingTitle")}</div>
         <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>{t("home.creatingBody")}</div>
+        {walletError && (
+          <div style={{ fontSize: 13, color: C.red, marginTop: 16, lineHeight: 1.5, wordBreak: "break-word" }}>
+            {walletError}
+          </div>
+        )}
       </Card>
     );
   }
