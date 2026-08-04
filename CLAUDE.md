@@ -22,14 +22,20 @@ There is no lint script, no test runner, and no test files in this repo — don'
 
 ## Architecture
 
-This is a client-only Vite + React SPA (no backend, no router) demonstrating voice-driven USDC payments on Arc Testnet (chain ID `5042002`). It's a demo/prototype, not production infra — hardcoded contacts, hardcoded FX rate, API key shipped to the browser.
+This is a client-only Vite + React SPA (no backend, no router) demonstrating voice-driven USDC payments on Arc Testnet (chain ID `5042002`). It's a demo/prototype, not production infra — hardcoded contacts, API key shipped to the browser. FX (ARS per USDC) is read from the Chainlink USD/ARS feed on Ethereum Mainnet via `latestAnswer()` (`src/priceFeed.js`), with an off-chain fallback if the Ethereum RPC fails.
 
 **Almost the entire app lives in `src/App.jsx`** (~1000 lines, one file). It contains every screen (`Login`, `Home`, `Voice`, `Success`, `Movimientos`, `Stack`, `Mas`) as components defined top-to-bottom in the same file, plus all business logic. Navigation is plain `useState` tab-switching in the root `App` component — there is no router. When making changes, find the relevant section by component name rather than expecting separate files per screen.
 
 Supporting files:
 - `src/chain.js` — Arc Testnet chain definition (viem `defineChain`) and the `RPC_PROXY` URL (routes through the Vite dev proxy at `/rpc` to dodge browser CORS against the real RPC).
+- `src/priceFeed.js` — Chainlink USD/ARS feed reader (`latestAnswer` on Ethereum Mainnet) via the `/eth-rpc` proxy.
+- `src/fx.js` — ARS↔USDC quotes on top of the Chainlink rate.
+- `src/arc.js` — Arc RPC provider, retries, native USDC transfers, memos.
+- `src/treasury.js` — collector/treasury wallet (`VITE_TREASURY_PRIVATE_KEY`) for payouts.
+- `src/fiatRail.js` — simulated ARS payment rail (swap body later for a real PSP).
+- `src/flows.js` — `runChargeFlow`, `runConvertArsToUsdc`, `runConvertUsdcToArs` orchestration.
 - `src/main.jsx` — polyfills (`Buffer`/`global`/`process`) required by Privy, then mounts `<PrivyProvider>` wrapping `<App>`. Login methods are restricted to email/SMS with embedded-wallet auto-creation.
-- `vite.config.js` — proxies `/rpc` → `VITE_ARC_RPC` (or the public Arc RPC).
+- `vite.config.js` — proxies `/rpc` → Arc RPC and `/eth-rpc` → Ethereum RPC (`VITE_ETH_RPC` or publicnode).
 
 ### Auth & wallet
 
@@ -47,14 +53,14 @@ RPC calls (`readProvider.getBalance`, `waitForTransaction`, `sendTransaction`) a
 1. `claudeParse` — calls the Anthropic Messages API directly from the browser (`anthropic-dangerous-direct-browser-access` header) using `VITE_ANTHROPIC_API_KEY`, if present.
 2. `localParse` — regex-based fallback (Spanish keywords for send/transfer/pay, ARS vs USDC detection, alias extraction) used whenever the API key is missing or the call fails.
 
-Recipients resolve against the hardcoded `CONTACTS` array (alias → name/address). `FX_ARS_USD` is a hardcoded off-chain reference rate used only for display conversion, not for any on-chain logic.
+Recipients resolve against the hardcoded `CONTACTS` array (alias → name/address). The ARS↔USDC conversion uses the live Chainlink rate (ARS per USD) for display and amount conversion only — settlement on Arc remains a native USDC transfer.
 
 ## Deployment (Netlify)
 
-Deployed as a static site via `netlify.toml`. The dev-only `/rpc` proxy from `vite.config.js` doesn't exist in a static build, so `netlify/functions/rpc.js` (a Netlify Function) replicates it — it proxies POST requests to `VITE_ARC_RPC` (or the public Arc RPC if unset), and `netlify.toml` redirects `/rpc` → that function. Keep both in sync if the dev proxy logic changes.
+Deployed as a static site via `netlify.toml`. The dev-only proxies from `vite.config.js` don't exist in a static build, so Netlify Functions replicate them: `rpc.js` for Arc (`/rpc`) and `eth-rpc.js` for Ethereum (`/eth-rpc`, Chainlink reads). Keep Vite proxies and functions in sync if the proxy logic changes.
 
 Required setup in the Netlify dashboard (not in this repo):
-- Site environment variables: `VITE_PRIVY_APP_ID` (required), `VITE_ANTHROPIC_API_KEY` (optional), `VITE_ARC_RPC` (optional — also read at runtime by the proxy function).
+- Site environment variables: `VITE_PRIVY_APP_ID` (required), `VITE_ANTHROPIC_API_KEY` (optional), `VITE_ARC_RPC` (optional), `VITE_ETH_RPC` (optional — Ethereum RPC for the Chainlink feed).
 - Add the deployed domain (e.g. `<site>.netlify.app`) under **Domains** in the Privy dashboard, or login will fail.
 
 ### UI conventions

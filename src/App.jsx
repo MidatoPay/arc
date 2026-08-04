@@ -1,7 +1,22 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePrivy, useWallets, useCreateWallet } from "@privy-io/react-auth";
-import { ethers } from "ethers";
-import { ARC, RPC_PROXY } from "./chain.js";
+import { ARC } from "./chain.js";
+import {
+  armarMemo,
+  estimateNativeUsdcTransfer,
+  getBrowserSigner,
+  nuevaFactura,
+  sendNativeUsdc,
+} from "./arc.js";
+import { FALLBACK_FX_ARS_USD, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs } from "./fx.js";
+import {
+  estimateConvertUsdcToArs,
+  runChargeFlow,
+  runConvertArsToUsdc,
+  runConvertUsdcToArs,
+  refreshPairBalances,
+} from "./flows.js";
+import { getTreasuryAddress, isTreasuryConfigured } from "./treasury.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
 
 // ————————————————————————————————————————————————
@@ -12,24 +27,25 @@ import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 
-const readProvider = new ethers.JsonRpcProvider(RPC_PROXY, ARC.chainId, {
-  staticNetwork: true,
-  batchMaxCount: 1,
-});
-readProvider.pollingInterval = 8000;
+const arsStorageKey = (address) => `mp_ars_balance_${(address || "").toLowerCase()}`;
 
-async function withRetry(fn, tries = 4) {
-  let wait = 1200;
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const m = String(e?.message || e);
-      const limited = m.includes("limit reached") || m.includes("-32011") || m.includes("429");
-      if (!limited || i === tries - 1) throw e;
-      await new Promise((r) => setTimeout(r, wait));
-      wait *= 2;
-    }
+function loadArsBalance(address) {
+  if (!address) return 0;
+  try {
+    const raw = localStorage.getItem(arsStorageKey(address));
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function persistArsBalance(address, amount) {
+  if (!address) return;
+  try {
+    localStorage.setItem(arsStorageKey(address), String(Math.max(0, Number(amount) || 0)));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -55,22 +71,10 @@ const CONTACTS = [
   { alias: "martin", name: "Martín — COO", addr: "0x4444444444444444444444444444444444444444", ini: "MC" },
 ];
 
-const FX_ARS_USD = 1448; // tipo de cambio de referencia (off-chain)
-
 // ————— util —————
 const fmt = (n, d = 2, locale = "en-US") => Number(n).toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmt0 = (n, locale = "en-US") => Number(n).toLocaleString(locale, { maximumFractionDigits: 0 });
 const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
-
-function nuevaFactura() {
-  const d = new Date();
-  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  return `${ymd}-${Math.floor(Math.random() * 9000 + 1000)}`;
-}
-
-function armarMemo({ factura, alias, currency, amount }) {
-  return `MIDATO|v1|inv:${factura}|to:${alias}|cur:${currency}|amt:${amount}`;
-}
 
 function localParse(text, lang) {
   const t = text.toLowerCase();
@@ -278,11 +282,15 @@ function Login({ onLogin, ready }) {
 }
 
 // ————— Inicio —————
-function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice }) {
+function Home({
+  nombre, address, balance, arsBalance, treasuryBalance, treasuryAddress,
+  refreshing, onRefresh, txs, goCharge, goConvert, goVoice, fxRate,
+}) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
   const [copied, setCopied] = useState(false);
-  const ars = balance === null ? null : balance * FX_ARS_USD;
+  const usdcInArs = balance === null ? null : balance * fxRate;
+  const availableArs = (arsBalance || 0) + (usdcInArs || 0);
 
   const copy = async () => {
     try {
@@ -309,16 +317,22 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
           <div style={{ fontSize: 38, fontWeight: 700, letterSpacing: -1, color: C.ink }}>
-            {ars === null ? "—" : oculto ? "$ ••••••" : `$ ${fmt0(ars, locale)}`}
+            {oculto ? "$ ••••••" : `$ ${fmt0(availableArs, locale)}`}
           </div>
           <button onClick={() => setOculto(!oculto)} style={{ background: "none", border: "none", cursor: "pointer", color: C.mut, fontSize: 17 }}>
             {oculto ? "🙈" : "👁"}
           </button>
         </div>
+        <div style={{ fontSize: 12.5, color: C.mut, marginTop: 6 }}>
+          {t("home.availableBreakdown", fmt0(arsBalance || 0, locale), balance === null ? "—" : fmt(balance, 2, locale))}
+        </div>
+        <div style={{ fontSize: 12, color: C.mut, marginTop: 4 }}>
+          {t("home.fxLine", fmt0(fxRate, locale))}
+        </div>
 
         <div style={{ display: "flex", gap: 6, marginTop: 20 }}>
-          <CircleAction icon="↓" label={t("home.actionReceive")} onClick={goVoice} />
-          <CircleAction icon="⇄" label={t("home.actionConvert")} onClick={goVoice} />
+          <CircleAction icon="↓" label={t("home.actionReceive")} onClick={goCharge} />
+          <CircleAction icon="⇄" label={t("home.actionConvert")} onClick={goConvert} />
           <CircleAction icon="🎙" label={t("home.actionPay")} onClick={goVoice} tone={C.orange} />
         </div>
       </Card>
@@ -334,10 +348,30 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
           <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#2775CA", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 15 }}>$</div>
           <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>USDC</div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{ars === null ? "—" : `$${fmt0(ars, locale)}`}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{usdcInArs === null ? "—" : `$${fmt0(usdcInArs, locale)}`}</div>
             <div style={{ fontSize: 14, color: C.mut }}>{balance === null ? "" : `${fmt(balance, 2, locale)} USDC`}</div>
           </div>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+          <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 13 }}>ARS</div>
+          <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>ARS</div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{oculto ? "$ ••••••" : `$ ${fmt0(arsBalance || 0, locale)}`}</div>
+            <div style={{ fontSize: 12.5, color: C.mut }}>{t("home.arsSimulated")}</div>
+          </div>
+        </div>
+        {treasuryAddress && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+            <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: C.orange, fontWeight: 700, fontSize: 14 }}>T</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("home.treasuryTitle")}</div>
+              <div style={{ fontSize: 11.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(treasuryAddress)}</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: C.ink }}>
+              {treasuryBalance === null ? "—" : `${fmt(treasuryBalance, 2, locale)} USDC`}
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
           <span style={{ color: C.violet, fontSize: 14 }}>ⓘ</span>
           <span style={{ fontSize: 13.5, color: C.violet, flex: 1 }}>{t("home.infoDigitalAssets")}</span>
@@ -381,8 +415,368 @@ function Home({ nombre, address, balance, refreshing, onRefresh, txs, goVoice })
   );
 }
 
+function AmountField({ label, value, onChange, placeholder, suffix }) {
+  return (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.bg, borderRadius: 14, padding: "4px 14px" }}>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
+          inputMode="decimal"
+          placeholder={placeholder}
+          style={{ flex: 1, border: "none", background: "transparent", fontSize: 22, fontWeight: 700, color: C.ink, padding: "14px 0", fontFamily: "inherit", outline: "none", minWidth: 0 }}
+        />
+        <span style={{ fontSize: 14, fontWeight: 700, color: C.mut }}>{suffix}</span>
+      </div>
+    </label>
+  );
+}
+
+/** Panel de estimación de gas (previo a firmar con la wallet del usuario). */
+function GasEstimatePanel({ estimate, loading, error, onRetry, fxRate, locale, t }) {
+  const rows = [];
+  if (estimate) {
+    rows.push([t("gas.gasLimit"), estimate.gasLimit.toString()]);
+    if (estimate.eip1559) {
+      rows.push([t("gas.maxFee"), `${fmt(estimate.maxFeePerGasGwei, 4, locale)} gwei`]);
+      if (estimate.maxPriorityFeePerGasGwei != null) {
+        rows.push([t("gas.maxPriority"), `${fmt(estimate.maxPriorityFeePerGasGwei, 4, locale)} gwei`]);
+      }
+    } else if (estimate.gasPriceGwei != null) {
+      rows.push([t("gas.gasPrice"), `${fmt(estimate.gasPriceGwei, 4, locale)} gwei`]);
+    }
+    rows.push([t("gas.totalNative"), `${fmt(estimate.feeNative, 6, locale)} ${estimate.nativeSymbol}`]);
+    rows.push([t("gas.totalUsd"), `$${fmt(estimate.feeUsd, 6, locale)} USD`]);
+    if (fxRate) {
+      rows.push([t("gas.totalArs"), `$ ${fmt0(estimate.feeNative * fxRate, locale)} ARS`]);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginBottom: 10 }}>{t("gas.title")}</div>
+      {loading && <div style={{ fontSize: 13.5, color: C.mut }}>{t("gas.estimating")}</div>}
+      {!loading && error && (
+        <div style={{ fontSize: 13.5, color: C.red, lineHeight: 1.45 }}>
+          {error === "WALLET_DISCONNECTED" ? t("gas.walletMissing") : error}
+          {onRetry && error !== "WALLET_DISCONNECTED" && (
+            <button
+              onClick={onRetry}
+              style={{ display: "block", marginTop: 8, background: "none", border: "none", color: C.violet, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
+            >
+              {t("gas.retry")}
+            </button>
+          )}
+        </div>
+      )}
+      {!loading && !error && estimate && (
+        <div style={{ display: "grid", gap: 8, fontSize: 13.5 }}>
+          {rows.map(([k, v]) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ color: C.mut }}>{k}</span>
+              <span style={{ color: C.ink, fontWeight: 600, textAlign: "right", wordBreak: "break-all" }}>{v}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: C.mut, marginTop: 2 }}>{t("gas.disclaimer")}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Hook: estima gas cuando cambian from/to/usdc/memo (debounce corto). */
+function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
+  const [estimate, setEstimate] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [tick, setTick] = useState(0);
+  const retry = useCallback(() => setTick((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!enabled) {
+      setEstimate(null);
+      setError("");
+      setLoading(false);
+      return undefined;
+    }
+    if (!from) {
+      setEstimate(null);
+      setError("WALLET_DISCONNECTED");
+      setLoading(false);
+      return undefined;
+    }
+    if (!to || !Number.isFinite(Number(usdc)) || Number(usdc) <= 0) {
+      setEstimate(null);
+      setError("");
+      setLoading(false);
+      return undefined;
+    }
+
+    let alive = true;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const est = estimateFn
+          ? await estimateFn()
+          : await estimateNativeUsdcTransfer({ from, to, usdc: Number(usdc), memo });
+        if (alive) setEstimate(est);
+      } catch (e) {
+        if (alive) {
+          setEstimate(null);
+          setError(String(e?.message || e));
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [enabled, from, to, usdc, memo, estimateFn, tick]);
+
+  return { estimate, loading, error, retry };
+}
+
+// ————— Cobrar (ARS → USDC vía recaudadora) —————
+function Charge({ address, fxRate, treasuryBalance, onCharge, onDone }) {
+  const { t, locale } = useLanguage();
+  const [arsInput, setArsInput] = useState("");
+  const [phase, setPhase] = useState("form"); // form | working | error
+  const [errMsg, setErrMsg] = useState("");
+  const ars = Number(arsInput);
+  const quote = Number.isFinite(ars) && ars > 0 ? quoteArsToUsdc(ars, fxRate) : null;
+
+  const submit = async () => {
+    setErrMsg("");
+    setPhase("working");
+    try {
+      if (!isTreasuryConfigured()) throw new Error(t("charge.treasuryMissing"));
+      const result = await onCharge(ars);
+      onDone({
+        kind: "charge",
+        ...result,
+        parsed: { usdc: result.usdc, amount: result.ars, currency: "ARS", fxRate: result.fxRate, contact: { name: t("charge.merchantSelf"), alias: "self" } },
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      });
+    } catch (e) {
+      setErrMsg(String(e?.message || e));
+      setPhase("error");
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
+        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("charge.subtitle")}</p>
+      </div>
+
+      <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AmountField label={t("charge.arsLabel")} value={arsInput} onChange={setArsInput} placeholder="15000" suffix="ARS" />
+        <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("voice.exchangeRate")}</span>
+            <span style={{ fontWeight: 600, color: C.ink }}>1 USDC = ${fmt0(fxRate, locale)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("charge.youReceive")}</span>
+            <span style={{ fontWeight: 700, color: C.ink }}>{quote ? `${fmt(quote.usdc, 2, locale)} USDC` : "—"}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("home.treasuryTitle")}</span>
+            <span style={{ fontWeight: 600, color: C.ink }}>{treasuryBalance === null ? "—" : `${fmt(treasuryBalance, 2, locale)} USDC`}</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>{t("charge.fiatHint")}</div>
+      </Card>
+
+      {phase === "working" && (
+        <Card style={{ textAlign: "center", padding: 28 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{t("charge.working")}</div>
+          <div style={{ fontSize: 13.5, color: C.mut, marginTop: 8 }}>{t("charge.workingHint")}</div>
+        </Card>
+      )}
+
+      {(phase === "error" || errMsg) && phase !== "working" && (
+        <Card style={{ background: "#FDECEA", color: C.red, fontSize: 14, lineHeight: 1.5 }}>{errMsg}</Card>
+      )}
+
+      <button
+        onClick={submit}
+        disabled={phase === "working" || !quote}
+        style={{ ...btnOrange, opacity: phase === "working" || !quote ? 0.5 : 1 }}
+      >
+        {phase === "working" ? t("charge.working") : t("charge.cta")}
+      </button>
+      <div style={{ fontSize: 11.5, color: C.mut, textAlign: "center" }}>{short(address)}</div>
+    </div>
+  );
+}
+
+// ————— Convertir (ARS ↔ USDC) —————
+function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConvertArsUsdc, onConvertUsdcArs, onDone }) {
+  const { t, locale } = useLanguage();
+  const [direction, setDirection] = useState("ars_usdc"); // ars_usdc | usdc_ars
+  const [amount, setAmount] = useState("");
+  const [phase, setPhase] = useState("form");
+  const [errMsg, setErrMsg] = useState("");
+  const n = Number(amount);
+  const quote =
+    Number.isFinite(n) && n > 0
+      ? direction === "ars_usdc"
+        ? quoteArsToUsdc(n, fxRate)
+        : quoteUsdcToArs(n, fxRate)
+      : null;
+
+  const needsUserSignature = direction === "usdc_ars";
+  const estimateConvertFn = useCallback(() => {
+    if (!needsUserSignature || !Number.isFinite(n) || n <= 0) {
+      return Promise.reject(new Error("Sin monto"));
+    }
+    return estimateConvertUsdcToArs({ from: address, usdcAmount: n, fxRate });
+  }, [needsUserSignature, n, address, fxRate]);
+
+  const gas = useGasEstimate({
+    enabled: needsUserSignature && Number.isFinite(n) && n > 0 && phase === "form",
+    from: address,
+    to: "treasury",
+    usdc: n,
+    memo: `convert_usdc_ars:${n}:${fxRate}`,
+    estimateFn: estimateConvertFn,
+  });
+
+  const submit = async () => {
+    setErrMsg("");
+    setPhase("working");
+    try {
+      if (!isTreasuryConfigured()) throw new Error(t("charge.treasuryMissing"));
+      const result =
+        direction === "ars_usdc" ? await onConvertArsUsdc(n) : await onConvertUsdcArs(n);
+      onDone({
+        kind: result.kind,
+        ...result,
+        parsed: {
+          usdc: result.usdc,
+          amount: direction === "ars_usdc" ? result.ars : result.usdc,
+          currency: direction === "ars_usdc" ? "ARS" : "USDC",
+          fxRate: result.fxRate,
+          contact: { name: t("convert.treasuryLabel"), alias: "treasury" },
+        },
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      });
+    } catch (e) {
+      setErrMsg(String(e?.message || e));
+      setPhase("error");
+    }
+  };
+
+  const dirBtn = (id, label) => (
+    <button
+      key={id}
+      onClick={() => { setDirection(id); setAmount(""); setErrMsg(""); setPhase("form"); }}
+      style={{
+        flex: 1, border: "none", cursor: "pointer", fontFamily: "inherit",
+        background: direction === id ? C.ink : "transparent",
+        color: direction === id ? "#fff" : C.mut,
+        borderRadius: 12, padding: "12px 10px", fontSize: 13.5, fontWeight: 700,
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("convert.title")}</h2>
+        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("convert.subtitle")}</p>
+      </div>
+
+      <div style={{ display: "flex", gap: 4, background: C.bg, borderRadius: 14, padding: 4 }}>
+        {dirBtn("ars_usdc", t("convert.arsToUsdc"))}
+        {dirBtn("usdc_ars", t("convert.usdcToArs"))}
+      </div>
+
+      <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AmountField
+          label={direction === "ars_usdc" ? t("convert.amountArs") : t("convert.amountUsdc")}
+          value={amount}
+          onChange={setAmount}
+          placeholder={direction === "ars_usdc" ? "10000" : "5"}
+          suffix={direction === "ars_usdc" ? "ARS" : "USDC"}
+        />
+        <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("voice.exchangeRate")}</span>
+            <span style={{ fontWeight: 600, color: C.ink }}>1 USDC = ${fmt0(fxRate, locale)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("convert.youGet")}</span>
+            <span style={{ fontWeight: 700, color: C.ink }}>
+              {quote
+                ? direction === "ars_usdc"
+                  ? `${fmt(quote.usdc, 2, locale)} USDC`
+                  : `$ ${fmt0(quote.ars, locale)} ARS`
+                : "—"}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("convert.yourArs")}</span>
+            <span style={{ fontWeight: 600 }}>$ {fmt0(arsBalance || 0, locale)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("convert.yourUsdc")}</span>
+            <span style={{ fontWeight: 600 }}>{balance === null ? "—" : `${fmt(balance, 2, locale)} USDC`}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{t("home.treasuryTitle")}</span>
+            <span style={{ fontWeight: 600 }}>{treasuryBalance === null ? "—" : `${fmt(treasuryBalance, 2, locale)} USDC`}</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>
+          {direction === "ars_usdc" ? t("convert.hintArsUsdc") : t("convert.hintUsdcArs")}
+        </div>
+        {needsUserSignature && (
+          <GasEstimatePanel
+            estimate={gas.estimate}
+            loading={gas.loading}
+            error={gas.error}
+            onRetry={gas.retry}
+            fxRate={fxRate}
+            locale={locale}
+            t={t}
+          />
+        )}
+      </Card>
+
+      {phase === "working" && (
+        <Card style={{ textAlign: "center", padding: 28 }}>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{t("convert.working")}</div>
+          <div style={{ fontSize: 13.5, color: C.mut, marginTop: 8 }}>{t("convert.workingHint")}</div>
+        </Card>
+      )}
+
+      {(phase === "error" || errMsg) && phase !== "working" && (
+        <Card style={{ background: "#FDECEA", color: C.red, fontSize: 14, lineHeight: 1.5 }}>{errMsg}</Card>
+      )}
+
+      <button
+        onClick={submit}
+        disabled={phase === "working" || !quote || (needsUserSignature && !address)}
+        style={{ ...btnOrange, opacity: phase === "working" || !quote || (needsUserSignature && !address) ? 0.5 : 1 }}
+      >
+        {phase === "working" ? t("convert.working") : needsUserSignature ? t("convert.ctaSign") : t("convert.cta")}
+      </button>
+    </div>
+  );
+}
+
 // ————— Voz —————
-function Voice({ sendPayment, balance, onDone }) {
+function Voice({ sendPayment, balance, onDone, fxRate, address }) {
   const { t, lang, locale } = useLanguage();
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
@@ -415,7 +809,7 @@ function Voice({ sendPayment, balance, onDone }) {
         setPhase("error");
         return;
       }
-      const usdc = result.currency === "ARS" ? result.amount / FX_ARS_USD : result.amount;
+      const usdc = result.currency === "ARS" ? result.amount / fxRate : result.amount;
       if (usdc < 0.01) {
         setErrMsg(t("voice.amountTooLow", result.amount, result.currency));
         setPhase("error");
@@ -426,11 +820,30 @@ function Voice({ sendPayment, balance, onDone }) {
         setPhase("error");
         return;
       }
-      setParsed({ ...result, contact, usdc, factura: nuevaFactura() });
+      setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
       setPhase("confirm");
     },
-    [balance, lang, locale, t]
+    [balance, fxRate, lang, locale, t]
   );
+
+  const voiceMemo = useMemo(() => {
+    if (!parsed) return "";
+    return armarMemo({
+      inv: parsed.factura,
+      to: parsed.contact.alias,
+      cur: parsed.currency,
+      amt: parsed.amount,
+      kind: "voice",
+    });
+  }, [parsed]);
+
+  const gas = useGasEstimate({
+    enabled: phase === "confirm" && Boolean(parsed),
+    from: address,
+    to: parsed?.contact?.addr,
+    usdc: parsed?.usdc,
+    memo: voiceMemo,
+  });
 
   const listen = () => {
     setErrMsg("");
@@ -589,8 +1002,8 @@ function Voice({ sendPayment, balance, onDone }) {
             <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 16, display: "grid", gap: 10 }}>
               {[
                 [t("voice.amount"), `${fmt(parsed.usdc, 2, locale)} USDC`],
-                parsed.currency === "ARS" ? [t("voice.equals"), `$${fmt0(parsed.amount, locale)} ARS`] : [t("voice.equals"), `$${fmt0(parsed.usdc * FX_ARS_USD, locale)} ARS`],
-                [t("voice.exchangeRate"), `1 USDC = $${fmt0(FX_ARS_USD, locale)}`],
+                parsed.currency === "ARS" ? [t("voice.equals"), `$${fmt0(parsed.amount, locale)} ARS`] : [t("voice.equals"), `$${fmt0(parsed.usdc * parsed.fxRate, locale)} ARS`],
+                [t("voice.exchangeRate"), `1 USDC = $${fmt0(parsed.fxRate, locale)}`],
                 [t("voice.invoice"), parsed.factura],
                 [t("voice.network"), "Arc Testnet"],
               ].map(([k, v]) => (
@@ -600,12 +1013,27 @@ function Voice({ sendPayment, balance, onDone }) {
                 </div>
               ))}
             </div>
+            <GasEstimatePanel
+              estimate={gas.estimate}
+              loading={gas.loading}
+              error={gas.error}
+              onRetry={gas.retry}
+              fxRate={parsed.fxRate || fxRate}
+              locale={locale}
+              t={t}
+            />
             <div style={{ background: C.bg, borderRadius: 12, padding: "12px 14px", marginTop: 16, fontSize: 12.5, color: C.mut, lineHeight: 1.5 }}>
               {t("voice.memoNote")}
             </div>
           </Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button onClick={execute} style={btnOrange}>{t("voice.confirmSend")}</button>
+            <button
+              onClick={execute}
+              disabled={!address || gas.loading}
+              style={{ ...btnOrange, opacity: !address || gas.loading ? 0.5 : 1 }}
+            >
+              {t("voice.confirmSend")}
+            </button>
             <button onClick={reset} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("voice.cancel")}</button>
           </div>
         </>
@@ -635,22 +1063,43 @@ function Success({ receipt, onClose }) {
   const { t, locale } = useLanguage();
   const [detalle, setDetalle] = useState(false);
   const [splash, setSplash] = useState(true);
+  const kind = receipt.kind || "voice";
 
   useEffect(() => {
     const timer = setTimeout(() => setSplash(false), 1800);
     return () => clearTimeout(timer);
   }, []);
 
+  const splashTitle =
+    kind === "charge" ? t("success.splashCharge")
+      : kind === "convert_ars_usdc" || kind === "convert_usdc_ars" ? t("success.splashConvert")
+        : t("success.splashTitle");
+
+  const summary = () => {
+    if (kind === "charge") return t("success.chargeSummary", fmt0(receipt.ars, locale), fmt(receipt.usdc, 2, locale));
+    if (kind === "convert_ars_usdc") return t("success.convertArsUsdcSummary", fmt0(receipt.ars, locale), fmt(receipt.usdc, 2, locale));
+    if (kind === "convert_usdc_ars") return t("success.convertUsdcArsSummary", fmt(receipt.usdc, 2, locale), fmt0(receipt.ars, locale));
+    const p = receipt.parsed;
+    return t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name);
+  };
+
+  const nextTab = kind === "charge" ? "charge" : kind?.startsWith("convert") ? "convert" : "voice";
+  const nextLabel = kind === "charge" ? t("success.anotherCharge") : kind?.startsWith("convert") ? t("success.anotherConvert") : t("success.anotherPayment");
+
   if (splash) {
     return (
       <div className="mp-overlay" style={{ background: C.green, flexDirection: "column", gap: 24 }}>
-        <div style={{ fontSize: 30, fontWeight: 700, color: "#fff", textAlign: "center", padding: "0 24px" }}>{t("success.splashTitle")}</div>
+        <div style={{ fontSize: 30, fontWeight: 700, color: "#fff", textAlign: "center", padding: "0 24px" }}>{splashTitle}</div>
         <div style={{ width: 74, height: 74, borderRadius: "50%", background: "#fff", display: "grid", placeItems: "center", color: C.green, fontSize: 38 }}>✓</div>
       </div>
     );
   }
 
-  const p = receipt.parsed;
+  const p = receipt.parsed || {};
+  const fx = receipt.fxRate || p.fxRate || FALLBACK_FX_ARS_USD;
+  const usdc = receipt.usdc ?? p.usdc;
+  const ars = receipt.ars ?? (usdc * fx);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
@@ -659,9 +1108,12 @@ function Success({ receipt, onClose }) {
       </div>
 
       <Card>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.35 }}>
-          {t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name)}
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.35 }}>{summary()}</div>
+        {kind === "convert_usdc_ars" && (
+          <div style={{ marginTop: 12, padding: "12px 14px", background: C.violetSoft, borderRadius: 12, fontSize: 14, color: C.violet, lineHeight: 1.45 }}>
+            {t("success.arsCredited", fmt0(ars, locale))}
+          </div>
+        )}
         <button
           onClick={() => setDetalle(!detalle)}
           style={{ background: C.violetSoft, color: C.violet, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 12, fontFamily: "inherit" }}
@@ -674,9 +1126,9 @@ function Success({ receipt, onClose }) {
             <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{t("success.operation")}</div>
             <div style={{ display: "grid", gap: 10, fontSize: 14.5 }}>
               {[
-                [t("success.amountSent"), `${fmt(p.usdc, 2, locale)} USDC`],
-                [t("success.equals"), `$${fmt0(p.usdc * FX_ARS_USD, locale)} ARS`],
-                [t("success.exchangeRate"), `1 USDC = $${fmt0(FX_ARS_USD, locale)}`],
+                [t("success.amountSent"), `${fmt(usdc, 2, locale)} USDC`],
+                [t("success.equals"), `$${fmt0(ars, locale)} ARS`],
+                [t("success.exchangeRate"), `1 USDC = $${fmt0(fx, locale)}`],
                 [t("success.networkFee"), receipt.fee ? `${Number(receipt.fee).toFixed(6)} USDC` : "—"],
                 receipt.block ? [t("success.block"), String(receipt.block)] : null,
                 [t("success.time"), receipt.ts],
@@ -702,7 +1154,7 @@ function Success({ receipt, onClose }) {
       </Card>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <button onClick={() => onClose("voice")} style={btnOrange}>{t("success.anotherPayment")}</button>
+        <button onClick={() => onClose(nextTab)} style={btnOrange}>{nextLabel}</button>
         <button onClick={() => onClose("home")} style={btnOutline}>{t("success.backHome")}</button>
       </div>
     </div>
@@ -710,7 +1162,7 @@ function Success({ receipt, onClose }) {
 }
 
 // ————— Movimientos —————
-function Movimientos({ txs, address }) {
+function Movimientos({ txs, address, fxRate }) {
   const { t, locale } = useLanguage();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -724,16 +1176,23 @@ function Movimientos({ txs, address }) {
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
       ) : (
-        txs.map((tx) => (
+        txs.map((tx) => {
+          const inbound = tx.direction === "in";
+          const label =
+            tx.kind === "charge" ? t("movs.charge")
+              : tx.kind === "convert_ars_usdc" ? t("movs.convertArsUsdc")
+                : tx.kind === "convert_usdc_ars" ? t("movs.convertUsdcArs")
+                  : t("movs.voicePayment");
+          return (
           <Card key={tx.hash} style={{ padding: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-              <div style={{ width: 42, height: 42, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontSize: 17 }}>↑</div>
+              <div style={{ width: 42, height: 42, borderRadius: "50%", background: inbound ? C.orangeSoft : C.violetSoft, display: "grid", placeItems: "center", color: inbound ? C.orange : C.violet, fontSize: 17 }}>{inbound ? "↓" : "↑"}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{tx.who}</div>
-                <div style={{ fontSize: 13, color: C.mut }}>{t("movs.voicePayment")}</div>
+                <div style={{ fontSize: 13, color: C.mut }}>{label}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>−{fmt(tx.amt, 2, locale)}</div>
+                <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{inbound ? "+" : "−"}{fmt(tx.amt, 2, locale)}</div>
                 <div style={{ fontSize: 12.5, color: C.mut }}>USDC</div>
               </div>
             </div>
@@ -744,14 +1203,15 @@ function Movimientos({ txs, address }) {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: C.mut }}>{t("movs.equals")}</span>
-                <span style={{ color: C.ink, fontWeight: 600 }}>${fmt0(tx.amt * FX_ARS_USD, locale)} ARS</span>
+                <span style={{ color: C.ink, fontWeight: 600 }}>${fmt0(tx.amt * (tx.fxRate || fxRate), locale)} ARS</span>
               </div>
             </div>
             <a href={`${ARC.explorer}/tx/${tx.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: C.violet, fontWeight: 600, textDecoration: "none" }}>
               {t("movs.viewOnArcScan", short(tx.hash))}
             </a>
           </Card>
-        ))
+          );
+        })
       )}
 
       <a href={`${ARC.explorer}/address/${address}`} target="_blank" rel="noreferrer" style={{ ...btnOutline, textDecoration: "none", textAlign: "center", display: "block", border: `1.5px solid ${C.line}`, color: C.ink }}>
@@ -892,13 +1352,17 @@ function AppInner() {
   const { wallets } = useWallets();
   const [tab, setTab] = useState("home");
   const [balance, setBalance] = useState(null);
+  const [arsBalance, setArsBalance] = useState(0);
+  const [treasuryBalance, setTreasuryBalance] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [txs, setTxs] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [walletError, setWalletError] = useState("");
+  const [fxRate, setFxRate] = useState(FALLBACK_FX_ARS_USD);
 
   const wallet = useMemo(() => wallets.find((w) => w.walletClientType === "privy") || wallets[0], [wallets]);
   const address = wallet?.address || "";
+  const treasuryAddress = useMemo(() => getTreasuryAddress(), []);
   const email = user?.email?.address || user?.phone?.number || "";
   const nombre = email ? email.split("@")[0].split(/[.\-_]/)[0].replace(/^./, (c) => c.toUpperCase()) : "👋";
 
@@ -913,12 +1377,32 @@ function AppInner() {
     createWallet().catch((err) => setWalletError(String(err?.message || err)));
   }, [ready, authenticated, wallets.length, createWallet]);
 
-  const refreshBalance = useCallback(async () => {
+  useEffect(() => {
+    setArsBalance(loadArsBalance(address));
+  }, [address]);
+
+  // Tipo de cambio ARS/USD desde Chainlink (Ethereum Mainnet) vía latestAnswer().
+  useEffect(() => {
+    let alive = true;
+    const loadFx = async () => {
+      const rate = await getArsPerUsdc();
+      if (alive) setFxRate(rate);
+    };
+    loadFx();
+    const id = setInterval(loadFx, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  const refreshBalances = useCallback(async () => {
     if (!address) return;
     setRefreshing(true);
     try {
-      const b = await withRetry(() => readProvider.getBalance(address));
-      setBalance(Number(ethers.formatEther(b)));
+      const { userUsdc, treasuryUsdc } = await refreshPairBalances(address);
+      setBalance(userUsdc);
+      setTreasuryBalance(treasuryUsdc);
     } catch {
       /* el RPC puede limitar consultas */
     } finally {
@@ -928,45 +1412,129 @@ function AppInner() {
 
   useEffect(() => {
     if (!address) return;
-    refreshBalance();
-    const id = setInterval(refreshBalance, 45000);
+    refreshBalances();
+    const id = setInterval(refreshBalances, 45000);
     return () => clearInterval(id);
-  }, [address, refreshBalance]);
+  }, [address, refreshBalances]);
+
+  const applyArsDelta = useCallback(
+    (delta) => {
+      setArsBalance((prev) => {
+        const next = Math.max(0, (prev || 0) + delta);
+        persistArsBalance(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
+
+  const pushTx = useCallback((entry) => {
+    setTxs((t) => [entry, ...t]);
+  }, []);
 
   const sendPayment = useCallback(
     async (parsed) => {
-      if (!wallet) throw new Error("No wallet available.");
-      await wallet.switchChain(ARC.chainId);
-      const eip1193 = await wallet.getEthereumProvider();
-      const browserProvider = new ethers.BrowserProvider(eip1193, ARC.chainId);
-      const signer = await browserProvider.getSigner();
-      const memo = armarMemo({ factura: parsed.factura, alias: parsed.contact.alias, currency: parsed.currency, amount: parsed.amount });
-      const tx = await withRetry(() =>
-        signer.sendTransaction({
-          to: parsed.contact.addr,
-          value: ethers.parseEther(parsed.usdc.toFixed(6)),
-          data: ethers.hexlify(ethers.toUtf8Bytes(memo)),
-        })
-      );
-      let block = null;
-      let fee = null;
-      try {
-        const rec = await withRetry(() => readProvider.waitForTransaction(tx.hash, 1, 30000));
-        if (rec) {
-          block = rec.blockNumber;
-          if (rec.gasUsed && rec.gasPrice) fee = ethers.formatEther(rec.gasUsed * rec.gasPrice);
-        }
-      } catch {
-        /* la tx ya se envió */
-      }
-      setTxs((t) => [{ hash: tx.hash, who: parsed.contact.name, amt: parsed.usdc, factura: parsed.factura }, ...t]);
-      refreshBalance();
+      const signer = await getBrowserSigner(wallet);
+      const memo = armarMemo({
+        inv: parsed.factura,
+        to: parsed.contact.alias,
+        cur: parsed.currency,
+        amt: parsed.amount,
+        kind: "voice",
+      });
+      const tx = await sendNativeUsdc(signer, {
+        to: parsed.contact.addr,
+        usdc: parsed.usdc,
+        memo,
+      });
+      pushTx({
+        hash: tx.hash,
+        who: parsed.contact.name,
+        amt: parsed.usdc,
+        factura: parsed.factura,
+        fxRate: parsed.fxRate,
+        kind: "voice",
+        direction: "out",
+      });
+      await refreshBalances();
       return {
-        hash: tx.hash, block, fee, memo, factura: parsed.factura,
+        kind: "voice",
+        hash: tx.hash,
+        block: tx.block,
+        fee: tx.fee,
+        memo: tx.memo,
+        factura: parsed.factura,
+        usdc: parsed.usdc,
+        ars: parsed.usdc * (parsed.fxRate || fxRate),
+        fxRate: parsed.fxRate || fxRate,
         ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       };
     },
-    [wallet, refreshBalance, locale]
+    [wallet, refreshBalances, pushTx, locale, fxRate]
+  );
+
+  const handleCharge = useCallback(
+    async (arsAmount) => {
+      const result = await runChargeFlow({ userAddress: address, arsAmount });
+      pushTx({
+        hash: result.hash,
+        who: t("charge.merchantSelf"),
+        amt: result.usdc,
+        factura: result.factura,
+        fxRate: result.fxRate,
+        kind: "charge",
+        direction: "in",
+      });
+      await refreshBalances();
+      return result;
+    },
+    [address, pushTx, refreshBalances, t]
+  );
+
+  const handleConvertArsUsdc = useCallback(
+    async (arsAmount) => {
+      const result = await runConvertArsToUsdc({
+        userAddress: address,
+        arsAmount,
+        arsBalance,
+      });
+      applyArsDelta(result.arsDelta);
+      pushTx({
+        hash: result.hash,
+        who: t("convert.treasuryLabel"),
+        amt: result.usdc,
+        factura: result.factura,
+        fxRate: result.fxRate,
+        kind: "convert_ars_usdc",
+        direction: "in",
+      });
+      await refreshBalances();
+      return result;
+    },
+    [address, arsBalance, applyArsDelta, pushTx, refreshBalances, t]
+  );
+
+  const handleConvertUsdcArs = useCallback(
+    async (usdcAmount) => {
+      const result = await runConvertUsdcToArs({
+        wallet,
+        usdcAmount,
+        userUsdcBalance: balance,
+      });
+      applyArsDelta(result.arsDelta);
+      pushTx({
+        hash: result.hash,
+        who: t("convert.treasuryLabel"),
+        amt: result.usdc,
+        factura: result.factura,
+        fxRate: result.fxRate,
+        kind: "convert_usdc_ars",
+        direction: "out",
+      });
+      await refreshBalances();
+      return result;
+    },
+    [wallet, balance, applyArsDelta, pushTx, refreshBalances, t]
   );
 
   const shell = (children) => (
@@ -1030,17 +1598,52 @@ function AppInner() {
   return shell(
     <>
       {tab === "home" && (
-        <Home nombre={nombre} address={address} balance={balance} refreshing={refreshing} onRefresh={refreshBalance} txs={txs} goVoice={() => setTab("voice")} />
+        <Home
+          nombre={nombre}
+          address={address}
+          balance={balance}
+          arsBalance={arsBalance}
+          treasuryBalance={treasuryBalance}
+          treasuryAddress={treasuryAddress}
+          refreshing={refreshing}
+          onRefresh={refreshBalances}
+          txs={txs}
+          goCharge={() => setTab("charge")}
+          goConvert={() => setTab("convert")}
+          goVoice={() => setTab("voice")}
+          fxRate={fxRate}
+        />
       )}
-      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} />}
-      {tab === "movs" && <Movimientos txs={txs} address={address} />}
+      {tab === "charge" && (
+        <Charge
+          address={address}
+          fxRate={fxRate}
+          treasuryBalance={treasuryBalance}
+          onCharge={handleCharge}
+          onDone={setReceipt}
+        />
+      )}
+      {tab === "convert" && (
+        <Convert
+          address={address}
+          balance={balance}
+          arsBalance={arsBalance}
+          fxRate={fxRate}
+          treasuryBalance={treasuryBalance}
+          onConvertArsUsdc={handleConvertArsUsdc}
+          onConvertUsdcArs={handleConvertUsdcArs}
+          onDone={setReceipt}
+        />
+      )}
+      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} />}
+      {tab === "movs" && <Movimientos txs={txs} address={address} fxRate={fxRate} />}
       {tab === "stack" && <Stack />}
       {tab === "mas" && (
         <Mas
           email={email}
           address={address}
           nombre={nombre}
-          onLogout={async () => { await logout(); setTab("home"); setTxs([]); setBalance(null); }}
+          onLogout={async () => { await logout(); setTab("home"); setTxs([]); setBalance(null); setTreasuryBalance(null); }}
           goStack={() => setTab("stack")}
         />
       )}

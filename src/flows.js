@@ -1,0 +1,189 @@
+import {
+  armarMemo,
+  estimateNativeUsdcTransfer,
+  getBrowserSigner,
+  getUsdcBalance,
+  nuevaFactura,
+  sendNativeUsdc,
+} from "./arc.js";
+import { arsToUsdc, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
+import { receiveArsPayment, payoutArsToUser } from "./fiatRail.js";
+import { getTreasuryAddress, getTreasuryBalance, sendTreasuryPayout } from "./treasury.js";
+
+const MIN_USDC = 0.01;
+
+/**
+ * Flujo Cobrar:
+ * 1) Simula pago ARS al comercio (fiatRail)
+ * 2) Cotiza con Chainlink
+ * 3) Tesorería envía USDC al usuario
+ */
+export async function runChargeFlow({ userAddress, arsAmount }) {
+  if (!userAddress) throw new Error("Wallet de usuario no disponible");
+  const ars = Number(arsAmount);
+  if (!Number.isFinite(ars) || ars <= 0) throw new Error("Ingresá un monto en ARS válido");
+
+  const fiat = await receiveArsPayment(ars);
+  const fxRate = await getArsPerUsdc();
+  const usdc = arsToUsdc(ars, fxRate);
+  if (usdc < MIN_USDC) throw new Error("El equivalente es menor a 0.01 USDC");
+
+  const treasuryBal = await getTreasuryBalance();
+  if (treasuryBal !== null && usdc > treasuryBal) {
+    throw new Error(`La recaudadora no tiene USDC suficiente (tiene ${treasuryBal.toFixed(2)}, necesita ${usdc.toFixed(2)})`);
+  }
+
+  const payout = await sendTreasuryPayout({
+    to: userAddress,
+    usdc,
+    ars,
+    fxRate,
+    kind: "charge",
+  });
+
+  return {
+    kind: "charge",
+    fiat,
+    fxRate,
+    ars,
+    usdc,
+    hash: payout.hash,
+    block: payout.block,
+    fee: payout.fee,
+    memo: payout.memo,
+    factura: payout.factura,
+    from: payout.from,
+    to: userAddress,
+  };
+}
+
+/**
+ * Convertir ARS → USDC:
+ * Cotiza con Chainlink y la tesorería envía USDC.
+ * Si hay saldo ARS simulado suficiente, se debita; si no, se trata como ARS externo
+ * (mismo riel on-chain, listo para enchufar un depósito fiat real).
+ */
+export async function runConvertArsToUsdc({ userAddress, arsAmount, arsBalance }) {
+  if (!userAddress) throw new Error("Wallet de usuario no disponible");
+  const ars = Number(arsAmount);
+  if (!Number.isFinite(ars) || ars <= 0) throw new Error("Ingresá un monto en ARS válido");
+
+  const fxRate = await getArsPerUsdc();
+  const usdc = arsToUsdc(ars, fxRate);
+  if (usdc < MIN_USDC) throw new Error("El equivalente es menor a 0.01 USDC");
+
+  const treasuryBal = await getTreasuryBalance();
+  if (treasuryBal !== null && usdc > treasuryBal) {
+    throw new Error(`La recaudadora no tiene USDC suficiente (tiene ${treasuryBal.toFixed(2)}, necesita ${usdc.toFixed(2)})`);
+  }
+
+  const payout = await sendTreasuryPayout({
+    to: userAddress,
+    usdc,
+    ars,
+    fxRate,
+    kind: "convert_ars_usdc",
+  });
+
+  const available = Number(arsBalance || 0);
+  if (available > 0 && ars > available) {
+    throw new Error(`Saldo ARS insuficiente (tenés $ ${available.toFixed(0)})`);
+  }
+  // Si hay ledger ARS, se debita. Si está en cero, se asume ARS externo (demo).
+  const arsDelta = available > 0 ? -ars : 0;
+
+  return {
+    kind: "convert_ars_usdc",
+    fxRate,
+    ars,
+    usdc,
+    arsDelta,
+    hash: payout.hash,
+    block: payout.block,
+    fee: payout.fee,
+    memo: payout.memo,
+    factura: payout.factura,
+    from: payout.from,
+    to: userAddress,
+  };
+}
+
+function buildConvertUsdcArsMemo({ usdc, ars, fxRate, factura }) {
+  return armarMemo({
+    inv: factura,
+    kind: "convert_usdc_ars",
+    cur: "USDC",
+    amt: Number(usdc).toFixed(6),
+    fx: Number(fxRate).toFixed(2),
+    ars: Number(ars).toFixed(2),
+  });
+}
+
+/** Estimación de gas para Convertir USDC→ARS (firma del usuario). */
+export async function estimateConvertUsdcToArs({ from, usdcAmount, fxRate }) {
+  const treasury = getTreasuryAddress();
+  if (!treasury) throw new Error("Treasury no configurada. Definí VITE_TREASURY_PRIVATE_KEY en .env");
+  if (!from) throw new Error("Wallet no conectada");
+
+  const usdc = Number(usdcAmount);
+  if (!Number.isFinite(usdc) || usdc <= 0) throw new Error("Ingresá un monto en USDC válido");
+
+  const rate = fxRate ?? (await getArsPerUsdc());
+  const ars = usdcToArs(usdc, rate);
+  const memo = buildConvertUsdcArsMemo({ usdc, ars, fxRate: rate, factura: "estimate" });
+
+  return estimateNativeUsdcTransfer({ from, to: treasury, usdc, memo });
+}
+
+/**
+ * Convertir USDC → ARS:
+ * Usuario envía USDC a la recaudadora; se acredita ARS simulado (fiatRail).
+ */
+export async function runConvertUsdcToArs({ wallet, usdcAmount, userUsdcBalance }) {
+  const treasury = getTreasuryAddress();
+  if (!treasury) throw new Error("Treasury no configurada. Definí VITE_TREASURY_PRIVATE_KEY en .env");
+
+  const usdc = Number(usdcAmount);
+  if (!Number.isFinite(usdc) || usdc <= 0) throw new Error("Ingresá un monto en USDC válido");
+  if (usdc < MIN_USDC) throw new Error("El monto mínimo es 0.01 USDC");
+  if (userUsdcBalance !== null && usdc > userUsdcBalance) {
+    throw new Error(`Saldo USDC insuficiente (tenés ${Number(userUsdcBalance).toFixed(2)})`);
+  }
+
+  const fxRate = await getArsPerUsdc();
+  const ars = usdcToArs(usdc, fxRate);
+  const factura = nuevaFactura();
+  const memo = buildConvertUsdcArsMemo({ usdc, ars, fxRate, factura });
+
+  const signer = await getBrowserSigner(wallet);
+  const from = await signer.getAddress();
+  const tx = await sendNativeUsdc(signer, { to: treasury, usdc, memo });
+
+  const fiat = await payoutArsToUser(ars);
+
+  return {
+    kind: "convert_usdc_ars",
+    fxRate,
+    ars,
+    usdc,
+    arsDelta: ars,
+    fiat,
+    hash: tx.hash,
+    block: tx.block,
+    fee: tx.fee,
+    memo: tx.memo,
+    factura,
+    from,
+    to: treasury,
+  };
+}
+
+export async function refreshPairBalances(userAddress) {
+  const [userUsdc, treasuryUsdc] = await Promise.all([
+    getUsdcBalance(userAddress),
+    getTreasuryBalance(),
+  ]);
+  return { userUsdc, treasuryUsdc, treasuryAddress: getTreasuryAddress() };
+}
+
+export { quoteArsToUsdc, quoteUsdcToArs, getArsPerUsdc };
