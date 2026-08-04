@@ -1,0 +1,95 @@
+/**
+ * midato-balance-fab.css
+ * Va junto con midato-additions.css. Hereda tus variables de marca.
+ */
+
+/* ---------- tarjeta de saldo (sin botones) ---------- */
+.mp-balance {
+  background: var(--midato-bg, #fff);
+  border-radius: var(--midato-radius, 20px);
+  /* Sin la fila de acciones, el padding de antes dejaba un hueco raro abajo */
+  padding: 22px 24px 26px;
+  box-shadow: 0 1px 3px rgb(16 24 40 / 0.06);
+}
+
+.mp-balance__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+}
+.mp-balance__label { font-size: 1.05rem; font-weight: 700; color: var(--midato-fg, #0f1720); }
+.mp-balance__currency { font-size: 0.95rem; font-weight: 700; color: var(--midato-muted, #8b95a3); }
+
+.mp-balance__row { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+.mp-balance__value {
+  margin: 0;
+  font-size: clamp(2.4rem, 11vw, 3.1rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+.mp-balance__eye {
+  background: none; border: 0; padding: 4px; cursor: pointer;
+  font-size: 1.1rem; opacity: 0.55; line-height: 1;
+}
+.mp-balance__eye:hover { opacity: 1; }
+.mp-balance__eye:focus-visible { outline: 2px solid var(--midato-accent, #f26522); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- micrófono flotante ---------- */
+.mp-fab {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 45;
+  width: 66px; height: 66px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 1.6rem; border: 4px solid var(--midato-bg, #fff);
+  background: var(--midato-accent, #f26522); color: #fff;
+  box-shadow: 0 6px 20px rgb(242 101 34 / 0.38);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+.mp-fab:active { transform: translateX(-50%) scale(0.94); }
+.mp-fab:focus-visible { outline: 3px solid var(--midato-fg, #0f1720); outline-offset: 3px; }
+.mp-fab--live { box-shadow: 0 6px 28px rgb(242 101 34 / 0.6); }
+
+.mp-fab__ring {
+  position: absolute; inset: -6px; border-radius: 50%;
+  border: 2px solid var(--midato-accent, #f26522);
+  animation: mp-ring 1.5s ease-out infinite;
+}
+@keyframes mp-ring {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+
+.mp-listening {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  z-index: 44; text-align: center;
+  background: var(--midato-bg, #fff);
+  border: 1px solid var(--midato-border, #e3e8ee);
+  border-radius: 14px; padding: 10px 18px;
+  box-shadow: 0 6px 24px rgb(16 24 40 / 0.12);
+  max-width: min(320px, 88vw);
+}
+.mp-listening p { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.mp-listening .mp-hint { margin-top: 3px; font-weight: 400; }
+
+.mp-toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  z-index: 46;
+  display: flex; align-items: center; gap: 12px;
+  background: var(--midato-fg, #0f1720); color: #fff;
+  padding: 11px 16px; border-radius: 12px;
+  font-size: 0.88rem; max-width: min(360px, 90vw);
+}
+.mp-toast .mp-linkbtn { color: #fff; white-space: nowrap; }
+
+/* La barra inferior necesita lugar para que el FAB no tape la Actividad */
+.mp-navbar { padding-bottom: env(safe-area-inset-bottom); }
+.mp-content { padding-bottom: 120px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mp-fab, .mp-fab__ring { animation: none; transition: none; }
+}
