@@ -191,6 +191,22 @@ function CircleAction({ icon, label, onClick, tone = C.violet }) {
   );
 }
 
+function NavButton({ active, icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
+        alignItems: "center", gap: 3, fontFamily: "inherit", padding: 0,
+        color: active ? C.violet : C.mut,
+      }}
+    >
+      <span style={{ fontSize: 18 }}>{icon}</span>
+      <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
+    </button>
+  );
+}
+
 // ————— Marca —————
 function Mark({ size = 44, style }) {
   return (
@@ -1537,37 +1553,29 @@ function AppInner() {
     [wallet, balance, applyArsDelta, pushTx, refreshBalances, t]
   );
 
+  const navTabs = [
+    { id: "home", label: t("nav.home"), icon: "⌂" },
+    { id: "movs", label: t("nav.movements"), icon: "☰" },
+    { id: "stack", label: t("nav.stack"), icon: "◫" },
+    { id: "mas", label: t("nav.more"), icon: "⋯" },
+  ];
+  const navMid = Math.ceil(navTabs.length / 2);
+  const goTab = (id) => { setReceipt(null); setTab(id); };
+
   const shell = (children) => (
     <div className="mp-stage">
       <div className="mp-device">
         <div className="mp-scroll" style={{ padding: "22px 18px 112px" }}>{children}</div>
 
         <nav className="mp-nav">
-          {[
-            { id: "home", label: t("nav.home"), icon: "⌂" },
-            { id: "movs", label: t("nav.movements"), icon: "☰" },
-            { id: "stack", label: t("nav.stack"), icon: "◫" },
-            { id: "mas", label: t("nav.more"), icon: "⋯" },
-          ].map((tItem, i) => (
-            <button
-              key={tItem.id}
-              onClick={() => { setReceipt(null); setTab(tItem.id); }}
-              style={{
-                flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
-                alignItems: "center", gap: 3, fontFamily: "inherit", padding: 0,
-                color: tab === tItem.id ? C.violet : C.mut,
-                marginRight: i === 1 ? 28 : 0, marginLeft: i === 2 ? 28 : 0,
-              }}
-            >
-              <span style={{ fontSize: 18 }}>{tItem.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: 600 }}>{tItem.label}</span>
-            </button>
+          {navTabs.slice(0, navMid).map((tItem) => (
+            <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
           ))}
-          <button
-            onClick={() => { setReceipt(null); setTab("voice"); }}
-            className="mp-fab"
-            aria-label={t("nav.voiceAria")}
-          >
+          <div style={{ width: 56, flexShrink: 0 }} aria-hidden="true" />
+          {navTabs.slice(navMid).map((tItem) => (
+            <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
+          ))}
+          <button onClick={() => goTab("voice")} className="mp-fab" aria-label={t("nav.voiceAria")}>
             🎙
           </button>
         </nav>
