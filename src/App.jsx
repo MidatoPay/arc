@@ -24,6 +24,7 @@ import {
   addContact,
   updateContact,
   removeContact,
+  findByAlias,
   searchContacts,
   validateContact,
 } from "./contacts.js";
@@ -73,13 +74,6 @@ const C = {
   red: "#E4483D",
 };
 
-const CONTACTS = [
-  { alias: "katy", name: "Katy R.", addr: "0x1111111111111111111111111111111111111111", ini: "KR" },
-  { alias: "alan", name: "Alan T. — Deenex", addr: "0x2222222222222222222222222222222222222222", ini: "AT" },
-  { alias: "juanp", name: "Juan Pablo Z.", addr: "0x3333333333333333333333333333333333333333", ini: "JP" },
-  { alias: "martin", name: "Martín — COO", addr: "0x4444444444444444444444444444444444444444", ini: "MC" },
-];
-
 // ————— util —————
 const fmt = (n, d = 2, locale = "en-US") => Number(n).toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmt0 = (n, locale = "en-US") => Number(n).toLocaleString(locale, { maximumFractionDigits: 0 });
@@ -99,7 +93,7 @@ function localParse(text, lang) {
   return { intent: "send", amount, currency, recipient };
 }
 
-async function claudeParse(text, lang) {
+async function claudeParse(text, lang, aliases) {
   if (!API_KEY) throw new Error("no-key");
   const prompt =
     lang === "en"
@@ -107,7 +101,7 @@ async function claudeParse(text, lang) {
 
 Command: "${text}"
 
-Valid contact aliases: ${CONTACTS.map((c) => c.alias).join(", ")}
+Valid contact aliases: ${aliases.join(", ")}
 
 Exact format:
 {"intent":"send"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
@@ -117,7 +111,7 @@ Rules: "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. If the cur
 
 Comando: "${text}"
 
-Contactos válidos (alias): ${CONTACTS.map((c) => c.alias).join(", ")}
+Contactos válidos (alias): ${aliases.join(", ")}
 
 Formato exacto:
 {"intent":"send"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
@@ -801,7 +795,7 @@ function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConv
 }
 
 // ————— Voz —————
-function Voice({ sendPayment, balance, onDone, fxRate, address }) {
+function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
   const { t, lang, locale } = useLanguage();
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
@@ -815,9 +809,14 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
     async (text) => {
       setTranscript(text);
       setPhase("parsing");
+      if (contacts.length === 0) {
+        setErrMsg(t("voice.noContactsYet"));
+        setPhase("error");
+        return;
+      }
       let result;
       try {
-        result = await claudeParse(text, lang);
+        result = await claudeParse(text, lang, contacts.map((c) => c.alias));
       } catch {
         result = localParse(text, lang);
       }
@@ -826,9 +825,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
         setPhase("error");
         return;
       }
-      const contact =
-        CONTACTS.find((c) => c.alias === (result.recipient || "").toLowerCase()) ||
-        CONTACTS.find((c) => (result.recipient || "").toLowerCase().includes(c.alias));
+      const contact = findByAlias(contacts, result.recipient);
       if (!contact) {
         setErrMsg(t("voice.aliasNotFound", result.recipient));
         setPhase("error");
@@ -848,7 +845,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
       setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
       setPhase("confirm");
     },
-    [balance, fxRate, lang, locale, t]
+    [balance, fxRate, lang, locale, t, contacts]
   );
 
   const voiceMemo = useMemo(() => {
@@ -1017,7 +1014,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
             <div style={{ fontSize: 13.5, color: C.mut }}>«{transcript}»</div>
             <div style={{ display: "flex", alignItems: "center", gap: 13, margin: "18px 0" }}>
               <div style={{ width: 46, height: 46, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 15 }}>
-                {parsed.contact.ini}
+                {parsed.contact.name.slice(0, 1).toUpperCase()}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 16.5, fontWeight: 700, color: C.ink }}>{parsed.contact.name}</div>
@@ -1820,7 +1817,7 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} />}
+      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} contacts={contacts} />}
       {tab === "movs" && <Movimientos txs={txs} address={address} fxRate={fxRate} />}
       {tab === "stack" && <Stack />}
       {tab === "agenda" && (
