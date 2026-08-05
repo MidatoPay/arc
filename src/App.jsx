@@ -18,6 +18,15 @@ import {
 } from "./flows.js";
 import { getTreasuryAddress, isTreasuryConfigured } from "./treasury.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
+import {
+  loadContacts,
+  saveContacts,
+  addContact,
+  updateContact,
+  removeContact,
+  searchContacts,
+  validateContact,
+} from "./contacts.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -1361,6 +1370,134 @@ function Stack() {
   );
 }
 
+function errorMessage(t, field, reason) {
+  if (field === "alias" && reason === "duplicate") return t("agenda.errors.aliasDuplicate");
+  return t(`agenda.errors.${field}`);
+}
+
+// ————— Agenda —————
+function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
+  const { t } = useLanguage();
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState(null); // null = cerrado; { } = nuevo o edición
+  const [errors, setErrors] = useState({});
+  const [copiedId, setCopiedId] = useState(null);
+
+  const visible = searchContacts(contacts, query);
+  const editingId = form?.id || null;
+
+  const openNew = () => { setForm({ name: "", alias: "", addr: "", note: "" }); setErrors({}); };
+  const openEdit = (c) => { setForm({ ...c }); setErrors({}); };
+  const close = () => { setForm(null); setErrors({}); };
+
+  const save = () => {
+    const check = validateContact(form, contacts, editingId);
+    if (!check.valid) {
+      setErrors(check.errors);
+      return;
+    }
+    if (editingId) onUpdate(editingId, form);
+    else onAdd(form);
+    close();
+  };
+
+  const del = () => {
+    if (!editingId) return;
+    onRemove(editingId);
+    close();
+  };
+
+  const copy = async (c) => {
+    try {
+      await navigator.clipboard.writeText(c.addr);
+      setCopiedId(c.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch {}
+  };
+
+  const field = (key, label, placeholder) => (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{label}</div>
+      <input
+        value={form[key]}
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+        placeholder={placeholder}
+        style={{ width: "100%", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 14px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+      />
+      {errors[key] && <div style={{ fontSize: 12.5, color: C.red, marginTop: 6 }}>{errorMessage(t, key, errors[key])}</div>}
+    </label>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("agenda.title")}</h2>
+        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("agenda.subtitle")}</p>
+      </div>
+
+      {!form && (
+        <>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("agenda.searchPlaceholder")}
+            style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "13px 16px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit" }}
+          />
+
+          <button onClick={openNew} style={btnOutline}>{t("agenda.addButton")}</button>
+
+          {visible.length === 0 ? (
+            <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>
+              <div style={{ fontWeight: 700, color: C.ink, marginBottom: 6 }}>{t("agenda.emptyTitle")}</div>
+              {t("agenda.emptyBody")}
+            </Card>
+          ) : (
+            visible.map((c) => (
+              <Card key={c.id} style={{ padding: 16, display: "flex", alignItems: "center", gap: 13 }}>
+                <button
+                  onClick={() => openEdit(c)}
+                  style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 13, flex: 1, minWidth: 0, textAlign: "left", fontFamily: "inherit", padding: 0 }}
+                >
+                  <span style={{ width: 42, height: 42, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                    {c.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{c.name}</div>
+                    <div style={{ fontSize: 13, color: C.mut }}>@{c.alias} · {short(c.addr)}</div>
+                  </span>
+                </button>
+                <button
+                  onClick={() => copy(c)}
+                  style={{ background: C.bg, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: C.ink, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+                >
+                  {copiedId === c.id ? t("agenda.copied") : t("agenda.copy")}
+                </button>
+              </Card>
+            ))
+          )}
+        </>
+      )}
+
+      {form && (
+        <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {field("name", t("agenda.form.nameLabel"), t("agenda.form.namePlaceholder"))}
+          {field("alias", t("agenda.form.aliasLabel"), t("agenda.form.aliasPlaceholder"))}
+          {field("addr", t("agenda.form.addressLabel"), t("agenda.form.addressPlaceholder"))}
+          {field("note", t("agenda.form.noteLabel"), t("agenda.form.notePlaceholder"))}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button onClick={save} style={btnOrange}>{editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}</button>
+            <button onClick={close} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("agenda.form.cancel")}</button>
+            {editingId && (
+              <button onClick={del} style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}>{t("agenda.form.delete")}</button>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ————— App —————
 function AppInner() {
   const { t, locale } = useLanguage();
@@ -1396,6 +1533,45 @@ function AppInner() {
   useEffect(() => {
     setArsBalance(loadArsBalance(address));
   }, [address]);
+
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    setContacts(loadContacts(address));
+  }, [address]);
+
+  const handleAddContact = useCallback(
+    (data) => {
+      setContacts((prev) => {
+        const next = addContact(prev, data);
+        saveContacts(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
+
+  const handleUpdateContact = useCallback(
+    (id, data) => {
+      setContacts((prev) => {
+        const next = updateContact(prev, id, data);
+        saveContacts(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
+
+  const handleRemoveContact = useCallback(
+    (id) => {
+      setContacts((prev) => {
+        const next = removeContact(prev, id);
+        saveContacts(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
 
   // Tipo de cambio ARS/USD desde Chainlink (Ethereum Mainnet) vía latestAnswer().
   useEffect(() => {
@@ -1557,6 +1733,7 @@ function AppInner() {
     { id: "home", label: t("nav.home"), icon: "⌂" },
     { id: "movs", label: t("nav.movements"), icon: "☰" },
     { id: "stack", label: t("nav.stack"), icon: "◫" },
+    { id: "agenda", label: t("nav.agenda"), icon: "📇" },
     { id: "mas", label: t("nav.more"), icon: "⋯" },
   ];
   const navMid = Math.ceil(navTabs.length / 2);
@@ -1646,6 +1823,14 @@ function AppInner() {
       {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} />}
       {tab === "movs" && <Movimientos txs={txs} address={address} fxRate={fxRate} />}
       {tab === "stack" && <Stack />}
+      {tab === "agenda" && (
+        <ContactsScreen
+          contacts={contacts}
+          onAdd={handleAddContact}
+          onUpdate={handleUpdateContact}
+          onRemove={handleRemoveContact}
+        />
+      )}
       {tab === "mas" && (
         <Mas
           email={email}
