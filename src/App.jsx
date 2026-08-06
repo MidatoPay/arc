@@ -18,6 +18,16 @@ import {
 } from "./flows.js";
 import { getTreasuryAddress, isTreasuryConfigured } from "./treasury.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
+import {
+  loadContacts,
+  saveContacts,
+  addContact,
+  updateContact,
+  removeContact,
+  findByAlias,
+  searchContacts,
+  validateContact,
+} from "./contacts.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -64,13 +74,6 @@ const C = {
   red: "#E4483D",
 };
 
-const CONTACTS = [
-  { alias: "katy", name: "Katy R.", addr: "0x1111111111111111111111111111111111111111", ini: "KR" },
-  { alias: "alan", name: "Alan T. — Deenex", addr: "0x2222222222222222222222222222222222222222", ini: "AT" },
-  { alias: "juanp", name: "Juan Pablo Z.", addr: "0x3333333333333333333333333333333333333333", ini: "JP" },
-  { alias: "martin", name: "Martín — COO", addr: "0x4444444444444444444444444444444444444444", ini: "MC" },
-];
-
 // ————— util —————
 const fmt = (n, d = 2, locale = "en-US") => Number(n).toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmt0 = (n, locale = "en-US") => Number(n).toLocaleString(locale, { maximumFractionDigits: 0 });
@@ -90,7 +93,7 @@ function localParse(text, lang) {
   return { intent: "send", amount, currency, recipient };
 }
 
-async function claudeParse(text, lang) {
+async function claudeParse(text, lang, aliases) {
   if (!API_KEY) throw new Error("no-key");
   const prompt =
     lang === "en"
@@ -98,7 +101,7 @@ async function claudeParse(text, lang) {
 
 Command: "${text}"
 
-Valid contact aliases: ${CONTACTS.map((c) => c.alias).join(", ")}
+Valid contact aliases: ${aliases.join(", ")}
 
 Exact format:
 {"intent":"send"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
@@ -108,7 +111,7 @@ Rules: "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. If the cur
 
 Comando: "${text}"
 
-Contactos válidos (alias): ${CONTACTS.map((c) => c.alias).join(", ")}
+Contactos válidos (alias): ${aliases.join(", ")}
 
 Formato exacto:
 {"intent":"send"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
@@ -187,6 +190,22 @@ function CircleAction({ icon, label, onClick, tone = C.violet }) {
         {icon}
       </div>
       <span style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{label}</span>
+    </button>
+  );
+}
+
+function NavButton({ active, icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
+        alignItems: "center", gap: 3, fontFamily: "inherit", padding: 0,
+        color: active ? C.violet : C.mut,
+      }}
+    >
+      <span style={{ fontSize: 18 }}>{icon}</span>
+      <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
     </button>
   );
 }
@@ -776,7 +795,7 @@ function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConv
 }
 
 // ————— Voz —————
-function Voice({ sendPayment, balance, onDone, fxRate, address }) {
+function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
   const { t, lang, locale } = useLanguage();
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
@@ -790,9 +809,14 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
     async (text) => {
       setTranscript(text);
       setPhase("parsing");
+      if (contacts.length === 0) {
+        setErrMsg(t("voice.noContactsYet"));
+        setPhase("error");
+        return;
+      }
       let result;
       try {
-        result = await claudeParse(text, lang);
+        result = await claudeParse(text, lang, contacts.map((c) => c.alias));
       } catch {
         result = localParse(text, lang);
       }
@@ -801,9 +825,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
         setPhase("error");
         return;
       }
-      const contact =
-        CONTACTS.find((c) => c.alias === (result.recipient || "").toLowerCase()) ||
-        CONTACTS.find((c) => (result.recipient || "").toLowerCase().includes(c.alias));
+      const contact = findByAlias(contacts, result.recipient);
       if (!contact) {
         setErrMsg(t("voice.aliasNotFound", result.recipient));
         setPhase("error");
@@ -823,7 +845,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
       setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
       setPhase("confirm");
     },
-    [balance, fxRate, lang, locale, t]
+    [balance, fxRate, lang, locale, t, contacts]
   );
 
   const voiceMemo = useMemo(() => {
@@ -992,7 +1014,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address }) {
             <div style={{ fontSize: 13.5, color: C.mut }}>«{transcript}»</div>
             <div style={{ display: "flex", alignItems: "center", gap: 13, margin: "18px 0" }}>
               <div style={{ width: 46, height: 46, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 15 }}>
-                {parsed.contact.ini}
+                {parsed.contact.name.slice(0, 1).toUpperCase()}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 16.5, fontWeight: 700, color: C.ink }}>{parsed.contact.name}</div>
@@ -1345,6 +1367,134 @@ function Stack() {
   );
 }
 
+function errorMessage(t, field, reason) {
+  if (field === "alias" && reason === "duplicate") return t("agenda.errors.aliasDuplicate");
+  return t(`agenda.errors.${field}`);
+}
+
+// ————— Agenda —————
+function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
+  const { t } = useLanguage();
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState(null); // null = cerrado; { } = nuevo o edición
+  const [errors, setErrors] = useState({});
+  const [copiedId, setCopiedId] = useState(null);
+
+  const visible = searchContacts(contacts, query);
+  const editingId = form?.id || null;
+
+  const openNew = () => { setForm({ name: "", alias: "", addr: "", note: "" }); setErrors({}); };
+  const openEdit = (c) => { setForm({ ...c }); setErrors({}); };
+  const close = () => { setForm(null); setErrors({}); };
+
+  const save = () => {
+    const check = validateContact(form, contacts, editingId);
+    if (!check.valid) {
+      setErrors(check.errors);
+      return;
+    }
+    if (editingId) onUpdate(editingId, form);
+    else onAdd(form);
+    close();
+  };
+
+  const del = () => {
+    if (!editingId) return;
+    onRemove(editingId);
+    close();
+  };
+
+  const copy = async (c) => {
+    try {
+      await navigator.clipboard.writeText(c.addr);
+      setCopiedId(c.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch {}
+  };
+
+  const field = (key, label, placeholder) => (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{label}</div>
+      <input
+        value={form[key]}
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+        placeholder={placeholder}
+        style={{ width: "100%", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 14px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+      />
+      {errors[key] && <div style={{ fontSize: 12.5, color: C.red, marginTop: 6 }}>{errorMessage(t, key, errors[key])}</div>}
+    </label>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("agenda.title")}</h2>
+        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("agenda.subtitle")}</p>
+      </div>
+
+      {!form && (
+        <>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("agenda.searchPlaceholder")}
+            style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "13px 16px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit" }}
+          />
+
+          <button onClick={openNew} style={btnOutline}>{t("agenda.addButton")}</button>
+
+          {visible.length === 0 ? (
+            <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>
+              <div style={{ fontWeight: 700, color: C.ink, marginBottom: 6 }}>{t("agenda.emptyTitle")}</div>
+              {t("agenda.emptyBody")}
+            </Card>
+          ) : (
+            visible.map((c) => (
+              <Card key={c.id} style={{ padding: 16, display: "flex", alignItems: "center", gap: 13 }}>
+                <button
+                  onClick={() => openEdit(c)}
+                  style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 13, flex: 1, minWidth: 0, textAlign: "left", fontFamily: "inherit", padding: 0 }}
+                >
+                  <span style={{ width: 42, height: 42, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                    {c.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{c.name}</div>
+                    <div style={{ fontSize: 13, color: C.mut }}>@{c.alias} · {short(c.addr)}</div>
+                  </span>
+                </button>
+                <button
+                  onClick={() => copy(c)}
+                  style={{ background: C.bg, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: C.ink, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+                >
+                  {copiedId === c.id ? t("agenda.copied") : t("agenda.copy")}
+                </button>
+              </Card>
+            ))
+          )}
+        </>
+      )}
+
+      {form && (
+        <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {field("name", t("agenda.form.nameLabel"), t("agenda.form.namePlaceholder"))}
+          {field("alias", t("agenda.form.aliasLabel"), t("agenda.form.aliasPlaceholder"))}
+          {field("addr", t("agenda.form.addressLabel"), t("agenda.form.addressPlaceholder"))}
+          {field("note", t("agenda.form.noteLabel"), t("agenda.form.notePlaceholder"))}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button onClick={save} style={btnOrange}>{editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}</button>
+            <button onClick={close} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("agenda.form.cancel")}</button>
+            {editingId && (
+              <button onClick={del} style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}>{t("agenda.form.delete")}</button>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ————— App —————
 function AppInner() {
   const { t, locale } = useLanguage();
@@ -1380,6 +1530,45 @@ function AppInner() {
   useEffect(() => {
     setArsBalance(loadArsBalance(address));
   }, [address]);
+
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    setContacts(loadContacts(address));
+  }, [address]);
+
+  const handleAddContact = useCallback(
+    (data) => {
+      setContacts((prev) => {
+        const next = addContact(prev, data);
+        saveContacts(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
+
+  const handleUpdateContact = useCallback(
+    (id, data) => {
+      setContacts((prev) => {
+        const next = updateContact(prev, id, data);
+        saveContacts(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
+
+  const handleRemoveContact = useCallback(
+    (id) => {
+      setContacts((prev) => {
+        const next = removeContact(prev, id);
+        saveContacts(address, next);
+        return next;
+      });
+    },
+    [address]
+  );
 
   // Tipo de cambio ARS/USD desde Chainlink (Ethereum Mainnet) vía latestAnswer().
   useEffect(() => {
@@ -1537,37 +1726,30 @@ function AppInner() {
     [wallet, balance, applyArsDelta, pushTx, refreshBalances, t]
   );
 
+  const navTabs = [
+    { id: "home", label: t("nav.home"), icon: "⌂" },
+    { id: "movs", label: t("nav.movements"), icon: "☰" },
+    { id: "stack", label: t("nav.stack"), icon: "◫" },
+    { id: "agenda", label: t("nav.agenda"), icon: "📇" },
+    { id: "mas", label: t("nav.more"), icon: "⋯" },
+  ];
+  const navMid = Math.ceil(navTabs.length / 2);
+  const goTab = (id) => { setReceipt(null); setTab(id); };
+
   const shell = (children) => (
     <div className="mp-stage">
       <div className="mp-device">
         <div className="mp-scroll" style={{ padding: "22px 18px 112px" }}>{children}</div>
 
         <nav className="mp-nav">
-          {[
-            { id: "home", label: t("nav.home"), icon: "⌂" },
-            { id: "movs", label: t("nav.movements"), icon: "☰" },
-            { id: "stack", label: t("nav.stack"), icon: "◫" },
-            { id: "mas", label: t("nav.more"), icon: "⋯" },
-          ].map((tItem, i) => (
-            <button
-              key={tItem.id}
-              onClick={() => { setReceipt(null); setTab(tItem.id); }}
-              style={{
-                flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
-                alignItems: "center", gap: 3, fontFamily: "inherit", padding: 0,
-                color: tab === tItem.id ? C.violet : C.mut,
-                marginRight: i === 1 ? 28 : 0, marginLeft: i === 2 ? 28 : 0,
-              }}
-            >
-              <span style={{ fontSize: 18 }}>{tItem.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: 600 }}>{tItem.label}</span>
-            </button>
+          {navTabs.slice(0, navMid).map((tItem) => (
+            <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
           ))}
-          <button
-            onClick={() => { setReceipt(null); setTab("voice"); }}
-            className="mp-fab"
-            aria-label={t("nav.voiceAria")}
-          >
+          <div style={{ width: 56, flexShrink: 0 }} aria-hidden="true" />
+          {navTabs.slice(navMid).map((tItem) => (
+            <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
+          ))}
+          <button onClick={() => goTab("voice")} className="mp-fab" aria-label={t("nav.voiceAria")}>
             🎙
           </button>
         </nav>
@@ -1635,9 +1817,17 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} />}
+      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} contacts={contacts} />}
       {tab === "movs" && <Movimientos txs={txs} address={address} fxRate={fxRate} />}
       {tab === "stack" && <Stack />}
+      {tab === "agenda" && (
+        <ContactsScreen
+          contacts={contacts}
+          onAdd={handleAddContact}
+          onUpdate={handleUpdateContact}
+          onRemove={handleRemoveContact}
+        />
+      )}
       {tab === "mas" && (
         <Mas
           email={email}
