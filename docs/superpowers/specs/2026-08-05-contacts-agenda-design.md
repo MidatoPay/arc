@@ -1,15 +1,16 @@
 # Agenda de contactos — diseño
 
-<<<<<<< HEAD
 > **Actualización 2026-08-06:** la Sección 1 (modelo de datos y storage) fue
 > reemplazada — pasa de `localStorage` a Postgres (Aiven) vía una Netlify
 > Function, para que la agenda persista por usuario de Privy entre
 > dispositivos. El resto del diseño (UI, integración con voz, i18n) no
 > cambió. Ver también el plan de implementación actualizado en
 > `docs/superpowers/plans/2026-08-05-contacts-agenda.md`.
+>
+> Nota: la versión `localStorage` de este diseño (Sección 1 original) ya se
+> implementó y mergeó vía PR #5 (`jm-1-agenda`) antes de esta actualización.
+> La migración a Postgres reemplaza esa implementación, no arranca de cero.
 
-=======
->>>>>>> e91250d0ba0ac0fb99ae64ceb72344dff03573a7
 ## Contexto
 
 `src/App.jsx` usa un array hardcodeado `CONTACTS` (4 contactos fijos) para resolver a quién le vas a pagar cuando usás el flujo de voz. No hay forma de agregar, editar o borrar contactos desde la app.
@@ -18,7 +19,6 @@ Existe un branch (`santiago-1-agenda`, en `origin`) con una implementación de a
 
 ## Alcance
 
-<<<<<<< HEAD
 Incluye: alta/edición/borrado/búsqueda de contactos, persistencia en Postgres (Aiven) por usuario de Privy — recuperable entre dispositivos —, uso de esos contactos en el flujo de voz existente.
 
 No incluye (fuera de alcance, no pedido): acciones rápidas de pagar/cobrar desde la agenda, rediseño del FAB de voz, extracción de `Home`/`BalanceCard` a componentes separados — eso era parte del branch de Santiago pero no de este pedido.
@@ -83,8 +83,11 @@ Un handler, ruteado por método HTTP. Todas las queries filtran por
 |---|---|
 | `GET /contacts` | Lista los contactos del usuario del token |
 | `POST /contacts` | Alta — body `{ name, alias, address, note }` |
-| `PUT /contacts/:id` | Edición |
-| `DELETE /contacts/:id` | Borrado |
+| `PUT /contacts` | Edición — body `{ id, name, alias, address, note }` |
+| `DELETE /contacts` | Borrado — body `{ id }` |
+
+(`id` va en el body, no en la URL — las Netlify Functions clásicas no
+parsean path params, así se evita depender de redirects con `:splat`.)
 
 Errores: `401` si el token no verifica, `400` si falla validación (alias
 duplicado mapeado desde el `UNIQUE` de Postgres, campos faltantes), `500`
@@ -98,21 +101,11 @@ Conexión a Postgres vía `pg`, con SSL usando el CA cert de Aiven (no
 Mismo rol que antes (módulo de lógica separado de la UI, patrón
 `fx.js`/`treasury.js`/`arc.js`), pero ahora es un cliente HTTP con cache en
 `localStorage` en vez de dueño directo del storage:
-=======
-Incluye: alta/edición/borrado/búsqueda de contactos, persistencia local, uso de esos contactos en el flujo de voz existente.
-
-No incluye (fuera de alcance, no pedido): acciones rápidas de pagar/cobrar desde la agenda, rediseño del FAB de voz, extracción de `Home`/`BalanceCard` a componentes separados — eso era parte del branch de Santiago pero no de este pedido.
-
-## 1. Modelo de datos y storage — `src/contacts.js`
-
-Nuevo módulo, mismo patrón que `fx.js` / `treasury.js` / `arc.js` (lógica separada de la UI).
->>>>>>> e91250d0ba0ac0fb99ae64ceb72344dff03573a7
 
 ```js
 Contact = { id, name, alias, address, note }
 ```
 
-<<<<<<< HEAD
 - Sin campo `ini`: las iniciales se derivan de `name` al vuelo, igual que ya
   hace `Mas` con el avatar del usuario.
 - **Cache stale-while-revalidate**, clave `mp_contacts_cache_<user_id>`: al
@@ -128,12 +121,12 @@ Contact = { id, name, alias, address, note }
   `CONTACTS` hardcodeado se elimina de `App.jsx`.
 
 Funciones exportadas (misma forma que el diseño original, ahora async donde
-implica red):
-- `loadContacts(userId)` — sirve cache si existe, dispara `GET /contacts`,
-  actualiza cache+devuelve la lista fresca cuando responde.
-- `addContact(userId, data)`, `updateContact(userId, id, data)`,
-  `removeContact(userId, id)` — `POST`/`PUT`/`DELETE` contra la Function;
-  actualizan el cache local solo tras la confirmación del server.
+implica red, y reciben el access token de Privy para autenticar el request):
+- `loadContacts(userId, token)` — sirve cache si existe, dispara
+  `GET /contacts`, actualiza cache+devuelve la lista fresca cuando responde.
+- `addContact(userId, token, data)`, `updateContact(userId, token, id, data)`,
+  `removeContact(userId, token, id)` — `POST`/`PUT`/`DELETE` contra la
+  Function; actualizan el cache local solo tras la confirmación del server.
 - `findByAlias(list, alias)` — case-insensitive, sigue siendo un helper puro
   sobre el array en memoria, usado por el parser de voz.
 - `validateContact({ name, alias, address }, list, editingId)` — sin cambios:
@@ -167,20 +160,6 @@ no es accesible directo desde el browser en ningún entorno.
   (puerto default de `netlify functions:serve`).
 - Flujo local: `netlify functions:serve` en una terminal, `npm run dev` en
   otra. Documentado en CLAUDE.md.
-=======
-- Sin campo `ini`: las iniciales se derivan de `name` al vuelo (`name.slice(0,1).toUpperCase()`), igual que ya hace `Mas` con el avatar del usuario.
-- Persistencia en `localStorage`, con clave por wallet: `mp_contacts_<address>`, replicando el patrón existente de `arsStorageKey` en `App.jsx` para el saldo ARS simulado. Cada cuenta logueada en el mismo navegador tiene su propia agenda.
-- Arranca **vacía** para cuentas nuevas — no hay contactos semilla. El array `CONTACTS` hardcodeado se elimina del módulo `App.jsx`.
-
-Funciones exportadas:
-- `loadContacts(address)` / `saveContacts(address, list)` — leen/escriben el localStorage, con manejo defensivo de JSON inválido (igual estilo que `loadArsBalance`).
-- `addContact(list, data)`, `updateContact(list, id, data)`, `removeContact(list, id)` — helpers puros sobre el array (la UI decide cuándo persistir).
-- `findByAlias(list, alias)` — case-insensitive, usado por el parser de voz.
-- `validateContact({ name, alias, address }, list, editingId)` — devuelve `{ valid, errors }`:
-  - `name`: requerido, no vacío.
-  - `alias`: requerido, no vacío, único case-insensitive dentro de `list` (excluyendo el propio contacto si se está editando).
-  - `address`: requerido, debe pasar `ethers.isAddress(...)`.
->>>>>>> e91250d0ba0ac0fb99ae64ceb72344dff03573a7
 
 ## 2. UI — pantalla de Agenda + nav
 
@@ -202,13 +181,8 @@ Hoy el hueco para el FAB se logra con `marginRight`/`marginLeft` hardcodeados en
 
 ## 3. Integración con el flujo de voz
 
-<<<<<<< HEAD
-- `AppInner` agrega estado `contacts`, cargado con `loadContacts(user.id)` (DID de Privy, no la wallet) en un `useEffect` keyed en `user.id` — mismo patrón que el `useEffect` de `arsBalance`, pero keyed en el usuario logueado en vez de la wallet.
+- `AppInner` agrega estado `contacts`, cargado con `loadContacts(user.id, token)` (DID de Privy, no la wallet) en un `useEffect` keyed en `user.id` — mismo patrón que el `useEffect` de `arsBalance`, pero keyed en el usuario logueado en vez de la wallet.
 - `contacts` + sus mutadores (`addContact`/`updateContact`/`removeContact`, que ya persisten contra la Function internamente) se pasan a `ContactsScreen`.
-=======
-- `AppInner` agrega estado `contacts`, cargado con `loadContacts(address)` en un `useEffect` keyed en `address` (mismo patrón que `arsBalance`).
-- `contacts` + sus mutadores (`add`/`update`/`remove` conectados a `saveContacts`) se pasan a `ContactsScreen`.
->>>>>>> e91250d0ba0ac0fb99ae64ceb72344dff03573a7
 - `contacts` (solo lectura) se pasa a `Voice`.
 - `localParse` y `claudeParse` dejan de leer la constante global `CONTACTS`; reciben la lista de aliases como parámetro para construir el prompt / regex de matching.
 - `Voice.analyze` resuelve el contacto con `findByAlias(contacts, recipient)` en vez de `CONTACTS.find(...)`.
