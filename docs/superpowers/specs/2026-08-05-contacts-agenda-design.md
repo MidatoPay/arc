@@ -64,15 +64,18 @@ CREATE TABLE contacts (
   address     TEXT NOT NULL,
   note        TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (user_id, LOWER(alias))
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX contacts_user_id_idx ON contacts (user_id);
+
+-- UNIQUE de tabla no acepta expresiones — el alias case-insensitive único
+-- por usuario se garantiza con un índice único aparte, no un constraint.
+CREATE UNIQUE INDEX contacts_user_alias_uidx ON contacts (user_id, LOWER(alias));
 ```
 
-El `UNIQUE (user_id, LOWER(alias))` es la garantía de fondo para alias
-duplicado; la validación en JS (abajo) sigue existiendo para dar el error
-lindo en el form antes de pegarle al server.
+El índice único `contacts_user_alias_uidx` es la garantía de fondo para
+alias duplicado; la validación en JS (abajo) sigue existiendo para dar el
+error lindo en el form antes de pegarle al server.
 
 ### 1.3 API — `netlify/functions/contacts.js`
 
@@ -142,8 +145,14 @@ implica red, y reciben el access token de Privy para autenticar el request):
 
 ```bash
 # .env / .env.example — server-side only, SIN prefijo VITE_
-AIVEN_PG_URL=postgres://user:pass@host:port/dbname?sslmode=require
-AIVEN_PG_CA_CERT="-----BEGIN CERTIFICATE-----..."
+AIVEN_PG_URL=postgres://user:pass@host:port/dbname
+# Sin `?sslmode=require`: pg-connection-string lo interpreta como
+# verify-full y pisa el `ssl.ca` explícito de abajo (rompe la conexión
+# aunque el CA cert sea válido). El código en contacts.js lo saca de
+# todas formas por las dudas, pero mejor no incluirlo acá.
+AIVEN_PG_CA_CERT="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+# En una sola línea con \n literales (dotenv no soporta multilínea sin
+# comillas); netlify/functions/contacts.js hace .replace(/\\n/g, "\n").
 PRIVY_APP_SECRET=...   # dashboard de Privy — distinto de VITE_PRIVY_APP_ID (pública)
 ```
 
