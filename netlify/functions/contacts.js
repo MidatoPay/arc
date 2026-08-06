@@ -12,9 +12,16 @@ let pool;
 function getPool() {
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.AIVEN_PG_URL,
+      // `sslmode=require` en la connection string hace que pg-connection-string
+      // arme su propia config SSL y pise el objeto `ssl` de abajo (incluso con
+      // rejectUnauthorized: true, termina rechazando el CA cert real como si
+      // fuera self-signed) — se lo saca acá y el `ssl` explícito manda solo.
+      connectionString: (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, ""),
       ssl: {
-        ca: process.env.AIVEN_PG_CA_CERT,
+        // Env vars no soportan multilínea sin comillas de forma portable
+        // (dotenv corta en el primer salto de línea) — el CA cert se guarda
+        // en una sola línea con \n literales y se reconstruye acá.
+        ca: (process.env.AIVEN_PG_CA_CERT || "").replace(/\\n/g, "\n"),
         rejectUnauthorized: true,
       },
     });

@@ -145,8 +145,14 @@ implica red, y reciben el access token de Privy para autenticar el request):
 
 ```bash
 # .env / .env.example — server-side only, SIN prefijo VITE_
-AIVEN_PG_URL=postgres://user:pass@host:port/dbname?sslmode=require
-AIVEN_PG_CA_CERT="-----BEGIN CERTIFICATE-----..."
+AIVEN_PG_URL=postgres://user:pass@host:port/dbname
+# Sin `?sslmode=require`: pg-connection-string lo interpreta como
+# verify-full y pisa el `ssl.ca` explícito de abajo (rompe la conexión
+# aunque el CA cert sea válido). El código en contacts.js lo saca de
+# todas formas por las dudas, pero mejor no incluirlo acá.
+AIVEN_PG_CA_CERT="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+# En una sola línea con \n literales (dotenv no soporta multilínea sin
+# comillas); netlify/functions/contacts.js hace .replace(/\\n/g, "\n").
 PRIVY_APP_SECRET=...   # dashboard de Privy — distinto de VITE_PRIVY_APP_ID (pública)
 ```
 
