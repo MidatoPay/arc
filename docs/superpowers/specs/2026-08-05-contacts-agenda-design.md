@@ -1,5 +1,12 @@
 # Agenda de contactos — diseño
 
+> **Actualización 2026-08-06:** la Sección 1 (modelo de datos y storage) fue
+> reemplazada — pasa de `localStorage` a Postgres (Aiven) vía una Netlify
+> Function, para que la agenda persista por usuario de Privy entre
+> dispositivos. El resto del diseño (UI, integración con voz, i18n) no
+> cambió. Ver también el plan de implementación actualizado en
+> `docs/superpowers/plans/2026-08-05-contacts-agenda.md`.
+
 ## Contexto
 
 `src/App.jsx` usa un array hardcodeado `CONTACTS` (4 contactos fijos) para resolver a quién le vas a pagar cuando usás el flujo de voz. No hay forma de agregar, editar o borrar contactos desde la app.
@@ -8,30 +15,144 @@ Existe un branch (`santiago-1-agenda`, en `origin`) con una implementación de a
 
 ## Alcance
 
-Incluye: alta/edición/borrado/búsqueda de contactos, persistencia local, uso de esos contactos en el flujo de voz existente.
+Incluye: alta/edición/borrado/búsqueda de contactos, persistencia en Postgres (Aiven) por usuario de Privy — recuperable entre dispositivos —, uso de esos contactos en el flujo de voz existente.
 
 No incluye (fuera de alcance, no pedido): acciones rápidas de pagar/cobrar desde la agenda, rediseño del FAB de voz, extracción de `Home`/`BalanceCard` a componentes separados — eso era parte del branch de Santiago pero no de este pedido.
 
-## 1. Modelo de datos y storage — `src/contacts.js`
+## 1. Modelo de datos y storage
 
-Nuevo módulo, mismo patrón que `fx.js` / `treasury.js` / `arc.js` (lógica separada de la UI).
+### 1.1 Arquitectura
+
+El browser no puede hablar Postgres directo (no hay driver client-side, y exponer
+la connection string de Aiven en el bundle sería un agujero de seguridad). Se
+agrega una capa de API, mismo patrón que `netlify/functions/rpc.js` /
+`eth-rpc.js` ya usan para proxyear RPC:
+
+```
+Browser (App.jsx, src/contacts.js)
+  │  fetch("/contacts", { headers: { Authorization: `Bearer <privy access token>` } })
+  ▼
+Netlify Function — netlify/functions/contacts.js
+  │  1. Verifica el token con @privy-io/server-auth → obtiene user.id (DID)
+  │  2. Ejecuta la query en Postgres, scopeada a ese user_id (nunca al que
+  │     mande el cliente en el body/query — así no hay forma de pedir
+  │     contactos ajenos falsificando un id)
+  ▼
+Aiven PostgreSQL 18 (SSL, CA cert vía env var)
+```
+
+Solo la Function tiene la connection string y `PRIVY_APP_SECRET`; nunca llegan
+al browser.
+
+### 1.2 Schema — `db/schema.sql`
+
+Se corre a mano una vez contra Aiven (`psql` o su consola web); queda
+versionado en el repo.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE contacts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     TEXT NOT NULL,           -- Privy DID (p.ej. "did:privy:abc123")
+  name        TEXT NOT NULL,
+  alias       TEXT NOT NULL,
+  address     TEXT NOT NULL,
+  note        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, LOWER(alias))
+);
+CREATE INDEX contacts_user_id_idx ON contacts (user_id);
+```
+
+El `UNIQUE (user_id, LOWER(alias))` es la garantía de fondo para alias
+duplicado; la validación en JS (abajo) sigue existiendo para dar el error
+lindo en el form antes de pegarle al server.
+
+### 1.3 API — `netlify/functions/contacts.js`
+
+Un handler, ruteado por método HTTP. Todas las queries filtran por
+`WHERE user_id = $1`, con el `user_id` que sale de verificar el token.
+
+| Método | Acción |
+|---|---|
+| `GET /contacts` | Lista los contactos del usuario del token |
+| `POST /contacts` | Alta — body `{ name, alias, address, note }` |
+| `PUT /contacts/:id` | Edición |
+| `DELETE /contacts/:id` | Borrado |
+
+Errores: `401` si el token no verifica, `400` si falla validación (alias
+duplicado mapeado desde el `UNIQUE` de Postgres, campos faltantes), `500`
+genérico para errores de DB sin exponer detalle interno.
+
+Conexión a Postgres vía `pg`, con SSL usando el CA cert de Aiven (no
+`rejectUnauthorized: false` — valida la identidad real del server).
+
+### 1.4 Cliente — `src/contacts.js`
+
+Mismo rol que antes (módulo de lógica separado de la UI, patrón
+`fx.js`/`treasury.js`/`arc.js`), pero ahora es un cliente HTTP con cache en
+`localStorage` en vez de dueño directo del storage:
 
 ```js
 Contact = { id, name, alias, address, note }
 ```
 
-- Sin campo `ini`: las iniciales se derivan de `name` al vuelo (`name.slice(0,1).toUpperCase()`), igual que ya hace `Mas` con el avatar del usuario.
-- Persistencia en `localStorage`, con clave por wallet: `mp_contacts_<address>`, replicando el patrón existente de `arsStorageKey` en `App.jsx` para el saldo ARS simulado. Cada cuenta logueada en el mismo navegador tiene su propia agenda.
-- Arranca **vacía** para cuentas nuevas — no hay contactos semilla. El array `CONTACTS` hardcodeado se elimina del módulo `App.jsx`.
+- Sin campo `ini`: las iniciales se derivan de `name` al vuelo, igual que ya
+  hace `Mas` con el avatar del usuario.
+- **Cache stale-while-revalidate**, clave `mp_contacts_cache_<user_id>`: al
+  cargar la pantalla se muestra el cache al instante (si existe) mientras se
+  dispara el `GET /contacts` real en paralelo; la respuesta del server pisa
+  el cache y el estado en memoria. El server siempre gana — no hay merge ni
+  resolución de conflictos.
+- Los writes (alta/edición/borrado) esperan la confirmación del `POST`/
+  `PUT`/`DELETE` antes de actualizar cache y estado — no hay optimistic
+  updates, así se evita mostrar un cambio que después el server rechaza
+  (p.ej. alias duplicado).
+- Arranca **vacía** para cuentas nuevas — no hay contactos semilla. El array
+  `CONTACTS` hardcodeado se elimina de `App.jsx`.
 
-Funciones exportadas:
-- `loadContacts(address)` / `saveContacts(address, list)` — leen/escriben el localStorage, con manejo defensivo de JSON inválido (igual estilo que `loadArsBalance`).
-- `addContact(list, data)`, `updateContact(list, id, data)`, `removeContact(list, id)` — helpers puros sobre el array (la UI decide cuándo persistir).
-- `findByAlias(list, alias)` — case-insensitive, usado por el parser de voz.
-- `validateContact({ name, alias, address }, list, editingId)` — devuelve `{ valid, errors }`:
-  - `name`: requerido, no vacío.
-  - `alias`: requerido, no vacío, único case-insensitive dentro de `list` (excluyendo el propio contacto si se está editando).
-  - `address`: requerido, debe pasar `ethers.isAddress(...)`.
+Funciones exportadas (misma forma que el diseño original, ahora async donde
+implica red):
+- `loadContacts(userId)` — sirve cache si existe, dispara `GET /contacts`,
+  actualiza cache+devuelve la lista fresca cuando responde.
+- `addContact(userId, data)`, `updateContact(userId, id, data)`,
+  `removeContact(userId, id)` — `POST`/`PUT`/`DELETE` contra la Function;
+  actualizan el cache local solo tras la confirmación del server.
+- `findByAlias(list, alias)` — case-insensitive, sigue siendo un helper puro
+  sobre el array en memoria, usado por el parser de voz.
+- `validateContact({ name, alias, address }, list, editingId)` — sin cambios:
+  `name` requerido, `alias` requerido/único case-insensitive, `address` debe
+  pasar `ethers.isAddress(...)`. Sigue corriendo client-side antes del
+  request, como primera línea de feedback.
+
+### 1.5 Dependencias y env vars nuevas
+
+- `pg` (node-postgres) — cliente Postgres, usado solo en la Function.
+- `@privy-io/server-auth` — verificación del access token server-side.
+- Netlify CLI (dev dependency) — para `netlify functions:serve` en local.
+
+```bash
+# .env / .env.example — server-side only, SIN prefijo VITE_
+AIVEN_PG_URL=postgres://user:pass@host:port/dbname?sslmode=require
+AIVEN_PG_CA_CERT="-----BEGIN CERTIFICATE-----..."
+PRIVY_APP_SECRET=...   # dashboard de Privy — distinto de VITE_PRIVY_APP_ID (pública)
+```
+
+En Netlify (producción) se configuran en el dashboard del sitio, igual que
+las `VITE_*` existentes.
+
+### 1.6 Dev workflow
+
+A diferencia de `/rpc` (que en dev pega directo al RPC público sin necesitar
+la Function), acá no hay fallback posible sin la Function corriendo — Postgres
+no es accesible directo desde el browser en ningún entorno.
+
+- `vite.config.js` suma un proxy: `/contacts` → `http://localhost:9999/.netlify/functions/contacts`
+  (puerto default de `netlify functions:serve`).
+- Flujo local: `netlify functions:serve` en una terminal, `npm run dev` en
+  otra. Documentado en CLAUDE.md.
 
 ## 2. UI — pantalla de Agenda + nav
 
@@ -53,8 +174,8 @@ Hoy el hueco para el FAB se logra con `marginRight`/`marginLeft` hardcodeados en
 
 ## 3. Integración con el flujo de voz
 
-- `AppInner` agrega estado `contacts`, cargado con `loadContacts(address)` en un `useEffect` keyed en `address` (mismo patrón que `arsBalance`).
-- `contacts` + sus mutadores (`add`/`update`/`remove` conectados a `saveContacts`) se pasan a `ContactsScreen`.
+- `AppInner` agrega estado `contacts`, cargado con `loadContacts(user.id)` (DID de Privy, no la wallet) en un `useEffect` keyed en `user.id` — mismo patrón que el `useEffect` de `arsBalance`, pero keyed en el usuario logueado en vez de la wallet.
+- `contacts` + sus mutadores (`addContact`/`updateContact`/`removeContact`, que ya persisten contra la Function internamente) se pasan a `ContactsScreen`.
 - `contacts` (solo lectura) se pasa a `Voice`.
 - `localParse` y `claudeParse` dejan de leer la constante global `CONTACTS`; reciben la lista de aliases como parámetro para construir el prompt / regex de matching.
 - `Voice.analyze` resuelve el contacto con `findByAlias(contacts, recipient)` en vez de `CONTACTS.find(...)`.
