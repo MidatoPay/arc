@@ -30,6 +30,14 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/eth-rpc/, ""),
         },
+        // API de contactos (Postgres/Aiven) — a diferencia de /rpc, no hay
+        // fallback público posible: hay que correr `netlify functions:serve`
+        // aparte (puerto 9999 por default) para que esto responda en dev.
+        "/contacts": {
+          target: "http://localhost:9999",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/contacts/, "/.netlify/functions/contacts"),
+        },
       },
     },
   };

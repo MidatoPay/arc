@@ -252,6 +252,7 @@ const translations = {
         alias: "Enter an alias.",
         aliasDuplicate: "You already have a contact with that alias.",
         addr: "That doesn't look like a valid wallet address.",
+        server: "Couldn't save — check your connection and try again.",
       },
     },
     nav: {
@@ -478,6 +479,7 @@ const translations = {
         alias: "Ingresá un alias.",
         aliasDuplicate: "Ya tenés un contacto con ese alias.",
         addr: "Esa dirección de wallet no parece válida.",
+        server: "No se pudo guardar — revisá tu conexión e intentá de nuevo.",
       },
     },
     nav: {

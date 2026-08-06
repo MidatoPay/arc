@@ -9,15 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@privy-io/react-auth": "^3.36.1",
+    "@privy-io/server-auth": "^1.32.5",
+    "buffer": "^6.0.3",
+    "ethers": "^6.13.4",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "ethers": "^6.13.4",
-    "@privy-io/react-auth": "^3.36.1",
-    "viem": "^2.21.54",
-    "buffer": "^6.0.3"
+    "viem": "^2.21.54"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.5",
+    "netlify-cli": "^27.1.0",
     "vite": "^8.2.0"
   },
   "overrides": {

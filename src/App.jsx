@@ -20,7 +20,6 @@ import { getTreasuryAddress, isTreasuryConfigured } from "./treasury.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
 import {
   loadContacts,
-  saveContacts,
   addContact,
   updateContact,
   removeContact,
@@ -1379,6 +1378,7 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
   const [form, setForm] = useState(null); // null = cerrado; { } = nuevo o edición
   const [errors, setErrors] = useState({});
   const [copiedId, setCopiedId] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const visible = searchContacts(contacts, query);
   const editingId = form?.id || null;
@@ -1387,21 +1387,35 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
   const openEdit = (c) => { setForm({ ...c }); setErrors({}); };
   const close = () => { setForm(null); setErrors({}); };
 
-  const save = () => {
+  const save = async () => {
     const check = validateContact(form, contacts, editingId);
     if (!check.valid) {
       setErrors(check.errors);
       return;
     }
-    if (editingId) onUpdate(editingId, form);
-    else onAdd(form);
-    close();
+    setSaving(true);
+    try {
+      if (editingId) await onUpdate(editingId, form);
+      else await onAdd(form);
+      close();
+    } catch (err) {
+      setErrors(err?.code === "alias_duplicate" ? { alias: "duplicate" } : { server: true });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const del = () => {
+  const del = async () => {
     if (!editingId) return;
-    onRemove(editingId);
-    close();
+    setSaving(true);
+    try {
+      await onRemove(editingId);
+      close();
+    } catch {
+      setErrors({ server: true });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const copy = async (c) => {
@@ -1477,16 +1491,21 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
 
       {form && (
         <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {errors.server && (
+            <div style={{ background: "#FDECEA", borderRadius: 12, padding: "12px 14px", fontSize: 13.5, color: C.red }}>
+              {t("agenda.errors.server")}
+            </div>
+          )}
           {field("name", t("agenda.form.nameLabel"), t("agenda.form.namePlaceholder"))}
           {field("alias", t("agenda.form.aliasLabel"), t("agenda.form.aliasPlaceholder"))}
           {field("addr", t("agenda.form.addressLabel"), t("agenda.form.addressPlaceholder"))}
           {field("note", t("agenda.form.noteLabel"), t("agenda.form.notePlaceholder"))}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button onClick={save} style={btnOrange}>{editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}</button>
-            <button onClick={close} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("agenda.form.cancel")}</button>
+            <button onClick={save} disabled={saving} style={{ ...btnOrange, opacity: saving ? 0.6 : 1 }}>{editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}</button>
+            <button onClick={close} disabled={saving} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("agenda.form.cancel")}</button>
             {editingId && (
-              <button onClick={del} style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}>{t("agenda.form.delete")}</button>
+              <button onClick={del} disabled={saving} style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}>{t("agenda.form.delete")}</button>
             )}
           </div>
         </Card>
@@ -1498,7 +1517,7 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
 // ————— App —————
 function AppInner() {
   const { t, locale } = useLanguage();
-  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
   const [tab, setTab] = useState("home");
   const [balance, setBalance] = useState(null);
@@ -1532,42 +1551,55 @@ function AppInner() {
   }, [address]);
 
   const [contacts, setContacts] = useState([]);
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
 
   useEffect(() => {
-    setContacts(loadContacts(address));
-  }, [address]);
+    if (!user?.id) {
+      setContacts([]);
+      return;
+    }
+    let cancelled = false;
+    getAccessToken()
+      .then((token) =>
+        loadContacts(user.id, token, (cached) => {
+          if (!cancelled) setContacts(cached);
+        })
+      )
+      .then((fresh) => {
+        if (!cancelled) setContacts(fresh);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, getAccessToken]);
 
   const handleAddContact = useCallback(
-    (data) => {
-      setContacts((prev) => {
-        const next = addContact(prev, data);
-        saveContacts(address, next);
-        return next;
-      });
+    async (data) => {
+      const token = await getAccessToken();
+      const next = await addContact(user.id, token, contactsRef.current, data);
+      setContacts(next);
     },
-    [address]
+    [user?.id, getAccessToken]
   );
 
   const handleUpdateContact = useCallback(
-    (id, data) => {
-      setContacts((prev) => {
-        const next = updateContact(prev, id, data);
-        saveContacts(address, next);
-        return next;
-      });
+    async (id, data) => {
+      const token = await getAccessToken();
+      const next = await updateContact(user.id, token, contactsRef.current, id, data);
+      setContacts(next);
     },
-    [address]
+    [user?.id, getAccessToken]
   );
 
   const handleRemoveContact = useCallback(
-    (id) => {
-      setContacts((prev) => {
-        const next = removeContact(prev, id);
-        saveContacts(address, next);
-        return next;
-      });
+    async (id) => {
+      const token = await getAccessToken();
+      const next = await removeContact(user.id, token, contactsRef.current, id);
+      setContacts(next);
     },
-    [address]
+    [user?.id, getAccessToken]
   );
 
   // Tipo de cambio ARS/USD desde Chainlink (Ethereum Mainnet) vía latestAnswer().

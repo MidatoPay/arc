@@ -64,15 +64,18 @@ CREATE TABLE contacts (
   address     TEXT NOT NULL,
   note        TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (user_id, LOWER(alias))
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX contacts_user_id_idx ON contacts (user_id);
+
+-- UNIQUE de tabla no acepta expresiones — el alias case-insensitive único
+-- por usuario se garantiza con un índice único aparte, no un constraint.
+CREATE UNIQUE INDEX contacts_user_alias_uidx ON contacts (user_id, LOWER(alias));
 ```
 
-El `UNIQUE (user_id, LOWER(alias))` es la garantía de fondo para alias
-duplicado; la validación en JS (abajo) sigue existiendo para dar el error
-lindo en el form antes de pegarle al server.
+El índice único `contacts_user_alias_uidx` es la garantía de fondo para
+alias duplicado; la validación en JS (abajo) sigue existiendo para dar el
+error lindo en el form antes de pegarle al server.
 
 ### 1.3 API — `netlify/functions/contacts.js`
 

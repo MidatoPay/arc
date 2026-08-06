@@ -19,6 +19,13 @@
   status = 200
   force = true
 
+# API de la agenda de contactos (Postgres vía Aiven, ver netlify/functions/contacts.js).
+[[redirects]]
+  from = "/contacts"
+  to = "/.netlify/functions/contacts"
+  status = 200
+  force = true
+
 # SPA: cualquier otra ruta sirve index.html (no hay react-router, pero
 # evita 404 si alguien entra directo a una URL que no sea la raíz).
 [[redirects]]
