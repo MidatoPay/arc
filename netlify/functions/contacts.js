@@ -11,18 +11,28 @@ const { Pool } = pkg;
 let pool;
 function getPool() {
   if (!pool) {
+    const connectionString = (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, "");
     pool = new Pool({
       // `sslmode=require` en la connection string hace que pg-connection-string
       // arme su propia config SSL y pise el objeto `ssl` de abajo (incluso con
       // rejectUnauthorized: true, termina rechazando el CA cert real como si
       // fuera self-signed) — se lo saca acá y el `ssl` explícito manda solo.
-      connectionString: (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, ""),
+      connectionString,
       ssl: {
         // Env vars no soportan multilínea sin comillas de forma portable
         // (dotenv corta en el primer salto de línea) — el CA cert se guarda
         // en una sola línea con \n literales y se reconstruye acá.
         ca: (process.env.AIVEN_PG_CA_CERT || "").replace(/\\n/g, "\n"),
         rejectUnauthorized: true,
+        // Aiven hostea varios servicios en el mismo endpoint y decide qué
+        // certificado presentar según el SNI. `pg` abre el socket TCP
+        // primero y recién después lo sube a TLS pasándole ese socket ya
+        // conectado — en ese modo Node NO deriva el SNI del host solo, hay
+        // que pasarlo. Sin esto, Aiven devuelve un cert autofirmado
+        // genérico (no el firmado por el Project CA de arriba) y la
+        // conexión truena con "self-signed certificate in certificate
+        // chain" pese a que el CA cert es el correcto.
+        servername: new URL(connectionString).hostname,
       },
     });
   }
