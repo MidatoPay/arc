@@ -28,6 +28,7 @@ import {
   searchContacts,
   validateContact,
 } from "./contacts.js";
+import { loadTransactions, addTransaction, mergeByHash } from "./transactions.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -2629,6 +2630,8 @@ function AppInner() {
   const [arsBalance, setArsBalance] = useState(0);
   const [treasuryBalance, setTreasuryBalance] = useState(null);
   const [txs, setTxs] = useState([]);
+  const txsRef = useRef(txs);
+  txsRef.current = txs;
   const [receipt, setReceipt] = useState(null);
   const [walletError, setWalletError] = useState("");
   const [fxRate, setFxRate] = useState(FALLBACK_FX_ARS_USD);
@@ -2676,6 +2679,24 @@ function AppInner() {
       )
       .then((fresh) => {
         if (!cancelled) setContacts(fresh);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, getAccessToken]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    getAccessToken()
+      .then((token) =>
+        loadTransactions(user.id, token, (cached) => {
+          if (!cancelled) setTxs((prev) => mergeByHash(cached, prev));
+        })
+      )
+      .then((fresh) => {
+        if (!cancelled) setTxs((prev) => mergeByHash(fresh, prev));
       })
       .catch(() => {});
     return () => {
@@ -2758,9 +2779,17 @@ function AppInner() {
     [address]
   );
 
-  const pushTx = useCallback((entry) => {
-    setTxs((t) => [entry, ...t]);
-  }, []);
+  const pushTx = useCallback(
+    (entry) => {
+      const withTimestamp = { ...entry, createdAt: new Date().toISOString() };
+      setTxs((t) => [withTimestamp, ...t]);
+      if (!user?.id) return;
+      getAccessToken()
+        .then((token) => addTransaction(user.id, token, txsRef.current, withTimestamp))
+        .catch(() => {});
+    },
+    [user?.id, getAccessToken]
+  );
 
   const sendPayment = useCallback(
     async (parsed) => {
@@ -2778,12 +2807,18 @@ function AppInner() {
         usdc: parsed.usdc,
         memo,
       });
+      const effectiveFxRate = parsed.fxRate || fxRate;
+      const ars = parsed.usdc * effectiveFxRate;
       pushTx({
         hash: tx.hash,
         who: parsed.contact.name,
         amt: parsed.usdc,
+        fxRate: effectiveFxRate,
+        ars,
         factura: parsed.factura,
-        fxRate: parsed.fxRate,
+        block: tx.block,
+        fee: tx.fee,
+        memo: tx.memo,
         kind,
         direction: "out",
       });
@@ -2796,8 +2831,8 @@ function AppInner() {
         memo: tx.memo,
         factura: parsed.factura,
         usdc: parsed.usdc,
-        ars: parsed.usdc * (parsed.fxRate || fxRate),
-        fxRate: parsed.fxRate || fxRate,
+        ars,
+        fxRate: effectiveFxRate,
         ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       };
     },
@@ -2811,8 +2846,12 @@ function AppInner() {
         hash: result.hash,
         who: t("charge.merchantSelf"),
         amt: result.usdc,
-        factura: result.factura,
         fxRate: result.fxRate,
+        ars: result.ars,
+        factura: result.factura,
+        block: result.block,
+        fee: result.fee,
+        memo: result.memo,
         kind: "charge",
         direction: "in",
       });
@@ -2834,8 +2873,12 @@ function AppInner() {
         hash: result.hash,
         who: t("convert.treasuryLabel"),
         amt: result.usdc,
-        factura: result.factura,
         fxRate: result.fxRate,
+        ars: result.ars,
+        factura: result.factura,
+        block: result.block,
+        fee: result.fee,
+        memo: result.memo,
         kind: "convert_ars_usdc",
         direction: "in",
       });
@@ -2857,8 +2900,12 @@ function AppInner() {
         hash: result.hash,
         who: t("convert.treasuryLabel"),
         amt: result.usdc,
-        factura: result.factura,
         fxRate: result.fxRate,
+        ars: result.ars,
+        factura: result.factura,
+        block: result.block,
+        fee: result.fee,
+        memo: result.memo,
         kind: "convert_usdc_ars",
         direction: "out",
       });
