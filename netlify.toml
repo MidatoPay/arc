@@ -4,6 +4,13 @@
 
 [functions]
   directory = "netlify/functions"
+  # Default zip-it-and-ship-it tracer mis-packages @privy-io/server-auth's
+  # @hpke/* deps (conditional dual ESM/CJS exports) — it copies
+  # @hpke/common/script/mod.js into the deploy zip but drops the relative
+  # ./src/errors.js it requires, crashing contacts.js at cold start with
+  # "Cannot find module './src/errors.js'". esbuild fully bundles instead
+  # of copying node_modules, avoiding the mis-trace.
+  node_bundler = "esbuild"
 
 # Reemplaza al proxy /rpc de Vite (solo existe en dev) por una function
 # que hace de puente al RPC real, igual que vite.config.js.
