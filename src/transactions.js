@@ -112,7 +112,8 @@ export function loadTransactions(userId, token, onCache) {
 
 export async function addTransaction(userId, token, list, data) {
   const { transaction } = await api("/transactions", token, { method: "POST", body: JSON.stringify(toWire(data)) });
-  const next = mergeByHash([fromWire(transaction)], list);
+  const fresh = fromWire(transaction);
+  const next = [fresh, ...list.filter((tx) => tx.hash !== fresh.hash)];
   writeCache(userId, next);
   return next;
 }

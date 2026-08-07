@@ -14,10 +14,10 @@ npm run preview            # preview the production build
 
 There is no lint script, no test runner, and no test files in this repo — don't assume `npm test` or `npm run lint` exist.
 
-**Contacts agenda needs a second process.** Unlike `/rpc`/`/eth-rpc`, `/contacts` has no public fallback — it's a Netlify Function backed by Postgres, and it must actually be running for the agenda to load in dev. Run in a separate terminal:
+**Contacts agenda and transaction history need a second process.** Unlike `/rpc`/`/eth-rpc`, `/contacts` and `/transactions` have no public fallback — they're Netlify Functions backed by Postgres, and one must actually be running for the agenda/history to load in dev. Without it, `/contacts` and `/transactions` GET/POST calls fail — and since `pushTx`'s persistence call is wrapped in `.catch(() => {})`, transaction saves fail *silently*: the Activity tab just won't persist across refresh, with no visible error in the UI or console. Run in a separate terminal:
 
 ```bash
-npx netlify functions:serve   # serves netlify/functions/* on :9999; vite.config.js proxies /contacts there
+npx netlify functions:serve   # serves netlify/functions/* on :9999; vite.config.js proxies /contacts and /transactions there
 ```
 
 ### Required env vars (`.env`, see `.env.example`)
@@ -25,7 +25,7 @@ npx netlify functions:serve   # serves netlify/functions/* on :9999; vite.config
 - `VITE_PRIVY_APP_ID` — required. Without it, `src/main.jsx` renders a "missing App ID" screen instead of the app.
 - `VITE_ANTHROPIC_API_KEY` — optional. Without it, voice/text commands fall back to a local regex parser (`localParse` in `src/App.jsx`).
 - `VITE_ARC_RPC` — optional. Without it, the Vite dev proxy (`vite.config.js`) forwards `/rpc` to the public Arc testnet RPC, which rate-limits.
-- `AIVEN_PG_URL`, `AIVEN_PG_CA_CERT`, `PRIVY_APP_SECRET` — required for the contacts agenda (`netlify/functions/contacts.js`). Server-side only, no `VITE_` prefix. See `docs/superpowers/specs/2026-08-05-contacts-agenda-design.md` § 1.5 for where to get each one.
+- `AIVEN_PG_URL`, `AIVEN_PG_CA_CERT`, `PRIVY_APP_SECRET` — required for the contacts agenda (`netlify/functions/contacts.js`) and the transaction history (`netlify/functions/transactions.js`). Server-side only, no `VITE_` prefix. See `docs/superpowers/specs/2026-08-05-contacts-agenda-design.md` § 1.5 for where to get each one.
 
 ## Architecture
 
@@ -42,7 +42,8 @@ Supporting files:
 - `src/fiatRail.js` — simulated ARS payment rail (swap body later for a real PSP).
 - `src/flows.js` — `runChargeFlow`, `runConvertArsToUsdc`, `runConvertUsdcToArs` orchestration.
 - `src/contacts.js` — contacts agenda client: talks to the `/contacts` Netlify Function (Postgres via Aiven), with a `localStorage` stale-while-revalidate cache keyed by Privy `user.id` so the agenda survives across devices. Not a local-storage-only module — see `netlify/functions/contacts.js` and `db/schema.sql`.
-- `db/schema.sql` — `contacts` table DDL for Aiven Postgres; run manually once against the DB, not an auto-migration.
+- `src/transactions.js` — transaction history client, same pattern as `src/contacts.js`: talks to the `/transactions` Netlify Function (Postgres via Aiven) with a `localStorage` stale-while-revalidate cache keyed by Privy `user.id`. See `netlify/functions/transactions.js` and `db/schema.sql`.
+- `db/schema.sql` — `contacts` and `transactions` table DDL for Aiven Postgres; run manually once against the DB, not an auto-migration.
 - `src/main.jsx` — polyfills (`Buffer`/`global`/`process`) required by Privy, then mounts `<PrivyProvider>` wrapping `<App>`. Login methods are restricted to email/SMS with embedded-wallet auto-creation.
 - `vite.config.js` — proxies `/rpc` → Arc RPC and `/eth-rpc` → Ethereum RPC (`VITE_ETH_RPC` or publicnode).
 
@@ -66,10 +67,10 @@ Recipients resolve against the hardcoded `CONTACTS` array (alias → name/addres
 
 ## Deployment (Netlify)
 
-Deployed as a static site via `netlify.toml`. The dev-only proxies from `vite.config.js` don't exist in a static build, so Netlify Functions replicate them: `rpc.js` for Arc (`/rpc`), `eth-rpc.js` for Ethereum (`/eth-rpc`, Chainlink reads), and `contacts.js` for the contacts agenda (`/contacts`, Postgres via Aiven). Keep Vite proxies and functions in sync if the proxy logic changes.
+Deployed as a static site via `netlify.toml`. The dev-only proxies from `vite.config.js` don't exist in a static build, so Netlify Functions replicate them: `rpc.js` for Arc (`/rpc`), `eth-rpc.js` for Ethereum (`/eth-rpc`, Chainlink reads), `contacts.js` for the contacts agenda (`/contacts`, Postgres via Aiven), and `transactions.js` for the transaction history (`/transactions`, Postgres via Aiven). Keep Vite proxies and functions in sync if the proxy logic changes.
 
 Required setup in the Netlify dashboard (not in this repo):
-- Site environment variables: `VITE_PRIVY_APP_ID` (required), `VITE_ANTHROPIC_API_KEY` (optional), `VITE_ARC_RPC` (optional), `VITE_ETH_RPC` (optional — Ethereum RPC for the Chainlink feed), `AIVEN_PG_URL`/`AIVEN_PG_CA_CERT`/`PRIVY_APP_SECRET` (required for the contacts agenda).
+- Site environment variables: `VITE_PRIVY_APP_ID` (required), `VITE_ANTHROPIC_API_KEY` (optional), `VITE_ARC_RPC` (optional), `VITE_ETH_RPC` (optional — Ethereum RPC for the Chainlink feed), `AIVEN_PG_URL`/`AIVEN_PG_CA_CERT`/`PRIVY_APP_SECRET` (required for the contacts agenda and the transaction history).
 - Add the deployed domain (e.g. `<site>.netlify.app`) under **Domains** in the Privy dashboard, or login will fail.
 - Run `db/schema.sql` against the Aiven Postgres instance once (it's not applied automatically on deploy).
 

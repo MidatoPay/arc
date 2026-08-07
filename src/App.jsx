@@ -662,7 +662,7 @@ function Home({
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
-        txs.map((tx) => <TxCard key={tx.hash} tx={tx} compact />)
+        txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} compact />)
       )}
     </div>
   );
@@ -2178,7 +2178,7 @@ function TxCard({ tx, compact = false }) {
   const iconColor = isConvert ? "#fe6c1c" : inbound ? C.orange : C.violet;
 
   const time = tx.createdAt
-    ? new Date(tx.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
+    ? new Date(tx.createdAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
     : "—";
 
   return (
