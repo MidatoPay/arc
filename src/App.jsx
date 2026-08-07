@@ -8,7 +8,7 @@ import {
   nuevaFactura,
   sendNativeUsdc,
 } from "./arc.js";
-import { FALLBACK_FX_ARS_USD, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs } from "./fx.js";
+import { FALLBACK_FX_ARS_USD, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
 import {
   estimateConvertUsdcToArs,
   runChargeFlow,
@@ -60,7 +60,7 @@ function persistArsBalance(address, amount) {
 
 // ————— design tokens (MidatoPay) —————
 const C = {
-  bg: "#F4F4F6",
+  bg: "#F7F7F9",
   card: "#FFFFFF",
   ink: "#16161A",
   mut: "#7A7A85",
@@ -76,7 +76,24 @@ const C = {
 // ————— util —————
 const fmt = (n, d = 2, locale = "en-US") => Number(n).toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmt0 = (n, locale = "en-US") => Number(n).toLocaleString(locale, { maximumFractionDigits: 0 });
+/** Montos ARS siempre en formato argentino: 32.940,00 */
+const fmtArs = (n) =>
+  Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
+
+/** USDC → ARS con cotización Chainlink (ARS por 1 USDC). Tolera saldo 0. */
+function usdcBalanceToArs(usdcAmount, arsPerUsdc) {
+  const usdc = Number(usdcAmount);
+  const rate = Number(arsPerUsdc);
+  if (!Number.isFinite(usdc) || usdc < 0) return null;
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  if (usdc === 0) return 0;
+  try {
+    return usdcToArs(usdc, rate);
+  } catch {
+    return null;
+  }
+}
 
 function localParse(text, lang) {
   const t = text.toLowerCase();
@@ -137,15 +154,16 @@ Reglas: "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Si la mone
 }
 
 // ————— primitivos de UI —————
-function Card({ children, style, onClick }) {
+function Card({ children, style, onClick, className }) {
   return (
     <div
       onClick={onClick}
+      className={className}
       style={{
-        background: C.card,
+        background: C.bg,
         borderRadius: 22,
         padding: 20,
-        boxShadow: "0 1px 3px rgba(20,20,30,.05), 0 8px 24px rgba(20,20,30,.04)",
+        boxShadow: "none",
         ...style,
       }}
     >
@@ -179,32 +197,184 @@ const btnOutline = {
   fontFamily: "inherit",
 };
 
-function CircleAction({ icon, label, onClick, tone = C.violet }) {
+function CircleAction({ icon, label, onClick, background }) {
   return (
     <button
       onClick={onClick}
       style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flex: 1, fontFamily: "inherit", padding: 0 }}
     >
-      <div style={{ width: 58, height: 58, borderRadius: "50%", background: tone, display: "grid", placeItems: "center", color: "#fff", fontSize: 22 }}>
+      <div
+        style={{
+          width: 58,
+          height: 58,
+          borderRadius: "50%",
+          background: background || C.orange,
+          display: "grid",
+          placeItems: "center",
+          color: "#fff",
+          flexShrink: 0,
+        }}
+      >
         {icon}
       </div>
-      <span style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>{label}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 600, color: C.mut }}>{label}</span>
     </button>
   );
 }
+
+const IconArrowDown = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconArrowUp = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconSwap = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M7 8h14M17 4l4 4-4 4M17 16H3M7 20l-4-4 4-4" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconEye = ({ size = 22, crossed = false }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+    {crossed && <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />}
+  </svg>
+);
+
+const IconMenuList = ({ size = 24 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    <circle cx="4" cy="6" r="1.4" fill="currentColor" />
+    <circle cx="4" cy="12" r="1.4" fill="currentColor" />
+    <circle cx="4" cy="18" r="1.4" fill="currentColor" />
+  </svg>
+);
+
+const IconArFlag = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+    <circle cx="12" cy="12" r="12" fill="#74ACDF" />
+    <rect x="0" y="8" width="24" height="8" fill="#fff" />
+    <circle cx="12" cy="12" r="2.6" fill="#F6B40E" />
+  </svg>
+);
+
+const IconHome = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5.2v-6.2H10.2V21H5a1 1 0 0 1-1-1v-9.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconActivity = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+  </svg>
+);
+
+const IconStack = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="4" y="5" width="7" height="14" rx="1.6" stroke="currentColor" strokeWidth="1.8" />
+    <rect x="13" y="5" width="7" height="14" rx="1.6" stroke="currentColor" strokeWidth="1.8" />
+  </svg>
+);
+
+const IconContacts = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M7 4.5h11.5A1.5 1.5 0 0 1 20 6v12a1.5 1.5 0 0 1-1.5 1.5H7" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <path d="M7 4.5A2.5 2.5 0 0 0 4.5 7v10A2.5 2.5 0 0 0 7 19.5" stroke="currentColor" strokeWidth="1.8" />
+    <rect x="9.5" y="8" width="7" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M10.5 16.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const IconMic = ({ size = 26 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="9" y="3.5" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.9" />
+    <path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v3.5M9 20.5h6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+  </svg>
+);
+
+const IconFaucet = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M8 4h8M12 4v3M7 10h10a2 2 0 0 1 2 2v2H5v-2a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <path d="M12 14v3.5a2.5 2.5 0 0 0 5 0V16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const IconSearch = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const IconGlobe = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M3 12h18M12 3c2.8 2.6 4.2 5.7 4.2 9s-1.4 6.4-4.2 9c-2.8-2.6-4.2-5.7-4.2-9S9.2 5.6 12 3Z" stroke="currentColor" strokeWidth="1.8" />
+  </svg>
+);
+
+const IconLogout = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M14 8l4 4-4 4M18 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconChevron = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const GRAD_COBRAR = "linear-gradient(180deg, #fe6c1c, #fe6c1c, #fe6c1c, #ffb58d, #ffb58d)";
+const GRAD_CONVERTIR = "radial-gradient(circle at 0% 0%, #ffb58d, #fe6c1c, #fe6c1c, #ffb58d, #fe6c1c)";
+const GRAD_PAGAR = "linear-gradient(180deg, #ffb58d, #ffb58d, #fe6c1c, #fe6c1c, #fe6c1c)";
 
 function NavButton({ active, icon, label, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
-        alignItems: "center", gap: 3, fontFamily: "inherit", padding: 0,
-        color: active ? C.violet : C.mut,
+        flex: 1,
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        fontFamily: "inherit",
+        padding: "4px 0 0",
+        color: active ? "#fe6c1c" : "#8A8A96",
+        transition: "color .2s ease, transform .15s ease",
+        transform: active ? "translateY(-1px)" : "none",
       }}
     >
-      <span style={{ fontSize: 18 }}>{icon}</span>
-      <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 36,
+          height: 28,
+          filter: active ? "drop-shadow(0 4px 10px rgba(254,108,28,.35))" : "none",
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.1 }}>{label}</span>
     </button>
   );
 }
@@ -266,32 +436,88 @@ function Login({ onLogin, ready }) {
   return (
     <div className="mp-stage">
       <div className="mp-device" style={{ background: C.card }}>
-        <div style={{ position: "absolute", top: 18, right: 18, zIndex: 5 }}>
-          <LangToggle />
-        </div>
-        <div className="mp-scroll" style={{ display: "flex", flexDirection: "column", justifyContent: "center", padding: "32px 26px", gap: 30 }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
-            <Mark size={104} />
-            <Wordmark size={30} />
+        <div
+          className="mp-scroll"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "100%",
+            padding: "22px 28px 28px",
+            boxSizing: "border-box",
+          }}
+        >
+          {/* Idioma en su propia fila — no flota sobre el título */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              flexShrink: 0,
+              marginBottom: 28,
+            }}
+          >
+            <LangToggle />
           </div>
 
-          <div style={{ textAlign: "center" }}>
-            <h1 style={{ fontSize: 23, fontWeight: 700, letterSpacing: -0.4, margin: 0, color: C.ink, lineHeight: 1.3 }}>
-              {t("login.title1")}
-              <br />
-              {t("login.title2")}
+          <div style={{ textAlign: "center", flexShrink: 0 }}>
+            <h1
+              style={{
+                fontSize: 28,
+                fontWeight: 700,
+                letterSpacing: -0.5,
+                margin: 0,
+                color: C.ink,
+                lineHeight: 1.25,
+              }}
+            >
+              {t("login.welcome")}{" "}
+              <span style={{ color: "#6A6A72" }}>Midato</span>
+              <span style={{ color: C.orange }}>Pay</span>
             </h1>
-            <p style={{ fontSize: 14.5, color: C.mut, marginTop: 10, lineHeight: 1.55 }}>{t("login.subtitle")}</p>
+            <p
+              style={{
+                fontSize: 16,
+                fontWeight: 400,
+                color: C.mut,
+                marginTop: 8,
+                lineHeight: 1.4,
+              }}
+            >
+              {t("login.subtitle")}
+            </p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 0,
+              marginTop: 8,
+              marginBottom: 8,
+            }}
+          >
+            <img
+              src="/inicio-app/gato-inicio.png"
+              alt="MidatoPay"
+              style={{
+                width: "100%",
+                maxWidth: 280,
+                height: "auto",
+                maxHeight: "100%",
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, flexShrink: 0 }}>
             <button onClick={onLogin} disabled={!ready} style={{ ...btnOrange, opacity: ready ? 1 : 0.5 }}>
               {ready ? t("login.loginBtn") : t("login.loadingBtn")}
             </button>
             <button onClick={onLogin} disabled={!ready} style={{ ...btnOutline, opacity: ready ? 1 : 0.5 }}>
               {t("login.createAccountBtn")}
             </button>
-            <p style={{ fontSize: 11, color: C.mut, textAlign: "center", marginTop: 4 }}>{t("login.footer")}</p>
           </div>
         </div>
       </div>
@@ -301,57 +527,94 @@ function Login({ onLogin, ready }) {
 
 // ————— Inicio —————
 function Home({
-  nombre, address, balance, arsBalance, treasuryBalance, treasuryAddress,
-  refreshing, onRefresh, txs, goCharge, goConvert, goVoice, fxRate,
+  nombre, address, balance, arsBalance,
+  txs, goCharge, goConvert, goVoice, goMore, fxRate,
 }) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const usdcInArs = balance === null ? null : balance * fxRate;
+  // Available y Funds (USDC) en ARS: siempre USDC × cotización Chainlink (ARS por 1 USDC).
+  const usdcInArs = balance === null ? null : usdcBalanceToArs(balance, fxRate);
   const availableArs = (arsBalance || 0) + (usdcInArs || 0);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {}
-  };
+  const initial = (nombre || "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Logo />
-        <div style={{ fontSize: 21, fontWeight: 700, color: C.ink, flex: 1 }}>{t("home.greeting", nombre)}</div>
-        <button onClick={onRefresh} style={{ width: 42, height: 42, borderRadius: "50%", background: C.orangeSoft, border: "none", cursor: "pointer", color: C.orange, fontSize: 17 }}>
-          {refreshing ? "·" : "↻"}
+        <div
+          aria-hidden
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: C.orangeSoft,
+            color: "#fe6c1c",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 18,
+            fontWeight: 700,
+            flexShrink: 0,
+            letterSpacing: 0,
+          }}
+        >
+          {initial}
+        </div>
+        <div style={{ fontSize: 21, flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+          <span style={{ fontWeight: 500, color: C.mut }}>{t("home.greetingHi")} </span>
+          <span style={{ fontWeight: 700, color: "#fe6c1c" }}>{nombre}</span>
+        </div>
+        <button
+          onClick={goMore}
+          aria-label={t("nav.more")}
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            color: "#fe6c1c",
+            display: "grid",
+            placeItems: "center",
+            padding: 0,
+          }}
+        >
+          <IconMenuList />
         </button>
       </div>
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: C.mut }}>{t("home.available")}</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: C.mut }}>ARS</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <IconArFlag size={18} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.mut }}>ARS</span>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
           <div style={{ fontSize: 38, fontWeight: 700, letterSpacing: -1, color: C.ink }}>
-            {oculto ? "$ ••••••" : `$ ${fmt0(availableArs, locale)}`}
+            {oculto ? "$ ••••••" : `$ ${fmtArs(availableArs)}`}
           </div>
-          <button onClick={() => setOculto(!oculto)} style={{ background: "none", border: "none", cursor: "pointer", color: C.mut, fontSize: 17 }}>
-            {oculto ? "🙈" : "👁"}
+          <button
+            onClick={() => setOculto(!oculto)}
+            aria-label={oculto ? "Show" : "Hide"}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: C.mut,
+              display: "grid",
+              placeItems: "center",
+              padding: 4,
+            }}
+          >
+            <IconEye crossed={oculto} />
           </button>
-        </div>
-        <div style={{ fontSize: 12.5, color: C.mut, marginTop: 6 }}>
-          {t("home.availableBreakdown", fmt0(arsBalance || 0, locale), balance === null ? "—" : fmt(balance, 2, locale))}
-        </div>
-        <div style={{ fontSize: 12, color: C.mut, marginTop: 4 }}>
-          {t("home.fxLine", fmt0(fxRate, locale))}
         </div>
 
         <div style={{ display: "flex", gap: 6, marginTop: 20 }}>
-          <CircleAction icon="↓" label={t("home.actionReceive")} onClick={goCharge} />
-          <CircleAction icon="⇄" label={t("home.actionConvert")} onClick={goConvert} />
-          <CircleAction icon="🎙" label={t("home.actionPay")} onClick={goVoice} tone={C.orange} />
+          <CircleAction icon={<IconArrowDown />} label={t("home.actionReceive")} onClick={goCharge} background={GRAD_COBRAR} />
+          <CircleAction icon={<IconSwap />} label={t("home.actionConvert")} onClick={goConvert} background={GRAD_CONVERTIR} />
+          <CircleAction icon={<IconArrowUp />} label={t("home.actionPay")} onClick={goVoice} background={GRAD_PAGAR} />
         </div>
       </Card>
 
@@ -363,42 +626,23 @@ function Home({
           </a>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#2775CA", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 15 }}>$</div>
+          <img src="/monedas/usdc.png" alt="USDC" width={38} height={38} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>USDC</div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{usdcInArs === null ? "—" : `$${fmt0(usdcInArs, locale)}`}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{usdcInArs === null ? "—" : `$${fmtArs(usdcInArs)}`}</div>
             <div style={{ fontSize: 14, color: C.mut }}>{balance === null ? "" : `${fmt(balance, 2, locale)} USDC`}</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-          <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 13 }}>ARS</div>
+          <img src="/monedas/ars.png" alt="ARS" width={38} height={38} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>ARS</div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{oculto ? "$ ••••••" : `$ ${fmt0(arsBalance || 0, locale)}`}</div>
-            <div style={{ fontSize: 12.5, color: C.mut }}>{t("home.arsSimulated")}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{oculto ? "$ ••••••" : `$ ${fmtArs(arsBalance || 0)}`}</div>
           </div>
         </div>
-        {treasuryAddress && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-            <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: C.orange, fontWeight: 700, fontSize: 14 }}>T</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("home.treasuryTitle")}</div>
-              <div style={{ fontSize: 11.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(treasuryAddress)}</div>
-            </div>
-            <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: C.ink }}>
-              {treasuryBalance === null ? "—" : `${fmt(treasuryBalance, 2, locale)} USDC`}
-            </div>
-          </div>
-        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
           <span style={{ color: C.violet, fontSize: 14 }}>ⓘ</span>
           <span style={{ fontSize: 13.5, color: C.violet, flex: 1 }}>{t("home.infoDigitalAssets")}</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12.5, color: C.mut }}>
-          <span style={{ fontFamily: "ui-monospace, monospace" }}>{short(address)}</span>
-          <button onClick={copy} style={{ background: C.bg, border: "none", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, color: C.ink, cursor: "pointer", fontFamily: "inherit" }}>
-            {copied ? t("home.copied") : t("home.copy")}
-          </button>
         </div>
       </Card>
 
@@ -416,28 +660,17 @@ function Home({
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
-        txs.map((tx) => (
-          <Card key={tx.hash} style={{ padding: 16, display: "flex", alignItems: "center", gap: 13 }}>
-            <div style={{ width: 42, height: 42, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontSize: 17 }}>↑</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{tx.who}</div>
-              <a href={`${ARC.explorer}/tx/${tx.hash}`} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: C.mut, textDecoration: "none" }}>
-                {t("home.invoiceLink", tx.factura)}
-              </a>
-            </div>
-            <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>−{fmt(tx.amt, 2, locale)}</div>
-          </Card>
-        ))
+        txs.map((tx) => <TxCard key={tx.hash} tx={tx} fxRate={fxRate} compact />)
       )}
     </div>
   );
 }
 
-function AmountField({ label, value, onChange, placeholder, suffix }) {
+function AmountField({ label, value, onChange, placeholder, suffix, logo }) {
   return (
     <label style={{ display: "block" }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.bg, borderRadius: 14, padding: "4px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, borderRadius: 14, padding: "4px 14px", border: `1px solid ${C.line}` }}>
         <input
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
@@ -445,7 +678,12 @@ function AmountField({ label, value, onChange, placeholder, suffix }) {
           placeholder={placeholder}
           style={{ flex: 1, border: "none", background: "transparent", fontSize: 22, fontWeight: 700, color: C.ink, padding: "14px 0", fontFamily: "inherit", outline: "none", minWidth: 0 }}
         />
-        <span style={{ fontSize: 14, fontWeight: 700, color: C.mut }}>{suffix}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {logo && (
+            <img src={logo} alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", display: "block" }} />
+          )}
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.mut }}>{suffix}</span>
+        </div>
       </div>
     </label>
   );
@@ -467,7 +705,7 @@ function GasEstimatePanel({ estimate, loading, error, onRetry, fxRate, locale, t
     rows.push([t("gas.totalNative"), `${fmt(estimate.feeNative, 6, locale)} ${estimate.nativeSymbol}`]);
     rows.push([t("gas.totalUsd"), `$${fmt(estimate.feeUsd, 6, locale)} USD`]);
     if (fxRate) {
-      rows.push([t("gas.totalArs"), `$ ${fmt0(estimate.feeNative * fxRate, locale)} ARS`]);
+      rows.push([t("gas.totalArs"), `$ ${fmtArs(estimate.feeNative * fxRate)} ARS`]);
     }
   }
 
@@ -560,7 +798,7 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
 }
 
 // ————— Cobrar (ARS → USDC vía recaudadora) —————
-function Charge({ address, fxRate, treasuryBalance, onCharge, onDone }) {
+function Charge({ fxRate, onCharge, onDone }) {
   const { t, locale } = useLanguage();
   const [arsInput, setArsInput] = useState("");
   const [phase, setPhase] = useState("form"); // form | working | error
@@ -588,32 +826,52 @@ function Charge({ address, fxRate, treasuryBalance, onCharge, onDone }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
-        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("charge.subtitle")}</p>
-      </div>
+      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
 
-      <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <AmountField label={t("charge.arsLabel")} value={arsInput} onChange={setArsInput} placeholder="15000" suffix="ARS" />
-        <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <Card style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <AmountField
+          label={t("charge.arsLabel")}
+          value={arsInput}
+          onChange={setArsInput}
+          placeholder="5000"
+          suffix="ARS"
+          logo="/monedas/ars.png"
+        />
+
+        <div style={{ display: "grid", gap: 12, fontSize: 14.5 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ color: C.mut }}>{t("voice.exchangeRate")}</span>
-            <span style={{ fontWeight: 600, color: C.ink }}>1 USDC = ${fmt0(fxRate, locale)}</span>
+            <span style={{ fontWeight: 600, color: C.ink }}>1 USDC = ${fmtArs(fxRate)}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              background: C.card,
+              borderRadius: 14,
+              padding: "14px 16px",
+              border: `1px solid ${C.line}`,
+            }}
+          >
             <span style={{ color: C.mut }}>{t("charge.youReceive")}</span>
-            <span style={{ fontWeight: 700, color: C.ink }}>{quote ? `${fmt(quote.usdc, 2, locale)} USDC` : "—"}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: C.mut }}>{t("home.treasuryTitle")}</span>
-            <span style={{ fontWeight: 600, color: C.ink }}>{treasuryBalance === null ? "—" : `${fmt(treasuryBalance, 2, locale)} USDC`}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img src="/monedas/usdc.png" alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+              <span style={{ fontWeight: 700, color: C.ink, fontSize: 16 }}>
+                {quote ? `${fmt(quote.usdc, 2, locale)} USDC` : "—"}
+              </span>
+            </div>
           </div>
         </div>
-        <div style={{ fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>{t("charge.fiatHint")}</div>
       </Card>
 
       {phase === "working" && (
         <Card style={{ textAlign: "center", padding: 28 }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 14 }}>
+            <img src="/monedas/ars.png" alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: "50%" }} />
+            <span style={{ color: C.mut, fontSize: 22, lineHeight: "36px" }}>→</span>
+            <img src="/monedas/usdc.png" alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: "50%" }} />
+          </div>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{t("charge.working")}</div>
           <div style={{ fontSize: 13.5, color: C.mut, marginTop: 8 }}>{t("charge.workingHint")}</div>
         </Card>
@@ -626,31 +884,30 @@ function Charge({ address, fxRate, treasuryBalance, onCharge, onDone }) {
       <button
         onClick={submit}
         disabled={phase === "working" || !quote}
-        style={{ ...btnOrange, opacity: phase === "working" || !quote ? 0.5 : 1 }}
+        style={{
+          ...btnOrange,
+          opacity: phase === "working" || !quote ? 0.5 : 1,
+          background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
+          boxShadow: "0 10px 22px rgba(254,108,28,.28)",
+        }}
       >
         {phase === "working" ? t("charge.working") : t("charge.cta")}
       </button>
-      <div style={{ fontSize: 11.5, color: C.mut, textAlign: "center" }}>{short(address)}</div>
     </div>
   );
 }
 
 // ————— Convertir (ARS ↔ USDC) —————
-function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConvertArsUsdc, onConvertUsdcArs, onDone }) {
+function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onConvertUsdcArs, onDone }) {
   const { t, locale } = useLanguage();
   const [direction, setDirection] = useState("ars_usdc"); // ars_usdc | usdc_ars
   const [amount, setAmount] = useState("");
   const [phase, setPhase] = useState("form");
   const [errMsg, setErrMsg] = useState("");
   const n = Number(amount);
-  const quote =
-    Number.isFinite(n) && n > 0
-      ? direction === "ars_usdc"
-        ? quoteArsToUsdc(n, fxRate)
-        : quoteUsdcToArs(n, fxRate)
-      : null;
-
+  const sellIsArs = direction === "ars_usdc";
   const needsUserSignature = direction === "usdc_ars";
+
   const estimateConvertFn = useCallback(() => {
     if (!needsUserSignature || !Number.isFinite(n) || n <= 0) {
       return Promise.reject(new Error("Sin monto"));
@@ -667,20 +924,132 @@ function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConv
     estimateFn: estimateConvertFn,
   });
 
+  const feeUsdc =
+    needsUserSignature && Number.isFinite(gas.estimate?.feeNative)
+      ? Number(gas.estimate.feeNative)
+      : 0;
+  const feeReady = !needsUserSignature || (!gas.loading && !!gas.estimate && !gas.error);
+  // USDC→ARS: el monto ingresado es el total que sale de la wallet; el fee se reserva y el resto se convierte.
+  const transferUsdc = needsUserSignature
+    ? feeReady
+      ? Math.max(0, n - feeUsdc)
+      : null
+    : Number.isFinite(n) && n > 0
+      ? n
+      : null;
+
+  const quote =
+    sellIsArs
+      ? Number.isFinite(n) && n > 0
+        ? quoteArsToUsdc(n, fxRate)
+        : null
+      : transferUsdc != null && transferUsdc > 0
+        ? quoteUsdcToArs(transferUsdc, fxRate)
+        : null;
+
+  const sellLogo = sellIsArs ? "/monedas/ars.png" : "/monedas/usdc.png";
+  const buyLogo = sellIsArs ? "/monedas/usdc.png" : "/monedas/ars.png";
+  const sellToken = sellIsArs ? "ARS" : "USDC";
+  const buyToken = sellIsArs ? "USDC" : "ARS";
+  const sellBalLabel = sellIsArs
+    ? `$ ${fmtArs(arsBalance || 0)}`
+    : balance === null
+      ? "—"
+      : `${fmt(balance, 2, locale)}`;
+
+  const buyPrimary = quote
+    ? sellIsArs
+      ? fmt(quote.usdc, 2, locale)
+      : fmtArs(quote.ars)
+    : needsUserSignature && gas.loading
+      ? "…"
+      : "0";
+
+  const sellSecondary =
+    Number.isFinite(n) && n > 0
+      ? sellIsArs
+        ? quote
+          ? `≈ ${fmt(quote.usdc, 2, locale)} USDC`
+          : "—"
+        : `$ ${fmtArs(n * fxRate)}`
+      : "$ 0";
+
+  const buySecondary = quote
+    ? sellIsArs
+      ? `$ ${fmtArs(n)}`
+      : `≈ ${fmt(transferUsdc, 4, locale)} USDC`
+    : "$ 0";
+
+  const canSubmit =
+    !!quote &&
+    phase !== "working" &&
+    !(needsUserSignature && !address) &&
+    !(needsUserSignature && !feeReady) &&
+    !(needsUserSignature && transferUsdc != null && transferUsdc <= 0);
+
+  const flip = () => {
+    const next = direction === "ars_usdc" ? "usdc_ars" : "ars_usdc";
+    if (quote) {
+      setAmount(direction === "ars_usdc" ? String(quote.usdc) : String(Number(quote.ars.toFixed(2))));
+    } else {
+      setAmount("");
+    }
+    setDirection(next);
+    setErrMsg("");
+    setPhase("form");
+  };
+
+  const setMax = () => {
+    if (sellIsArs) {
+      setAmount(String(Number((arsBalance || 0).toFixed(2))));
+    } else if (balance != null) {
+      // Monto bruto = saldo completo (incluye reserva para fee de red).
+      setAmount(String(Number(Number(balance).toFixed(6))));
+    }
+  };
+
+  const onAmountChange = (raw) => {
+    setAmount(raw.replace(/[^\d.,]/g, "").replace(",", "."));
+  };
+
   const submit = async () => {
     setErrMsg("");
     setPhase("working");
     try {
       if (!isTreasuryConfigured()) throw new Error(t("charge.treasuryMissing"));
-      const result =
-        direction === "ars_usdc" ? await onConvertArsUsdc(n) : await onConvertUsdcArs(n);
+      if (direction === "ars_usdc") {
+        const result = await onConvertArsUsdc(n);
+        onDone({
+          kind: result.kind,
+          ...result,
+          parsed: {
+            usdc: result.usdc,
+            amount: result.ars,
+            currency: "ARS",
+            fxRate: result.fxRate,
+            contact: { name: t("convert.treasuryLabel"), alias: "treasury" },
+          },
+          ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+        });
+        return;
+      }
+
+      if (!feeReady || transferUsdc == null || transferUsdc <= 0) {
+        throw new Error(t("convert.feePending"));
+      }
+      if (balance !== null && n > balance) {
+        throw new Error(t("voice.insufficientBalance", fmt(n, 2, locale), fmt(balance, 2, locale)));
+      }
+
+      const result = await onConvertUsdcArs(transferUsdc);
       onDone({
         kind: result.kind,
         ...result,
+        fee: feeUsdc,
         parsed: {
           usdc: result.usdc,
-          amount: direction === "ars_usdc" ? result.ars : result.usdc,
-          currency: direction === "ars_usdc" ? "ARS" : "USDC",
+          amount: result.usdc,
+          currency: "USDC",
           fxRate: result.fxRate,
           contact: { name: t("convert.treasuryLabel"), alias: "treasury" },
         },
@@ -692,88 +1061,148 @@ function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConv
     }
   };
 
-  const dirBtn = (id, label) => (
-    <button
-      key={id}
-      onClick={() => { setDirection(id); setAmount(""); setErrMsg(""); setPhase("form"); }}
+  const tokenPill = (logo, symbol) => (
+    <div
       style={{
-        flex: 1, border: "none", cursor: "pointer", fontFamily: "inherit",
-        background: direction === id ? C.ink : "transparent",
-        color: direction === id ? "#fff" : C.mut,
-        borderRadius: 12, padding: "12px 10px", fontSize: 13.5, fontWeight: 700,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        background: C.card,
+        border: `1px solid ${C.line}`,
+        borderRadius: 999,
+        padding: "8px 12px 8px 8px",
       }}
     >
-      {label}
-    </button>
+      <img src={logo} alt="" width={24} height={24} style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
+      <span style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{symbol}</span>
+    </div>
   );
+
+  const panel = (side) => {
+    const isSell = side === "sell";
+    return (
+      <div
+        style={{
+          background: C.bg,
+          borderRadius: isSell ? "22px 22px 18px 18px" : "18px 18px 22px 22px",
+          padding: "16px 18px 18px",
+        }}
+      >
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: C.mut, marginBottom: 10 }}>
+          {isSell ? t("convert.sell") : t("convert.buy")}
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {isSell ? (
+              <input
+                value={amount}
+                onChange={(e) => onAmountChange(e.target.value)}
+                inputMode="decimal"
+                placeholder="0"
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 36,
+                  fontWeight: 600,
+                  color: C.ink,
+                  padding: 0,
+                  fontFamily: "inherit",
+                  outline: "none",
+                  letterSpacing: -0.8,
+                  lineHeight: 1.1,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  fontSize: 36,
+                  fontWeight: 600,
+                  color: quote ? C.ink : C.mut,
+                  letterSpacing: -0.8,
+                  lineHeight: 1.1,
+                  wordBreak: "break-all",
+                }}
+              >
+                {buyPrimary}
+              </div>
+            )}
+            <div style={{ fontSize: 14, color: C.mut, marginTop: 6 }}>
+              {isSell ? sellSecondary : buySecondary}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flexShrink: 0 }}>
+            {tokenPill(isSell ? sellLogo : buyLogo, isSell ? sellToken : buyToken)}
+            {isSell && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.mut }}>
+                <span>{sellBalLabel}</span>
+                <button
+                  type="button"
+                  onClick={setMax}
+                  disabled={sellIsArs ? !(arsBalance > 0) : !(balance > 0)}
+                  style={{
+                    border: "none",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    background: C.orangeSoft,
+                    color: "#fe6c1c",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    borderRadius: 8,
+                    padding: "4px 8px",
+                    opacity: (sellIsArs ? arsBalance > 0 : balance > 0) ? 1 : 0.45,
+                  }}
+                >
+                  {t("convert.max")}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("convert.title")}</h2>
-        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("convert.subtitle")}</p>
-      </div>
+      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("convert.title")}</h2>
 
-      <div style={{ display: "flex", gap: 4, background: C.bg, borderRadius: 14, padding: 4 }}>
-        {dirBtn("ars_usdc", t("convert.arsToUsdc"))}
-        {dirBtn("usdc_ars", t("convert.usdcToArs"))}
-      </div>
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 6 }}>
+        {panel("sell")}
 
-      <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <AmountField
-          label={direction === "ars_usdc" ? t("convert.amountArs") : t("convert.amountUsdc")}
-          value={amount}
-          onChange={setAmount}
-          placeholder={direction === "ars_usdc" ? "10000" : "5"}
-          suffix={direction === "ars_usdc" ? "ARS" : "USDC"}
-        />
-        <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: C.mut }}>{t("voice.exchangeRate")}</span>
-            <span style={{ fontWeight: 600, color: C.ink }}>1 USDC = ${fmt0(fxRate, locale)}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: C.mut }}>{t("convert.youGet")}</span>
-            <span style={{ fontWeight: 700, color: C.ink }}>
-              {quote
-                ? direction === "ars_usdc"
-                  ? `${fmt(quote.usdc, 2, locale)} USDC`
-                  : `$ ${fmt0(quote.ars, locale)} ARS`
-                : "—"}
-            </span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: C.mut }}>{t("convert.yourArs")}</span>
-            <span style={{ fontWeight: 600 }}>$ {fmt0(arsBalance || 0, locale)}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: C.mut }}>{t("convert.yourUsdc")}</span>
-            <span style={{ fontWeight: 600 }}>{balance === null ? "—" : `${fmt(balance, 2, locale)} USDC`}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: C.mut }}>{t("home.treasuryTitle")}</span>
-            <span style={{ fontWeight: 600 }}>{treasuryBalance === null ? "—" : `${fmt(treasuryBalance, 2, locale)} USDC`}</span>
-          </div>
+        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", zIndex: 2 }}>
+          <button
+            type="button"
+            aria-label={t("convert.flip")}
+            onClick={flip}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              border: `4px solid #fff`,
+              background: C.bg,
+              color: C.ink,
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              padding: 0,
+            }}
+          >
+            <IconArrowDown size={18} />
+          </button>
         </div>
-        <div style={{ fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>
-          {direction === "ars_usdc" ? t("convert.hintArsUsdc") : t("convert.hintUsdcArs")}
-        </div>
-        {needsUserSignature && (
-          <GasEstimatePanel
-            estimate={gas.estimate}
-            loading={gas.loading}
-            error={gas.error}
-            onRetry={gas.retry}
-            fxRate={fxRate}
-            locale={locale}
-            t={t}
-          />
-        )}
-      </Card>
+
+        {panel("buy")}
+      </div>
 
       {phase === "working" && (
         <Card style={{ textAlign: "center", padding: 28 }}>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{t("convert.working")}</div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 14 }}>
+            <img src={sellLogo} alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: "50%" }} />
+            <span style={{ color: C.mut, fontSize: 22, lineHeight: "36px" }}>→</span>
+            <img src={buyLogo} alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: "50%" }} />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{t("convert.working")}</div>
           <div style={{ fontSize: 13.5, color: C.mut, marginTop: 8 }}>{t("convert.workingHint")}</div>
         </Card>
       )}
@@ -784,11 +1213,60 @@ function Convert({ address, balance, arsBalance, fxRate, treasuryBalance, onConv
 
       <button
         onClick={submit}
-        disabled={phase === "working" || !quote || (needsUserSignature && !address)}
-        style={{ ...btnOrange, opacity: phase === "working" || !quote || (needsUserSignature && !address) ? 0.5 : 1 }}
+        disabled={!canSubmit}
+        style={{
+          ...btnOrange,
+          borderRadius: 18,
+          background: C.orange,
+          boxShadow: "none",
+          opacity: canSubmit ? 1 : 0.5,
+        }}
       >
         {phase === "working" ? t("convert.working") : needsUserSignature ? t("convert.ctaSign") : t("convert.cta")}
       </button>
+
+      <div style={{ textAlign: "center", fontSize: 13, color: C.mut, fontWeight: 500 }}>
+        1 USDC = ${fmtArs(fxRate)} ARS
+      </div>
+
+      {needsUserSignature && Number.isFinite(n) && n > 0 && phase === "form" && (
+        <div
+          style={{
+            background: C.bg,
+            borderRadius: 16,
+            padding: "14px 16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
+            <div style={{ fontSize: 12.5, color: C.mut, marginTop: 2 }}>{t("convert.feeDeducted")}</div>
+          </div>
+          <div style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700, color: C.ink }}>
+            {gas.loading && <span style={{ color: C.mut, fontWeight: 600 }}>{t("convert.feePending")}</span>}
+            {!gas.loading && gas.error && (
+              <button
+                type="button"
+                onClick={gas.retry}
+                style={{ background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
+              >
+                {t("gas.retry")}
+              </button>
+            )}
+            {!gas.loading && !gas.error && feeReady && (
+              <>
+                <div>− {fmt(feeUsdc, 4, locale)} USDC</div>
+                <div style={{ fontSize: 12.5, color: C.mut, fontWeight: 600, marginTop: 2 }}>
+                  − $ {fmtArs(feeUsdc * fxRate)} ARS
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -940,12 +1418,6 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <style>{`
-        @keyframes mp-ring { 0% { transform: scale(1); opacity:.5 } 100% { transform: scale(1.75); opacity: 0 } }
-        @keyframes mp-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.05) } }
-        @media (prefers-reduced-motion: reduce) { .mp-ring,.mp-orb { animation: none !important } }
-      `}</style>
-
       <div>
         <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("voice.title")}</h2>
         <p style={{ fontSize: 15, color: C.mut, marginTop: 6 }}>{t("voice.subtitle")}</p>
@@ -953,29 +1425,34 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
 
       {(phase === "idle" || phase === "listening" || phase === "parsing") && (
         <>
-          <Card style={{ display: "grid", placeItems: "center", padding: "36px 20px" }}>
-            <div style={{ position: "relative", width: 168, height: 168, display: "grid", placeItems: "center" }}>
+          <Card style={{ display: "grid", placeItems: "center", padding: "40px 20px" }}>
+            <div style={{ position: "relative", width: 176, height: 176, display: "grid", placeItems: "center" }}>
               {active && [0, 1, 2].map((i) => (
-                <div key={i} className="mp-ring" style={{ position: "absolute", inset: 22, borderRadius: "50%", border: `2px solid ${C.orange}`, animation: `mp-ring 1.9s ${i * 0.55}s ease-out infinite` }} />
+                <div
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    inset: 18,
+                    borderRadius: "50%",
+                    border: "1.5px solid rgba(254, 108, 28, 0.45)",
+                    animation: `mp-voice-ring 2.2s ${i * 0.65}s ease-out infinite`,
+                  }}
+                />
               ))}
               <button
                 onClick={active ? () => recRef.current?.stop() : listen}
-                className={active ? "mp-orb" : ""}
+                className={`mp-chrome-orb${active ? " is-listening" : ""}`}
                 disabled={phase === "parsing"}
-                style={{
-                  width: 124, height: 124, borderRadius: "50%", cursor: "pointer", border: "none",
-                  background: active ? C.orange : C.violet,
-                  color: "#fff", fontSize: 40, display: "grid", placeItems: "center",
-                  boxShadow: active ? `0 12px 32px ${C.orange}55` : `0 12px 32px ${C.violet}33`,
-                  animation: active ? "mp-pulse 1.2s ease-in-out infinite" : "none",
-                  transition: "background .25s",
-                }}
                 aria-label={active ? t("voice.listening") : t("nav.voiceAria")}
               >
-                {phase === "parsing" ? "···" : "🎙"}
+                {phase === "parsing" ? (
+                  <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2 }}>···</span>
+                ) : (
+                  <IconMic size={42} />
+                )}
               </button>
             </div>
-            <div style={{ marginTop: 18, textAlign: "center", minHeight: 42 }}>
+            <div style={{ marginTop: 20, textAlign: "center", minHeight: 44 }}>
               {phase === "idle" && <span style={{ fontSize: 14.5, color: C.mut }}>{t("voice.idleHint")}</span>}
               {active && (
                 <>
@@ -983,7 +1460,9 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
                   <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4 }}>{t("voice.listeningHint")}</div>
                 </>
               )}
-              {phase === "parsing" && <span style={{ fontSize: 14.5, color: C.violet, fontWeight: 600 }}>{t("voice.parsing", transcript)}</span>}
+              {phase === "parsing" && (
+                <span style={{ fontSize: 14.5, color: "#fe6c1c", fontWeight: 600 }}>{t("voice.parsing", transcript)}</span>
+              )}
             </div>
           </Card>
 
@@ -995,11 +1474,46 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
                 onChange={(e) => setManual(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && manual.trim() && analyze(manual.trim())}
                 placeholder={t("voice.inputPlaceholder")}
-                style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 14px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit" }}
+                style={{
+                  flex: 1,
+                  background: C.card,
+                  border: `1px solid ${C.line}`,
+                  borderRadius: 12,
+                  padding: "13px 14px",
+                  fontSize: 15,
+                  color: C.ink,
+                  outline: "none",
+                  fontFamily: "inherit",
+                }}
               />
-              <button onClick={() => manual.trim() && analyze(manual.trim())} style={{ ...btnOrange, width: 52, padding: 0, fontSize: 19 }}>→</button>
+              <button
+                onClick={() => manual.trim() && analyze(manual.trim())}
+                style={{
+                  ...btnOrange,
+                  width: 52,
+                  padding: 0,
+                  background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
+                  boxShadow: "0 8px 18px rgba(254,108,28,.28)",
+                }}
+                aria-label="Send"
+              >
+                →
+              </button>
             </div>
-            <button onClick={() => analyze(t("voice.exampleCommand"))} style={{ background: "none", border: "none", color: C.violet, fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 12, padding: 0, fontFamily: "inherit" }}>
+            <button
+              onClick={() => analyze(t("voice.exampleCommand"))}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#fe6c1c",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                marginTop: 12,
+                padding: 0,
+                fontFamily: "inherit",
+              }}
+            >
               {t("voice.tryExample")}
             </button>
             {!API_KEY && <div style={{ fontSize: 12, color: C.mut, marginTop: 10 }}>{t("voice.noApiKeyHint")}</div>}
@@ -1012,7 +1526,19 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
           <Card>
             <div style={{ fontSize: 13.5, color: C.mut }}>«{transcript}»</div>
             <div style={{ display: "flex", alignItems: "center", gap: 13, margin: "18px 0" }}>
-              <div style={{ width: 46, height: 46, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 15 }}>
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: "50%",
+                  background: C.orangeSoft,
+                  display: "grid",
+                  placeItems: "center",
+                  color: "#fe6c1c",
+                  fontWeight: 700,
+                  fontSize: 15,
+                }}
+              >
                 {parsed.contact.name.slice(0, 1).toUpperCase()}
               </div>
               <div style={{ flex: 1 }}>
@@ -1023,8 +1549,8 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
             <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 16, display: "grid", gap: 10 }}>
               {[
                 [t("voice.amount"), `${fmt(parsed.usdc, 2, locale)} USDC`],
-                parsed.currency === "ARS" ? [t("voice.equals"), `$${fmt0(parsed.amount, locale)} ARS`] : [t("voice.equals"), `$${fmt0(parsed.usdc * parsed.fxRate, locale)} ARS`],
-                [t("voice.exchangeRate"), `1 USDC = $${fmt0(parsed.fxRate, locale)}`],
+                parsed.currency === "ARS" ? [t("voice.equals"), `$${fmtArs(parsed.amount)} ARS`] : [t("voice.equals"), `$${fmtArs(parsed.usdc * parsed.fxRate)} ARS`],
+                [t("voice.exchangeRate"), `1 USDC = $${fmtArs(parsed.fxRate)} ARS`],
                 [t("voice.invoice"), parsed.factura],
                 [t("voice.network"), "Arc Testnet"],
               ].map(([k, v]) => (
@@ -1043,7 +1569,18 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
               locale={locale}
               t={t}
             />
-            <div style={{ background: C.bg, borderRadius: 12, padding: "12px 14px", marginTop: 16, fontSize: 12.5, color: C.mut, lineHeight: 1.5 }}>
+            <div
+              style={{
+                background: C.card,
+                borderRadius: 12,
+                padding: "12px 14px",
+                marginTop: 16,
+                fontSize: 12.5,
+                color: C.mut,
+                lineHeight: 1.5,
+                border: `1px solid ${C.line}`,
+              }}
+            >
               {t("voice.memoNote")}
             </div>
           </Card>
@@ -1051,7 +1588,12 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
             <button
               onClick={execute}
               disabled={!address || gas.loading}
-              style={{ ...btnOrange, opacity: !address || gas.loading ? 0.5 : 1 }}
+              style={{
+                ...btnOrange,
+                opacity: !address || gas.loading ? 0.5 : 1,
+                background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
+                boxShadow: "0 10px 22px rgba(254,108,28,.28)",
+              }}
             >
               {t("voice.confirmSend")}
             </button>
@@ -1062,6 +1604,9 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
 
       {phase === "sending" && (
         <Card style={{ textAlign: "center", padding: 40 }}>
+          <div className="mp-chrome-orb" style={{ width: 72, height: 72, margin: "0 auto 18px", pointerEvents: "none" }}>
+            <IconMic size={28} />
+          </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{t("voice.sending")}</div>
           <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>{t("voice.sendingHint")}</div>
         </Card>
@@ -1069,10 +1614,19 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
 
       {phase === "error" && (
         <>
-          <Card style={{ borderLeft: `4px solid ${C.red}` }}>
+          <Card style={{ borderLeft: `4px solid ${C.red}`, background: "#FFF6F4" }}>
             <div style={{ fontSize: 15, color: C.ink, lineHeight: 1.5 }}>{errMsg}</div>
           </Card>
-          <button onClick={reset} style={btnOrange}>{t("voice.retry")}</button>
+          <button
+            onClick={reset}
+            style={{
+              ...btnOrange,
+              background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
+              boxShadow: "0 10px 22px rgba(254,108,28,.28)",
+            }}
+          >
+            {t("voice.retry")}
+          </button>
         </>
       )}
     </div>
@@ -1097,9 +1651,9 @@ function Success({ receipt, onClose }) {
         : t("success.splashTitle");
 
   const summary = () => {
-    if (kind === "charge") return t("success.chargeSummary", fmt0(receipt.ars, locale), fmt(receipt.usdc, 2, locale));
-    if (kind === "convert_ars_usdc") return t("success.convertArsUsdcSummary", fmt0(receipt.ars, locale), fmt(receipt.usdc, 2, locale));
-    if (kind === "convert_usdc_ars") return t("success.convertUsdcArsSummary", fmt(receipt.usdc, 2, locale), fmt0(receipt.ars, locale));
+    if (kind === "charge") return t("success.chargeSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
+    if (kind === "convert_ars_usdc") return t("success.convertArsUsdcSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
+    if (kind === "convert_usdc_ars") return t("success.convertUsdcArsSummary", fmt(receipt.usdc, 2, locale), fmtArs(receipt.ars));
     const p = receipt.parsed;
     return t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name);
   };
@@ -1131,13 +1685,14 @@ function Success({ receipt, onClose }) {
       <Card>
         <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.35 }}>{summary()}</div>
         {kind === "convert_usdc_ars" && (
-          <div style={{ marginTop: 12, padding: "12px 14px", background: C.violetSoft, borderRadius: 12, fontSize: 14, color: C.violet, lineHeight: 1.45 }}>
-            {t("success.arsCredited", fmt0(ars, locale))}
+          <div style={{ marginTop: 12, padding: "12px 14px", background: C.orangeSoft, borderRadius: 12, fontSize: 14, color: "#fe6c1c", lineHeight: 1.45, display: "flex", alignItems: "center", gap: 8 }}>
+            <img src="/monedas/ars.png" alt="" width={20} height={20} style={{ width: 20, height: 20, borderRadius: "50%" }} />
+            {t("success.arsCredited", fmtArs(ars))}
           </div>
         )}
         <button
           onClick={() => setDetalle(!detalle)}
-          style={{ background: C.violetSoft, color: C.violet, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 12, fontFamily: "inherit" }}
+          style={{ background: C.orangeSoft, color: "#fe6c1c", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 12, fontFamily: "inherit" }}
         >
           {t("success.viewDetail")} {detalle ? "⌃" : "⌄"}
         </button>
@@ -1148,8 +1703,8 @@ function Success({ receipt, onClose }) {
             <div style={{ display: "grid", gap: 10, fontSize: 14.5 }}>
               {[
                 [t("success.amountSent"), `${fmt(usdc, 2, locale)} USDC`],
-                [t("success.equals"), `$${fmt0(ars, locale)} ARS`],
-                [t("success.exchangeRate"), `1 USDC = $${fmt0(fx, locale)}`],
+                [t("success.equals"), `$${fmtArs(ars)} ARS`],
+                [t("success.exchangeRate"), `1 USDC = $${fmtArs(fx)} ARS`],
                 [t("success.networkFee"), receipt.fee ? `${Number(receipt.fee).toFixed(6)} USDC` : "—"],
                 receipt.block ? [t("success.block"), String(receipt.block)] : null,
                 [t("success.time"), receipt.ts],
@@ -1165,17 +1720,25 @@ function Success({ receipt, onClose }) {
                 <span style={{ color: C.mut }}>{t("success.invoiceLabel")}</span>
                 <span style={{ color: C.green, fontWeight: 700 }}>{receipt.factura} · {t("success.onchainCheck")}</span>
               </div>
-              <a href={`${ARC.explorer}/tx/${receipt.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: C.violet, fontWeight: 600, textDecoration: "none", wordBreak: "break-all" }}>
+              <a href={`${ARC.explorer}/tx/${receipt.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: "#fe6c1c", fontWeight: 600, textDecoration: "none", wordBreak: "break-all" }}>
                 {t("success.viewOnArcScan", short(receipt.hash))}
               </a>
-              <div style={{ fontSize: 12, color: C.mut, marginTop: 8, lineHeight: 1.5 }}>{t("success.utf8Hint")}</div>
             </div>
           </div>
         )}
       </Card>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <button onClick={() => onClose(nextTab)} style={btnOrange}>{nextLabel}</button>
+        <button
+          onClick={() => onClose(nextTab)}
+          style={{
+            ...btnOrange,
+            background: C.orange,
+            boxShadow: "none",
+          }}
+        >
+          {nextLabel}
+        </button>
         <button onClick={() => onClose("home")} style={btnOutline}>{t("success.backHome")}</button>
       </div>
     </div>
@@ -1183,8 +1746,91 @@ function Success({ receipt, onClose }) {
 }
 
 // ————— Movimientos —————
-function Movimientos({ txs, address, fxRate }) {
+/** Card de movimiento — home (compact) y pantalla Movimientos. */
+function TxCard({ tx, fxRate, compact = false }) {
   const { t, locale } = useLanguage();
+  const inbound = tx.direction === "in";
+  const isConvert = tx.kind === "convert_ars_usdc" || tx.kind === "convert_usdc_ars";
+  const arsEq = tx.amt * (tx.fxRate || fxRate);
+
+  const title = isConvert
+    ? tx.kind === "convert_ars_usdc"
+      ? "ARS → USDC"
+      : "USDC → ARS"
+    : tx.kind === "charge"
+      ? t("movs.charge")
+      : tx.who;
+
+  const primary =
+    isConvert && tx.kind === "convert_ars_usdc"
+      ? `+${fmt(tx.amt, 2, locale)} USDC`
+      : isConvert && tx.kind === "convert_usdc_ars"
+        ? `−${fmt(tx.amt, 2, locale)} USDC`
+        : `${inbound ? "+" : "−"}${fmt(tx.amt, 2, locale)} USDC`;
+
+  const secondary =
+    isConvert && tx.kind === "convert_ars_usdc"
+      ? `−${fmtArs(arsEq)} ARS`
+      : isConvert && tx.kind === "convert_usdc_ars"
+        ? `+${fmtArs(arsEq)} ARS`
+        : `${inbound ? "+" : "−"}${fmtArs(arsEq)} ARS`;
+
+  const iconBg = isConvert ? C.orangeSoft : inbound ? C.orangeSoft : C.violetSoft;
+  const iconColor = isConvert ? "#fe6c1c" : inbound ? C.orange : C.violet;
+
+  return (
+    <Card style={{ padding: compact ? 16 : 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+        <div
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: "50%",
+            background: iconBg,
+            display: "grid",
+            placeItems: "center",
+            color: iconColor,
+            flexShrink: 0,
+          }}
+        >
+          {isConvert ? <IconSwap size={18} /> : inbound ? <IconArrowDown size={18} /> : <IconArrowUp size={18} />}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, whiteSpace: "nowrap" }}>{title}</div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{primary}</div>
+          <div style={{ fontSize: 13, color: C.mut, marginTop: 2 }}>{secondary}</div>
+          {!compact && (
+            <a
+              href={`${ARC.explorer}/tx/${tx.hash}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-block",
+                marginTop: 8,
+                textDecoration: "none",
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 700,
+                color: C.ink,
+                background: C.card,
+                border: `1.5px solid ${C.line}`,
+                borderRadius: 8,
+                padding: "5px 10px",
+              }}
+            >
+              ArcScan ↗
+            </a>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Movimientos({ txs, address, fxRate }) {
+  const { t } = useLanguage();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
@@ -1197,45 +1843,23 @@ function Movimientos({ txs, address, fxRate }) {
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
       ) : (
-        txs.map((tx) => {
-          const inbound = tx.direction === "in";
-          const label =
-            tx.kind === "charge" ? t("movs.charge")
-              : tx.kind === "convert_ars_usdc" ? t("movs.convertArsUsdc")
-                : tx.kind === "convert_usdc_ars" ? t("movs.convertUsdcArs")
-                  : t("movs.voicePayment");
-          return (
-          <Card key={tx.hash} style={{ padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-              <div style={{ width: 42, height: 42, borderRadius: "50%", background: inbound ? C.orangeSoft : C.violetSoft, display: "grid", placeItems: "center", color: inbound ? C.orange : C.violet, fontSize: 17 }}>{inbound ? "↓" : "↑"}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{tx.who}</div>
-                <div style={{ fontSize: 13, color: C.mut }}>{label}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{inbound ? "+" : "−"}{fmt(tx.amt, 2, locale)}</div>
-                <div style={{ fontSize: 12.5, color: C.mut }}>USDC</div>
-              </div>
-            </div>
-            <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 14, paddingTop: 12, display: "grid", gap: 7, fontSize: 13.5 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.mut }}>{t("movs.invoiceLabel")}</span>
-                <span style={{ color: C.green, fontWeight: 700 }}>{tx.factura} · {t("success.onchainCheck")}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.mut }}>{t("movs.equals")}</span>
-                <span style={{ color: C.ink, fontWeight: 600 }}>${fmt0(tx.amt * (tx.fxRate || fxRate), locale)} ARS</span>
-              </div>
-            </div>
-            <a href={`${ARC.explorer}/tx/${tx.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: C.violet, fontWeight: 600, textDecoration: "none" }}>
-              {t("movs.viewOnArcScan", short(tx.hash))}
-            </a>
-          </Card>
-          );
-        })
+        txs.map((tx) => <TxCard key={tx.hash} tx={tx} fxRate={fxRate} />)
       )}
 
-      <a href={`${ARC.explorer}/address/${address}`} target="_blank" rel="noreferrer" style={{ ...btnOutline, textDecoration: "none", textAlign: "center", display: "block", border: `1.5px solid ${C.line}`, color: C.ink }}>
+      <a
+        href={`${ARC.explorer}/address/${address}`}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          ...btnOutline,
+          textDecoration: "none",
+          textAlign: "center",
+          display: "block",
+          border: `1.5px solid ${C.line}`,
+          color: C.ink,
+          background: C.card,
+        }}
+      >
         {t("movs.viewFullHistory")}
       </a>
     </div>
@@ -1246,18 +1870,38 @@ function Movimientos({ txs, address, fxRate }) {
 function Mas({ email, address, nombre, onLogout, goStack }) {
   const { t, lang, setLang } = useLanguage();
   const [confirmar, setConfirmar] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
   const Fila = ({ icon, titulo, sub, onClick, href, danger }) => {
     const inner = (
       <>
-        <div style={{ width: 40, height: 40, borderRadius: 12, background: danger ? "#FDECEA" : C.bg, display: "grid", placeItems: "center", fontSize: 17, color: danger ? C.red : C.ink }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            background: danger ? "#FDECEA" : C.orangeSoft,
+            display: "grid",
+            placeItems: "center",
+            color: danger ? C.red : "#fe6c1c",
+            flexShrink: 0,
+          }}
+        >
           {icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15.5, fontWeight: 600, color: danger ? C.red : C.ink }}>{titulo}</div>
           {sub && <div style={{ fontSize: 12.5, color: C.mut, marginTop: 1 }}>{sub}</div>}
         </div>
-        <span style={{ color: C.mut, fontSize: 17 }}>›</span>
+        <span style={{ color: C.mut, display: "grid", placeItems: "center" }}><IconChevron /></span>
       </>
     );
     const style = { display: "flex", alignItems: "center", gap: 13, padding: "14px 0", background: "none", border: "none", width: "100%", cursor: "pointer", textAlign: "left", fontFamily: "inherit", textDecoration: "none" };
@@ -1273,27 +1917,48 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
       <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("mas.title")}</h2>
 
       <Card style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: C.orange, fontSize: 20, fontWeight: 700 }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: "#fe6c1c", fontSize: 20, fontWeight: 700 }}>
           {(nombre || "?").slice(0, 1).toUpperCase()}
         </div>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{nombre}</div>
           <div style={{ fontSize: 13, color: C.mut, overflow: "hidden", textOverflow: "ellipsis" }}>{email || t("mas.noEmailAccount")}</div>
-          <div style={{ fontSize: 12, color: C.mut, fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{short(address)}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+            <span style={{ fontSize: 12, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(address)}</span>
+            <button
+              onClick={copyAddress}
+              style={{
+                background: C.card,
+                border: "none",
+                borderRadius: 20,
+                padding: "4px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#fe6c1c",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                flexShrink: 0,
+              }}
+            >
+              {copied ? t("home.copied") : t("home.copy")}
+            </button>
+          </div>
         </div>
       </Card>
 
       <Card style={{ padding: "4px 20px" }}>
-        <Fila icon="◫" titulo={t("mas.stackTitle")} sub={t("mas.stackSub")} onClick={goStack} />
+        <Fila icon={<IconStack size={20} />} titulo={t("mas.stackTitle")} sub={t("mas.stackSub")} onClick={goStack} />
         <div style={{ height: 1, background: C.line }} />
-        <Fila icon="⛽" titulo={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={ARC.faucet} />
+        <Fila icon={<IconFaucet />} titulo={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={ARC.faucet} />
         <div style={{ height: 1, background: C.line }} />
-        <Fila icon="🔎" titulo={t("mas.arcscanTitle")} sub={t("mas.arcscanSub")} href={`${ARC.explorer}/address/${address}`} />
+        <Fila icon={<IconSearch />} titulo={t("mas.arcscanTitle")} sub={t("mas.arcscanSub")} href={`${ARC.explorer}/address/${address}`} />
       </Card>
 
       <Card style={{ padding: "4px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 0" }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bg, display: "grid", placeItems: "center", fontSize: 17 }}>🌐</div>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.orangeSoft, display: "grid", placeItems: "center", color: "#fe6c1c" }}>
+            <IconGlobe />
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{t("mas.languageTitle")}</div>
             <div style={{ fontSize: 12.5, color: C.mut, marginTop: 1 }}>{lang === "en" ? "English" : "Español"}</div>
@@ -1303,7 +1968,7 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
       </Card>
 
       <Card style={{ padding: "4px 20px" }}>
-        <Fila icon="⏻" titulo={t("mas.logoutTitle")} danger onClick={() => setConfirmar(true)} />
+        <Fila icon={<IconLogout />} titulo={t("mas.logoutTitle")} danger onClick={() => setConfirmar(true)} />
       </Card>
 
       <p style={{ fontSize: 11.5, color: C.mut, textAlign: "center", lineHeight: 1.6 }}>
@@ -1433,11 +2098,28 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
         value={form[key]}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         placeholder={placeholder}
-        style={{ width: "100%", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 14px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+        style={{
+          width: "100%",
+          background: errors[key] ? "#FDECEA" : C.card,
+          border: errors[key] ? `1.5px solid ${C.red}` : `1px solid ${C.line}`,
+          borderRadius: 14,
+          padding: "14px 16px",
+          fontSize: 15,
+          color: C.ink,
+          outline: "none",
+          fontFamily: "inherit",
+          boxSizing: "border-box",
+        }}
       />
       {errors[key] && <div style={{ fontSize: 12.5, color: C.red, marginTop: 6 }}>{errorMessage(t, key, errors[key])}</div>}
     </label>
   );
+
+  const primaryBtn = {
+    ...btnOrange,
+    background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
+    boxShadow: "0 10px 22px rgba(254,108,28,.28)",
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1452,10 +2134,19 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("agenda.searchPlaceholder")}
-            style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "13px 16px", fontSize: 15, color: C.ink, outline: "none", fontFamily: "inherit" }}
+            style={{
+              background: C.bg,
+              border: `1px solid ${C.line}`,
+              borderRadius: 14,
+              padding: "13px 16px",
+              fontSize: 15,
+              color: C.ink,
+              outline: "none",
+              fontFamily: "inherit",
+            }}
           />
 
-          <button onClick={openNew} style={btnOutline}>{t("agenda.addButton")}</button>
+          <button onClick={openNew} style={primaryBtn}>{t("agenda.addButton")}</button>
 
           {visible.length === 0 ? (
             <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>
@@ -1469,7 +2160,20 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
                   onClick={() => openEdit(c)}
                   style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 13, flex: 1, minWidth: 0, textAlign: "left", fontFamily: "inherit", padding: 0 }}
                 >
-                  <span style={{ width: 42, height: 42, borderRadius: "50%", background: C.violetSoft, display: "grid", placeItems: "center", color: C.violet, fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                  <span
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: "50%",
+                      background: C.orangeSoft,
+                      display: "grid",
+                      placeItems: "center",
+                      color: "#fe6c1c",
+                      fontWeight: 700,
+                      fontSize: 15,
+                      flexShrink: 0,
+                    }}
+                  >
                     {c.name.slice(0, 1).toUpperCase()}
                   </span>
                   <span style={{ minWidth: 0 }}>
@@ -1479,7 +2183,18 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
                 </button>
                 <button
                   onClick={() => copy(c)}
-                  style={{ background: C.bg, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: C.ink, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+                  style={{
+                    background: C.card,
+                    border: "none",
+                    borderRadius: 20,
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#fe6c1c",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    flexShrink: 0,
+                  }}
                 >
                   {copiedId === c.id ? t("agenda.copied") : t("agenda.copy")}
                 </button>
@@ -1501,11 +2216,21 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
           {field("addr", t("agenda.form.addressLabel"), t("agenda.form.addressPlaceholder"))}
           {field("note", t("agenda.form.noteLabel"), t("agenda.form.notePlaceholder"))}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button onClick={save} disabled={saving} style={{ ...btnOrange, opacity: saving ? 0.6 : 1 }}>{editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}</button>
-            <button onClick={close} disabled={saving} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("agenda.form.cancel")}</button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+            <button onClick={save} disabled={saving} style={{ ...primaryBtn, opacity: saving ? 0.6 : 1 }}>
+              {editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}
+            </button>
+            <button onClick={close} disabled={saving} style={{ ...btnOutline, border: "none", color: C.mut }}>
+              {t("agenda.form.cancel")}
+            </button>
             {editingId && (
-              <button onClick={del} disabled={saving} style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}>{t("agenda.form.delete")}</button>
+              <button
+                onClick={del}
+                disabled={saving}
+                style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}
+              >
+                {t("agenda.form.delete")}
+              </button>
             )}
           </div>
         </Card>
@@ -1523,7 +2248,6 @@ function AppInner() {
   const [balance, setBalance] = useState(null);
   const [arsBalance, setArsBalance] = useState(0);
   const [treasuryBalance, setTreasuryBalance] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [txs, setTxs] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [walletError, setWalletError] = useState("");
@@ -1619,15 +2343,16 @@ function AppInner() {
 
   const refreshBalances = useCallback(async () => {
     if (!address) return;
-    setRefreshing(true);
     try {
-      const { userUsdc, treasuryUsdc } = await refreshPairBalances(address);
+      const [{ userUsdc, treasuryUsdc }, rate] = await Promise.all([
+        refreshPairBalances(address),
+        getArsPerUsdc(),
+      ]);
       setBalance(userUsdc);
       setTreasuryBalance(treasuryUsdc);
+      setFxRate(rate);
     } catch {
       /* el RPC puede limitar consultas */
-    } finally {
-      setRefreshing(false);
     }
   }, [address]);
 
@@ -1759,11 +2484,10 @@ function AppInner() {
   );
 
   const navTabs = [
-    { id: "home", label: t("nav.home"), icon: "⌂" },
-    { id: "movs", label: t("nav.movements"), icon: "☰" },
-    { id: "stack", label: t("nav.stack"), icon: "◫" },
-    { id: "agenda", label: t("nav.agenda"), icon: "📇" },
-    { id: "mas", label: t("nav.more"), icon: "⋯" },
+    { id: "home", label: t("nav.home"), icon: <IconHome /> },
+    { id: "movs", label: t("nav.movements"), icon: <IconActivity /> },
+    { id: "stack", label: t("nav.stack"), icon: <IconStack /> },
+    { id: "agenda", label: t("nav.agenda"), icon: <IconContacts /> },
   ];
   const navMid = Math.ceil(navTabs.length / 2);
   const goTab = (id) => { setReceipt(null); setTab(id); };
@@ -1771,18 +2495,19 @@ function AppInner() {
   const shell = (children) => (
     <div className="mp-stage">
       <div className="mp-device">
-        <div className="mp-scroll" style={{ padding: "22px 18px 112px" }}>{children}</div>
+        <div className="mp-scroll" style={{ padding: "22px 18px 120px" }}>{children}</div>
 
         <nav className="mp-nav">
           {navTabs.slice(0, navMid).map((tItem) => (
             <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
           ))}
-          <div style={{ width: 56, flexShrink: 0 }} aria-hidden="true" />
+          <div style={{ width: 64, flexShrink: 0 }} aria-hidden="true" />
           {navTabs.slice(navMid).map((tItem) => (
             <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
           ))}
           <button onClick={() => goTab("voice")} className="mp-fab" aria-label={t("nav.voiceAria")}>
-            🎙
+            <span className="mp-fab-shine" aria-hidden />
+            <IconMic />
           </button>
         </nav>
       </div>
@@ -1817,22 +2542,17 @@ function AppInner() {
           address={address}
           balance={balance}
           arsBalance={arsBalance}
-          treasuryBalance={treasuryBalance}
-          treasuryAddress={treasuryAddress}
-          refreshing={refreshing}
-          onRefresh={refreshBalances}
           txs={txs}
           goCharge={() => setTab("charge")}
           goConvert={() => setTab("convert")}
           goVoice={() => setTab("voice")}
+          goMore={() => setTab("mas")}
           fxRate={fxRate}
         />
       )}
       {tab === "charge" && (
         <Charge
-          address={address}
           fxRate={fxRate}
-          treasuryBalance={treasuryBalance}
           onCharge={handleCharge}
           onDone={setReceipt}
         />
@@ -1843,7 +2563,6 @@ function AppInner() {
           balance={balance}
           arsBalance={arsBalance}
           fxRate={fxRate}
-          treasuryBalance={treasuryBalance}
           onConvertArsUsdc={handleConvertArsUsdc}
           onConvertUsdcArs={handleConvertUsdcArs}
           onDone={setReceipt}
