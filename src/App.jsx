@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { ethers } from "ethers";
 import { usePrivy, useWallets, useCreateWallet } from "@privy-io/react-auth";
 import { ARC } from "./chain.js";
 import {
@@ -528,7 +529,7 @@ function Login({ onLogin, ready }) {
 // ————— Inicio —————
 function Home({
   nombre, address, balance, arsBalance,
-  txs, goCharge, goConvert, goVoice, goMore, fxRate,
+  txs, goCharge, goConvert, goPay, goMore, fxRate,
 }) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
@@ -614,7 +615,7 @@ function Home({
         <div style={{ display: "flex", gap: 6, marginTop: 20 }}>
           <CircleAction icon={<IconArrowDown />} label={t("home.actionReceive")} onClick={goCharge} background={GRAD_COBRAR} />
           <CircleAction icon={<IconSwap />} label={t("home.actionConvert")} onClick={goConvert} background={GRAD_CONVERTIR} />
-          <CircleAction icon={<IconArrowUp />} label={t("home.actionPay")} onClick={goVoice} background={GRAD_PAGAR} />
+          <CircleAction icon={<IconArrowUp />} label={t("home.actionPay")} onClick={goPay} background={GRAD_PAGAR} />
         </div>
       </Card>
 
@@ -892,6 +893,231 @@ function Charge({ fxRate, onCharge, onDone }) {
         }}
       >
         {phase === "working" ? t("charge.working") : t("charge.cta")}
+      </button>
+    </div>
+  );
+}
+
+// ————— Pagar (alias o address, sin mic) —————
+function Pay({ address, balance, fxRate, contacts, onPay, onDone }) {
+  const { t, locale } = useLanguage();
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState("");
+  const [phase, setPhase] = useState("form");
+  const [errMsg, setErrMsg] = useState("");
+
+  const n = Number(amount);
+  const contact = useMemo(() => {
+    const q = recipient.trim();
+    if (!q) return null;
+    const byAlias = findByAlias(contacts, q);
+    if (byAlias) return byAlias;
+    const lower = q.toLowerCase();
+    const byName = contacts.find((c) => c.name.toLowerCase() === lower || c.alias === lower);
+    if (byName) return byName;
+    if (ethers.isAddress(q)) {
+      const addr = ethers.getAddress(q);
+      return { name: short(addr), alias: "addr", addr };
+    }
+    return null;
+  }, [recipient, contacts]);
+
+  const suggestions = useMemo(() => {
+    const q = recipient.trim();
+    if (!q || contact) return [];
+    return searchContacts(contacts, q).slice(0, 5);
+  }, [recipient, contacts, contact]);
+
+  const usdc = Number.isFinite(n) && n > 0 ? n : null;
+  const canSubmit = Boolean(contact && usdc != null && usdc >= 0.01 && address);
+
+  const estimatePayFn = useCallback(() => {
+    if (!contact || !usdc) return Promise.reject(new Error("Sin monto"));
+    return estimateNativeUsdcTransfer({
+      from: address,
+      to: contact.addr,
+      usdc,
+      memo: `pay:${contact.alias}:${usdc}`,
+    });
+  }, [contact, usdc, address]);
+
+  const gas = useGasEstimate({
+    enabled: canSubmit && phase === "form",
+    from: address,
+    to: contact?.addr,
+    usdc,
+    memo: `pay:${contact?.alias}:${usdc}`,
+    estimateFn: estimatePayFn,
+  });
+
+  const submit = async () => {
+    setErrMsg("");
+    setPhase("working");
+    try {
+      if (!contact) throw new Error(t("pay.recipientInvalid"));
+      if (usdc == null || usdc < 0.01) throw new Error(t("pay.amountTooLow"));
+      if (balance !== null && usdc > balance) {
+        throw new Error(t("voice.insufficientBalance", fmt(usdc, 2, locale), fmt(balance, 2, locale)));
+      }
+      const parsed = {
+        amount: n,
+        currency: "USDC",
+        usdc,
+        fxRate,
+        contact,
+        factura: nuevaFactura(),
+        kind: "pay",
+      };
+      const result = await onPay(parsed);
+      onDone({
+        ...result,
+        parsed,
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      });
+    } catch (e) {
+      setErrMsg(String(e?.message || e));
+      setPhase("error");
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("pay.title")}</h2>
+
+      <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <label style={{ display: "block" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{t("pay.recipientLabel")}</div>
+          <input
+            value={recipient}
+            onChange={(e) => setRecipient(e.target.value)}
+            placeholder={t("pay.recipientPlaceholder")}
+            autoComplete="off"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: C.card,
+              border: `1px solid ${C.line}`,
+              borderRadius: 14,
+              padding: "14px 16px",
+              fontSize: 16,
+              fontWeight: 600,
+              color: C.ink,
+              outline: "none",
+              fontFamily: "inherit",
+            }}
+          />
+        </label>
+
+        {contact && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              background: C.card,
+              border: `1px solid ${C.line}`,
+              borderRadius: 14,
+              padding: "12px 14px",
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                background: C.orangeSoft,
+                display: "grid",
+                placeItems: "center",
+                color: "#fe6c1c",
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              {(contact.name || "?").slice(0, 1).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{contact.name}</div>
+              <div style={{ fontSize: 12.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(contact.addr)}</div>
+            </div>
+            {contact.alias && contact.alias !== "addr" && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#fe6c1c" }}>@{contact.alias}</span>
+            )}
+          </div>
+        )}
+
+        {!contact && suggestions.length > 0 && (
+          <div style={{ display: "grid", gap: 6 }}>
+            {suggestions.map((c) => (
+              <button
+                key={c.id || c.alias}
+                type="button"
+                onClick={() => setRecipient(c.alias)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  textAlign: "left",
+                  background: C.card,
+                  border: `1px solid ${C.line}`,
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{c.name}</div>
+                  <div style={{ fontSize: 12, color: C.mut }}>@{c.alias}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <AmountField
+          label={t("pay.amountUsdc")}
+          value={amount}
+          onChange={setAmount}
+          placeholder="1"
+          suffix="USDC"
+          logo="/monedas/usdc.png"
+        />
+
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
+          <span style={{ color: C.mut }}>{t("pay.youSend")}</span>
+          <span style={{ fontWeight: 700, color: C.ink }}>
+            {usdc != null ? `${fmt(usdc, 2, locale)} USDC` : "—"}
+          </span>
+        </div>
+
+        {canSubmit && (
+          <GasEstimatePanel
+            estimate={gas.estimate}
+            loading={gas.loading}
+            error={gas.error}
+            onRetry={gas.retry}
+            fxRate={fxRate}
+            locale={locale}
+            t={t}
+          />
+        )}
+      </Card>
+
+      {(phase === "error" || errMsg) && phase !== "working" && (
+        <Card style={{ background: "#FDECEA", color: C.red, fontSize: 14, lineHeight: 1.5 }}>{errMsg}</Card>
+      )}
+
+      <button
+        onClick={submit}
+        disabled={phase === "working" || !canSubmit}
+        style={{
+          ...btnOrange,
+          background: C.orange,
+          boxShadow: "none",
+          opacity: phase === "working" || !canSubmit ? 0.5 : 1,
+        }}
+      >
+        {phase === "working" ? t("pay.working") : t("pay.cta")}
       </button>
     </div>
   );
@@ -1272,7 +1498,19 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
 }
 
 // ————— Voz —————
-function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
+function Voice({
+  sendPayment,
+  balance,
+  onDone,
+  fxRate,
+  address,
+  contacts,
+  voiceKick = 0,
+  onListeningChange,
+  voiceApiRef,
+  overlay = false,
+  onClose,
+}) {
   const { t, lang, locale } = useLanguage();
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
@@ -1325,26 +1563,14 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
     [balance, fxRate, lang, locale, t, contacts]
   );
 
-  const voiceMemo = useMemo(() => {
-    if (!parsed) return "";
-    return armarMemo({
-      inv: parsed.factura,
-      to: parsed.contact.alias,
-      cur: parsed.currency,
-      amt: parsed.amount,
-      kind: "voice",
-    });
-  }, [parsed]);
+  const stopListen = useCallback(() => {
+    try {
+      recRef.current?.stop();
+    } catch {}
+    setPhase((p) => (p === "listening" ? "idle" : p));
+  }, []);
 
-  const gas = useGasEstimate({
-    enabled: phase === "confirm" && Boolean(parsed),
-    from: address,
-    to: parsed?.contact?.addr,
-    usdc: parsed?.usdc,
-    memo: voiceMemo,
-  });
-
-  const listen = () => {
+  const listen = useCallback(() => {
     setErrMsg("");
     setTranscript("");
     if (!supported) {
@@ -1353,6 +1579,9 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
       return;
     }
     try {
+      try {
+        recRef.current?.stop();
+      } catch {}
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       const rec = new SR();
       recRef.current = rec;
@@ -1385,7 +1614,53 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
       setErrMsg(t("voice.micUnavailable"));
       setPhase("error");
     }
-  };
+  }, [analyze, lang, supported, t]);
+
+  useEffect(() => {
+    onListeningChange?.(phase === "listening");
+    return () => onListeningChange?.(false);
+  }, [phase, onListeningChange]);
+
+  useEffect(() => {
+    if (!voiceApiRef) return undefined;
+    voiceApiRef.current = {
+      listen,
+      stop: stopListen,
+      toggle: () => {
+        if (phase === "listening") stopListen();
+        else listen();
+      },
+    };
+    return () => {
+      voiceApiRef.current = null;
+    };
+  }, [voiceApiRef, listen, stopListen, phase]);
+
+  useEffect(() => {
+    if (!voiceKick) return undefined;
+    // Arrancar ya: no usar autoListen boolean (al limpiarlo cancelaba el timer).
+    const timer = setTimeout(() => listen(), 50);
+    return () => clearTimeout(timer);
+  }, [voiceKick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const voiceMemo = useMemo(() => {
+    if (!parsed) return "";
+    return armarMemo({
+      inv: parsed.factura,
+      to: parsed.contact.alias,
+      cur: parsed.currency,
+      amt: parsed.amount,
+      kind: "voice",
+    });
+  }, [parsed]);
+
+  const gas = useGasEstimate({
+    enabled: phase === "confirm" && Boolean(parsed),
+    from: address,
+    to: parsed?.contact?.addr,
+    usdc: parsed?.usdc,
+    memo: voiceMemo,
+  });
 
   const execute = async () => {
     setPhase("sending");
@@ -1416,16 +1691,117 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
 
   const active = phase === "listening";
 
+  // Overlay FAB: solo estado de escucha + transcript (sin segunda pantalla / segundo mic).
+  if (overlay && (phase === "idle" || phase === "listening" || phase === "parsing")) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          {onClose && (
+            <button
+              type="button"
+              onClick={() => {
+                stopListen();
+                onClose();
+              }}
+              aria-label={t("voice.cancel")}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                border: `1px solid ${C.line}`,
+                background: C.bg,
+                color: C.ink,
+                cursor: "pointer",
+                fontSize: 20,
+                lineHeight: 1,
+                fontFamily: "inherit",
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <Card style={{ padding: "28px 22px 32px", textAlign: "center" }}>
+          <div style={{ position: "relative", height: 28, marginBottom: 8 }}>
+            {active && [0, 1, 2].map((i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: 18,
+                  height: 18,
+                  marginLeft: -9,
+                  marginTop: -9,
+                  borderRadius: "50%",
+                  border: "1.5px solid rgba(254, 108, 28, 0.45)",
+                  animation: `mp-voice-ring 2.2s ${i * 0.65}s ease-out infinite`,
+                }}
+              />
+            ))}
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: phase === "parsing" ? "#fe6c1c" : C.ink }}>
+            {phase === "parsing" ? t("voice.parsing", transcript) : t("voice.listening")}
+          </div>
+          <div
+            style={{
+              marginTop: 16,
+              minHeight: 72,
+              fontSize: 20,
+              fontWeight: 600,
+              color: transcript ? C.ink : C.mut,
+              lineHeight: 1.4,
+              wordBreak: "break-word",
+            }}
+          >
+            {phase === "parsing" ? null : (transcript || t("voice.listeningPlaceholder"))}
+          </div>
+          <div style={{ fontSize: 13, color: C.mut, marginTop: 12 }}>
+            {active ? t("voice.fabListeningHint") : t("voice.listeningHint")}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("voice.title")}</h2>
-        <p style={{ fontSize: 15, color: C.mut, marginTop: 6 }}>{t("voice.subtitle")}</p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("voice.title")}</h2>
+          <p style={{ fontSize: 15, color: C.mut, marginTop: 6 }}>{t("voice.subtitle")}</p>
+        </div>
+        {overlay && onClose && (
+          <button
+            type="button"
+            onClick={() => {
+              stopListen();
+              onClose();
+            }}
+            aria-label={t("voice.cancel")}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              border: `1px solid ${C.line}`,
+              background: C.bg,
+              color: C.ink,
+              cursor: "pointer",
+              fontSize: 20,
+              lineHeight: 1,
+              fontFamily: "inherit",
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        )}
       </div>
 
       {(phase === "idle" || phase === "listening" || phase === "parsing") && (
         <>
-          <Card style={{ display: "grid", placeItems: "center", padding: "40px 20px" }}>
+          <Card style={{ display: "grid", placeItems: "center", padding: "36px 20px 28px" }}>
             <div style={{ position: "relative", width: 176, height: 176, display: "grid", placeItems: "center" }}>
               {active && [0, 1, 2].map((i) => (
                 <div
@@ -1440,7 +1816,7 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
                 />
               ))}
               <button
-                onClick={active ? () => recRef.current?.stop() : listen}
+                onClick={active ? stopListen : listen}
                 className={`mp-chrome-orb${active ? " is-listening" : ""}`}
                 disabled={phase === "parsing"}
                 aria-label={active ? t("voice.listening") : t("nav.voiceAria")}
@@ -1452,12 +1828,25 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
                 )}
               </button>
             </div>
-            <div style={{ marginTop: 20, textAlign: "center", minHeight: 44 }}>
+            <div style={{ marginTop: 18, textAlign: "center", width: "100%", maxWidth: 320 }}>
               {phase === "idle" && <span style={{ fontSize: 14.5, color: C.mut }}>{t("voice.idleHint")}</span>}
               {active && (
                 <>
-                  <div style={{ fontSize: 15.5, color: C.ink, fontWeight: 600 }}>{transcript || t("voice.listening")}</div>
-                  <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4 }}>{t("voice.listeningHint")}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fe6c1c", letterSpacing: 0.2 }}>{t("voice.listening")}</div>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      minHeight: 52,
+                      fontSize: 18,
+                      fontWeight: 600,
+                      color: C.ink,
+                      lineHeight: 1.35,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {transcript || t("voice.listeningPlaceholder")}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: C.mut, marginTop: 8 }}>{t("voice.listeningHint")}</div>
                 </>
               )}
               {phase === "parsing" && (
@@ -1492,31 +1881,22 @@ function Voice({ sendPayment, balance, onDone, fxRate, address, contacts }) {
                   ...btnOrange,
                   width: 52,
                   padding: 0,
-                  background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
-                  boxShadow: "0 8px 18px rgba(254,108,28,.28)",
+                  background: C.orange,
+                  boxShadow: "none",
                 }}
-                aria-label="Send"
               >
                 →
               </button>
             </div>
             <button
               onClick={() => analyze(t("voice.exampleCommand"))}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#fe6c1c",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                marginTop: 12,
-                padding: 0,
-                fontFamily: "inherit",
-              }}
+              style={{ background: "none", border: "none", color: "#fe6c1c", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, marginTop: 12, fontFamily: "inherit" }}
             >
               {t("voice.tryExample")}
             </button>
-            {!API_KEY && <div style={{ fontSize: 12, color: C.mut, marginTop: 10 }}>{t("voice.noApiKeyHint")}</div>}
+            {!import.meta.env.VITE_ANTHROPIC_API_KEY && (
+              <div style={{ fontSize: 12, color: C.mut, marginTop: 10 }}>{t("voice.noApiKeyHint")}</div>
+            )}
           </Card>
         </>
       )}
@@ -1658,7 +2038,7 @@ function Success({ receipt, onClose }) {
     return t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name);
   };
 
-  const nextTab = kind === "charge" ? "charge" : kind?.startsWith("convert") ? "convert" : "voice";
+  const nextTab = kind === "charge" ? "charge" : kind?.startsWith("convert") ? "convert" : kind === "pay" ? "pay" : "voice";
   const nextLabel = kind === "charge" ? t("success.anotherCharge") : kind?.startsWith("convert") ? t("success.anotherConvert") : t("success.anotherPayment");
 
   if (splash) {
@@ -2252,6 +2632,10 @@ function AppInner() {
   const [receipt, setReceipt] = useState(null);
   const [walletError, setWalletError] = useState("");
   const [fxRate, setFxRate] = useState(FALLBACK_FX_ARS_USD);
+  const [voiceKick, setVoiceKick] = useState(0);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const voiceApiRef = useRef(null);
 
   const wallet = useMemo(() => wallets.find((w) => w.walletClientType === "privy") || wallets[0], [wallets]);
   const address = wallet?.address || "";
@@ -2380,13 +2764,14 @@ function AppInner() {
 
   const sendPayment = useCallback(
     async (parsed) => {
+      const kind = parsed.kind || "voice";
       const signer = await getBrowserSigner(wallet);
       const memo = armarMemo({
         inv: parsed.factura,
         to: parsed.contact.alias,
         cur: parsed.currency,
         amt: parsed.amount,
-        kind: "voice",
+        kind,
       });
       const tx = await sendNativeUsdc(signer, {
         to: parsed.contact.addr,
@@ -2399,12 +2784,12 @@ function AppInner() {
         amt: parsed.usdc,
         factura: parsed.factura,
         fxRate: parsed.fxRate,
-        kind: "voice",
+        kind,
         direction: "out",
       });
       await refreshBalances();
       return {
-        kind: "voice",
+        kind,
         hash: tx.hash,
         block: tx.block,
         fee: tx.fee,
@@ -2490,22 +2875,68 @@ function AppInner() {
     { id: "agenda", label: t("nav.agenda"), icon: <IconContacts /> },
   ];
   const navMid = Math.ceil(navTabs.length / 2);
-  const goTab = (id) => { setReceipt(null); setTab(id); };
+  const goTab = (id) => {
+    setReceipt(null);
+    setTab(id);
+  };
+  const closeVoice = () => {
+    voiceApiRef.current?.stop?.();
+    setVoiceOpen(false);
+    setVoiceListening(false);
+  };
+  const openVoiceListen = () => {
+    setReceipt(null);
+    if (voiceOpen && voiceListening) {
+      closeVoice();
+      return;
+    }
+    if (voiceOpen && voiceApiRef.current) {
+      voiceApiRef.current.listen();
+      return;
+    }
+    setVoiceOpen(true);
+    setVoiceKick((n) => n + 1);
+  };
 
   const shell = (children) => (
     <div className="mp-stage">
       <div className="mp-device">
         <div className="mp-scroll" style={{ padding: "22px 18px 120px" }}>{children}</div>
 
+        {voiceOpen && (
+          <div className="mp-voice-sheet">
+            <Voice
+              sendPayment={sendPayment}
+              balance={balance}
+              onDone={(r) => {
+                closeVoice();
+                setReceipt(r);
+              }}
+              fxRate={fxRate}
+              address={address}
+              contacts={contacts}
+              voiceKick={voiceKick}
+              onListeningChange={setVoiceListening}
+              voiceApiRef={voiceApiRef}
+              overlay
+              onClose={closeVoice}
+            />
+          </div>
+        )}
+
         <nav className="mp-nav">
           {navTabs.slice(0, navMid).map((tItem) => (
-            <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
+            <NavButton key={tItem.id} active={tab === tItem.id && !voiceOpen} icon={tItem.icon} label={tItem.label} onClick={() => { closeVoice(); goTab(tItem.id); }} />
           ))}
           <div style={{ width: 64, flexShrink: 0 }} aria-hidden="true" />
           {navTabs.slice(navMid).map((tItem) => (
-            <NavButton key={tItem.id} active={tab === tItem.id} icon={tItem.icon} label={tItem.label} onClick={() => goTab(tItem.id)} />
+            <NavButton key={tItem.id} active={tab === tItem.id && !voiceOpen} icon={tItem.icon} label={tItem.label} onClick={() => { closeVoice(); goTab(tItem.id); }} />
           ))}
-          <button onClick={() => goTab("voice")} className="mp-fab" aria-label={t("nav.voiceAria")}>
+          <button
+            onClick={openVoiceListen}
+            className={`mp-fab${voiceListening ? " is-listening" : ""}`}
+            aria-label={voiceListening ? t("voice.listening") : t("nav.voiceAria")}
+          >
             <span className="mp-fab-shine" aria-hidden />
             <IconMic />
           </button>
@@ -2531,7 +2962,16 @@ function AppInner() {
   }
 
   if (receipt) {
-    return shell(<Success receipt={receipt} onClose={(dest) => { setReceipt(null); setTab(dest); }} />);
+    return shell(
+      <Success
+        receipt={receipt}
+        onClose={(dest) => {
+          setReceipt(null);
+          if (dest === "voice") openVoiceListen();
+          else setTab(dest);
+        }}
+      />
+    );
   }
 
   return shell(
@@ -2545,9 +2985,19 @@ function AppInner() {
           txs={txs}
           goCharge={() => setTab("charge")}
           goConvert={() => setTab("convert")}
-          goVoice={() => setTab("voice")}
+          goPay={() => setTab("pay")}
           goMore={() => setTab("mas")}
           fxRate={fxRate}
+        />
+      )}
+      {tab === "pay" && (
+        <Pay
+          address={address}
+          balance={balance}
+          fxRate={fxRate}
+          contacts={contacts}
+          onPay={sendPayment}
+          onDone={setReceipt}
         />
       )}
       {tab === "charge" && (
@@ -2568,7 +3018,6 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "voice" && <Voice sendPayment={sendPayment} balance={balance} onDone={setReceipt} fxRate={fxRate} address={address} contacts={contacts} />}
       {tab === "movs" && <Movimientos txs={txs} address={address} fxRate={fxRate} />}
       {tab === "stack" && <Stack />}
       {tab === "agenda" && (
