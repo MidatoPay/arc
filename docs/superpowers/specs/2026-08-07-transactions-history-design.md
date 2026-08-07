@@ -108,18 +108,21 @@ duplicados si el `POST` se reintenta.
 | Método | Acción |
 |---|---|
 | `GET /transactions` | Lista las transacciones del usuario del token, `ORDER BY created_at DESC` |
-| `POST /transactions` | Alta — body `{ hash, kind, direction, who, amt, fxRate, ars, factura, block, fee, memo }` |
+| `POST /transactions` | Alta — body `{ hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo }` |
 
 Sin `PUT`/`DELETE` — es un log append-only, no un CRUD.
 
-El body/response usa `fxRate`/`createdAt` (camelCase, convención ya usada en
-`flows.js`/`App.jsx`); la Function traduce a `fx_rate`/`created_at`
-(snake_case, convención SQL) al leer/escribir Postgres — mismo tipo de
-mapeo que ya hace `contacts.js` entre `addr` (UI) y `address` (columna), vía
-funciones `toWire`/`fromWire` en `src/transactions.js`.
+El body/response de la Function usa los mismos nombres que las columnas
+(`fx_rate`, `created_at`, snake_case) — igual que `contacts.js`, que expone
+`address` tal cual (sin traducir a/desde `addr`). La Function no hace ningún
+mapeo de nombres; arma la fila con `SELECT`/`INSERT` directo. La traducción
+camelCase (`fxRate`, `createdAt`, consistente con el resto de `App.jsx`/
+`flows.js`) vive enteramente en el cliente, vía `toWire`/`fromWire` en
+`src/transactions.js` — mismo lugar y mismo patrón que ya usa `contacts.js`
+para `addr` ↔ `address`.
 
 Errores: `401` si el token no verifica, `400` si faltan campos requeridos
-(`hash`, `kind`, `direction`, `who`, `amt`, `fxRate`, `ars`), `500` genérico para
+(`hash`, `kind`, `direction`, `who`, `amt`, `fx_rate`, `ars`), `500` genérico para
 errores de DB. El conflicto de `hash` duplicado (`23505`, mismo código que ya
 mapea `contacts.js` para alias duplicado) se responde `200` con la fila
 existente en vez de error — un reintento de POST con el mismo hash no debe
