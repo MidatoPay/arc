@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   who         TEXT NOT NULL,           -- contraparte mostrada (nombre de contacto, "Cobro", "Tesorería")
   amt         NUMERIC NOT NULL,        -- monto en USDC
   fx_rate     NUMERIC NOT NULL,        -- ARS por USDC al momento de la tx
+  ars         NUMERIC NOT NULL,        -- monto en ARS al momento de la tx (ver nota abajo)
   factura     TEXT,
   block       BIGINT,
   fee         NUMERIC,                 -- fee de red en USDC
@@ -78,10 +79,23 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_user_id_idx ON transactions (user_id, created_at DESC);
 ```
 
-No se guarda `ars` (equivalente en pesos): se recalcula en el cliente como
-`amt * fx_rate`, igual que ya hace `TxCard` (`arsEq = tx.amt * (tx.fxRate ||
-fxRate)`) — evita un campo redundante que podría desincronizarse del `fx_rate`
-guardado. Tampoco se guarda un timestamp pre-formateado (`"06:49 PM"`): se usa
+**`ars` se guarda explícito, no se recalcula.** Decisión revisada: para
+`charge` y `convert_ars_usdc`, el ARS es el dato de entrada real (lo que
+tipeó el usuario / cobró el comercio) y `usdc` es el derivado
+(`arsToUsdc(ars, fxRate)` en `fx.js`, sin redondear). Reconstruir
+`ars = amt * fx_rate` en el cliente sería un `(ars / fxRate) * fxRate` que en
+punto flotante no siempre reproduce el número original bit a bit. Más
+importante que la precisión: en esos dos flujos el ARS ya es el monto que
+efectivamente se acreditó/debitó en `arsBalance` (`arsDelta` en `flows.js`)
+— es un hecho de negocio, no un valor derivado para mostrar. Las cuatro
+funciones que arman una entrada de `txs` (`runChargeFlow`,
+`runConvertArsToUsdc`, `runConvertUsdcToArs`, `sendPayment` en `App.jsx`) ya
+calculan y devuelven `ars` hoy (`result.ars` en las tres primeras;
+`parsed.usdc * (parsed.fxRate || fxRate)` inline en `sendPayment`) — no hace
+falta ningún cálculo nuevo, solo dejar de descartarlo al armar la entrada de
+`pushTx`.
+
+Tampoco se guarda un timestamp pre-formateado (`"06:49 PM"`): se usa
 `created_at` y se formatea en el cliente con el locale activo al momento de
 render, no el de cuando se hizo la tx.
 
@@ -94,7 +108,7 @@ duplicados si el `POST` se reintenta.
 | Método | Acción |
 |---|---|
 | `GET /transactions` | Lista las transacciones del usuario del token, `ORDER BY created_at DESC` |
-| `POST /transactions` | Alta — body `{ hash, kind, direction, who, amt, fxRate, factura, block, fee, memo }` |
+| `POST /transactions` | Alta — body `{ hash, kind, direction, who, amt, fxRate, ars, factura, block, fee, memo }` |
 
 Sin `PUT`/`DELETE` — es un log append-only, no un CRUD.
 
@@ -105,7 +119,7 @@ mapeo que ya hace `contacts.js` entre `addr` (UI) y `address` (columna), vía
 funciones `toWire`/`fromWire` en `src/transactions.js`.
 
 Errores: `401` si el token no verifica, `400` si faltan campos requeridos
-(`hash`, `kind`, `direction`, `who`, `amt`, `fxRate`), `500` genérico para
+(`hash`, `kind`, `direction`, `who`, `amt`, `fxRate`, `ars`), `500` genérico para
 errores de DB. El conflicto de `hash` duplicado (`23505`, mismo código que ya
 mapea `contacts.js` para alias duplicado) se responde `200` con la fila
 existente en vez de error — un reintento de POST con el mismo hash no debe
@@ -117,7 +131,7 @@ Mismo rol que `src/contacts.js`: módulo de lógica separado de la UI, cliente
 HTTP con cache en `localStorage`.
 
 ```js
-Tx = { hash, kind, direction, who, amt, fxRate, factura, block, fee, memo, createdAt }
+Tx = { hash, kind, direction, who, amt, fxRate, ars, factura, block, fee, memo, createdAt }
 ```
 
 - **Cache stale-while-revalidate**, clave `mp_tx_cache_<user_id>`: mismo
@@ -150,9 +164,14 @@ existentes.
 ### Flujo de escritura
 
 `pushTx` (hoy en `App.jsx:2761`) se extiende para:
-1. Aceptar también `block`, `fee`, `memo` en la entrada (ya disponibles en el
-   `result`/`tx` que devuelven `sendNativeUsdc`/`sendTreasuryPayout` en cada
-   uno de los 4 call sites — no hace falta ninguna llamada extra).
+1. Aceptar también `block`, `fee`, `memo` y `ars` en la entrada. Todos ya
+   están disponibles en cada uno de los 4 call sites sin cálculo nuevo:
+   `block`/`fee`/`memo` vienen del `result`/`tx` que devuelven
+   `sendNativeUsdc`/`sendTreasuryPayout`; `ars` viene de `result.ars` en
+   `handleCharge`/`handleConvertArsUsdc`/`handleConvertUsdcArs` (ya lo
+   devuelve `flows.js`), y en `sendPayment` se calcula igual que ya hace hoy
+   el objeto que arma para `Success` (`parsed.usdc * (parsed.fxRate ||
+   fxRate)`).
 2. Seguir agregando la entrada al estado local `txs` de inmediato (UI
    optimista, sin esperar red — sin cambios respecto a hoy).
 3. Disparar `addTransaction(...)` en fire-and-forget (`.catch(() => {})`) —
@@ -177,8 +196,15 @@ link a ArcScan) se extrae a un componente compartido `TxDetail({ tx, fxRate
   "Ver detalle").
 - `TxCard` en `Movimientos`: tocar la tarjeta expande/colapsa el mismo
   bloque, con los datos ahora persistidos (`fee`, `block`, `memo`,
-  `factura`) en vez de solo estar disponibles en la sesión donde se hizo el
-  pago.
+  `factura`, `ars`) en vez de solo estar disponibles en la sesión donde se
+  hizo el pago.
+
+`TxCard` hoy calcula `arsEq = tx.amt * (tx.fxRate || fxRate)` para mostrar el
+monto en pesos en la card compacta — pasa a usar directamente `tx.ars`
+(guardado, no recalculado), consistente con la decisión de §1.2. El
+parámetro `fxRate` (cotización *actual*) que hoy recibe `TxCard` deja de
+usarse para ese cálculo — cada transacción ya trae su propio `fxRate`
+histórico.
 
 La vista compacta de Home (`TxCard compact`) no gana detalle expandible —
 sigue siendo un resumen, igual que hoy; el detalle completo queda reservado
