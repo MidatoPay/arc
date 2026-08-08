@@ -80,7 +80,7 @@ export const handler = async (event) => {
       const { rows } = await db.query(
         `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         ON CONFLICT (hash) DO NOTHING
+         ON CONFLICT (user_id, hash) DO NOTHING
          RETURNING id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at`,
         [
           userId,
@@ -100,8 +100,9 @@ export const handler = async (event) => {
 
       if (rows.length > 0) return json(200, { transaction: rows[0] });
 
-      // hash ya existía (reintento de POST) — devolver la fila existente en
-      // vez de tratarlo como error.
+      // (user_id, hash) ya existía (reintento de POST, o el otro lado de un
+      // cobro P2P ya insertó su propia fila para este mismo hash) — devolver
+      // la fila existente de ESTE usuario en vez de tratarlo como error.
       const existing = await db.query(
         `SELECT id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at
          FROM transactions WHERE hash = $1 AND user_id = $2`,
