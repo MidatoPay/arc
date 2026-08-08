@@ -12,6 +12,11 @@
   # of copying node_modules, avoiding the mis-trace.
   node_bundler = "esbuild"
 
+# Job de reconciliación de wallets — ver
+# docs/superpowers/specs/2026-08-08-background-reconciliation-design.md.
+[functions."reconcile-wallets"]
+  schedule = "*/15 * * * *"
+
 # Reemplaza al proxy /rpc de Vite (solo existe en dev) por una function
 # que hace de puente al RPC real, igual que vite.config.js.
 [[redirects]]
