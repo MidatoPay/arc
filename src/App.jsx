@@ -103,16 +103,23 @@ function usdcBalanceToArs(usdcAmount, arsPerUsdc) {
 
 function localParse(text, lang) {
   const t = text.toLowerCase();
-  const intentRe = lang === "en" ? /(send|transfer|pay)/ : /(envi|mand|transfer|pag)/;
-  if (!intentRe.test(t)) return { intent: "unknown" };
+  const chargeRe = lang === "en" ? /(charge|collect)/ : /(cobr)/;
+  const sendRe = lang === "en" ? /(send|transfer|pay)/ : /(envi|mand|transfer|pag)/;
+  const intent = chargeRe.test(t) ? "charge" : sendRe.test(t) ? "send" : "unknown";
+  if (intent === "unknown") return { intent };
+
   const numMatch = t.replace(/\./g, "").match(/(\d+(?:[.,]\d+)?)/);
   const amount = numMatch ? parseFloat(numMatch[1].replace(",", ".")) : null;
-  const currency = /peso|ars/.test(t) ? "ARS" : "USDC";
+  const defaultCurrency = intent === "charge" ? "ARS" : "USDC";
+  const currency = /peso|ars/.test(t) ? "ARS" : defaultCurrency;
+
+  if (intent === "charge") return { intent, amount, currency, recipient: null };
+
   let recipient = null;
   const recRe = lang === "en" ? /\bto\s+([a-záéíóúñ]+)/ : /\ba\s+([a-záéíóúñ]+)/;
   const m = t.match(recRe);
   if (m) recipient = m[1];
-  return { intent: "send", amount, currency, recipient };
+  return { intent, amount, currency, recipient };
 }
 
 async function claudeParse(text, lang, aliases) {
@@ -126,9 +133,9 @@ Command: "${text}"
 Valid contact aliases: ${aliases.join(", ")}
 
 Exact format:
-{"intent":"send"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
+{"intent":"send"|"charge"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
 
-Rules: "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. If the currency isn't stated or is unclear, default to USDC — never guess ARS. Match the alias even if misheard (e.g. "caty" → "katy").`
+Rules: "charge"/"collect" means the user wants to request/collect a payment, not send one — recipient is always null for "charge". "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. If the currency isn't stated or is unclear, default to USDC for "send" — never guess ARS — and to ARS for "charge". Match the alias even if misheard (e.g. "caty" → "katy").`
       : `Sos el agente de pagos por voz de MidatoPay. Extraé la intención de este comando en español rioplatense y respondé SOLO con JSON válido, sin markdown ni texto extra.
 
 Comando: "${text}"
@@ -136,9 +143,9 @@ Comando: "${text}"
 Contactos válidos (alias): ${aliases.join(", ")}
 
 Formato exacto:
-{"intent":"send"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
+{"intent":"send"|"charge"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
 
-Reglas: "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Si la moneda no está clara o no se menciona, default a USDC — nunca asumas ARS. Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`;
+Reglas: "cobrar"/"charge"/"collect" significa que el usuario quiere solicitar un pago, no enviarlo — recipient siempre es null para "charge". "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Si la moneda no está clara o no se menciona, default a USDC para "send" — nunca asumas ARS — y a ARS para "charge". Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -820,7 +827,7 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
 }
 
 // ————— Cobrar (QR P2P: espera y detecta el pago on-chain) —————
-function Charge({ address, fxRate, onDetected }) {
+function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestConsumed }) {
   const { t, locale } = useLanguage();
   const [arsInput, setArsInput] = useState("");
   const [phase, setPhase] = useState("form"); // form | waiting | error
@@ -833,10 +840,10 @@ function Charge({ address, fxRate, onDetected }) {
   const ars = Number(arsInput);
   const quote = Number.isFinite(ars) && ars > 0 ? quoteArsToUsdc(ars, fxRate) : null;
 
-  const startWaiting = async () => {
+  const startWaitingFor = async (arsValue) => {
     const factura = nuevaFactura();
-    const url = buildPayUrl({ addr: address, who: t("charge.merchantSelf"), ars, factura });
-    setRequest({ ars, factura, url });
+    const url = buildPayUrl({ addr: address, who: t("charge.merchantSelf"), ars: arsValue, factura });
+    setRequest({ ars: arsValue, factura, url });
     setPhase("waiting");
     try {
       setQrDataUrl(await QRCode.toDataURL(url, { margin: 1, width: 260 }));
@@ -845,6 +852,17 @@ function Charge({ address, fxRate, onDetected }) {
     }
     baselineRef.current = await getUsdcBalance(address).catch(() => null);
   };
+
+  useEffect(() => {
+    if (!chargeRequest) return;
+    if (phase !== "form") {
+      onChargeRequestConsumed();
+      return;
+    }
+    setArsInput(String(chargeRequest.ars));
+    startWaitingFor(chargeRequest.ars);
+    onChargeRequestConsumed();
+  }, [chargeRequest, phase, onChargeRequestConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase !== "waiting" || !request) return undefined;
@@ -995,7 +1013,7 @@ function Charge({ address, fxRate, onDetected }) {
       </Card>
 
       <button
-        onClick={startWaiting}
+        onClick={() => startWaitingFor(ars)}
         disabled={!quote}
         style={{
           ...btnOrange,
@@ -1839,6 +1857,7 @@ function Voice({
   sendPayment,
   balance,
   onDone,
+  onCharge,
   fxRate,
   address,
   contacts,
@@ -1861,16 +1880,28 @@ function Voice({
     async (text) => {
       setTranscript(text);
       setPhase("parsing");
-      if (contacts.length === 0) {
-        setErrMsg(t("voice.noContactsYet"));
-        setPhase("error");
-        return;
-      }
       let result;
       try {
         result = await claudeParse(text, lang, contacts.map((c) => c.alias));
       } catch {
         result = localParse(text, lang);
+      }
+
+      if (result?.intent === "charge") {
+        if (!(result.amount > 0)) {
+          setErrMsg(t("voice.noPaymentUnderstood"));
+          setPhase("error");
+          return;
+        }
+        const ars = result.currency === "USDC" ? result.amount * fxRate : result.amount;
+        onCharge(ars);
+        return;
+      }
+
+      if (contacts.length === 0) {
+        setErrMsg(t("voice.noContactsYet"));
+        setPhase("error");
+        return;
       }
       if (!result || result.intent !== "send" || !result.amount || !result.recipient) {
         setErrMsg(t("voice.noPaymentUnderstood"));
@@ -1897,7 +1928,7 @@ function Voice({
       setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
       setPhase("confirm");
     },
-    [balance, fxRate, lang, locale, t, contacts]
+    [balance, fxRate, lang, locale, t, contacts, onCharge]
   );
 
   const stopListen = useCallback(() => {
@@ -3017,6 +3048,7 @@ function AppInner() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const voiceApiRef = useRef(null);
   const [pendingScan, setPendingScan] = useState(null);
+  const [pendingCharge, setPendingCharge] = useState(null);
 
   useEffect(() => {
     if (!ready || !authenticated) return;
@@ -3319,6 +3351,11 @@ function AppInner() {
     setVoiceOpen(false);
     setVoiceListening(false);
   };
+  const handleVoiceCharge = (ars) => {
+    closeVoice();
+    setPendingCharge({ ars });
+    goTab("charge");
+  };
   const openVoiceListen = () => {
     setReceipt(null);
     if (voiceOpen && voiceListening) {
@@ -3347,6 +3384,7 @@ function AppInner() {
                 closeVoice();
                 setReceipt(r);
               }}
+              onCharge={handleVoiceCharge}
               fxRate={fxRate}
               address={address}
               contacts={contacts}
@@ -3443,6 +3481,8 @@ function AppInner() {
           address={address}
           fxRate={fxRate}
           onDetected={handleChargeDetected}
+          chargeRequest={pendingCharge}
+          onChargeRequestConsumed={() => setPendingCharge(null)}
         />
       )}
       {tab === "convert" && (
