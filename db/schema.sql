@@ -58,3 +58,16 @@ BEGIN
     ALTER TABLE transactions ADD CONSTRAINT transactions_user_hash_key UNIQUE (user_id, hash);
   END IF;
 END $$;
+
+-- Mapeo user_id (Privy DID) -> address de su wallet embebida, con
+-- checkpoint de reconciliación de fondo. Ver
+-- docs/superpowers/specs/2026-08-08-background-reconciliation-design.md § 1.
+
+CREATE TABLE IF NOT EXISTS wallets (
+  user_id            TEXT PRIMARY KEY,     -- Privy DID (una wallet por usuario, embedded wallet)
+  address            TEXT NOT NULL,
+  last_synced_block  BIGINT,               -- checkpoint: bloque más alto ya reconciliado
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS wallets_address_idx ON wallets (address);
