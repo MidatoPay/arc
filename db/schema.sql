@@ -26,8 +26,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS contacts_user_alias_uidx ON contacts (user_id,
 CREATE TABLE IF NOT EXISTS transactions (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     TEXT NOT NULL,           -- Privy DID
-  hash        TEXT NOT NULL UNIQUE,    -- hash on-chain, único globalmente
-  kind        TEXT NOT NULL,           -- 'voice' | 'pay' | 'charge' | 'convert_ars_usdc' | 'convert_usdc_ars'
+  hash        TEXT NOT NULL,           -- hash on-chain; único por usuario, no global (ver charge P2P)
+  kind        TEXT NOT NULL,           -- 'voice' | 'pay' | 'charge_p2p' | 'convert_ars_usdc' | 'convert_usdc_ars'
   direction   TEXT NOT NULL,           -- 'in' | 'out'
   who         TEXT NOT NULL,           -- contraparte mostrada
   amt         NUMERIC NOT NULL,        -- monto en USDC
@@ -41,3 +41,20 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 
 CREATE INDEX IF NOT EXISTS transactions_user_id_idx ON transactions (user_id, created_at DESC);
+
+-- Un mismo hash on-chain puede tener una fila por cada lado del cobro P2P
+-- por QR (quien cobra: 'in', quien paga: 'out') — ver
+-- docs/superpowers/specs/2026-08-08-qr-charge-design.md § 5.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'transactions_hash_key'
+  ) THEN
+    ALTER TABLE transactions DROP CONSTRAINT transactions_hash_key;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'transactions_user_hash_key'
+  ) THEN
+    ALTER TABLE transactions ADD CONSTRAINT transactions_user_hash_key UNIQUE (user_id, hash);
+  END IF;
+END $$;

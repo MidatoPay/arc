@@ -129,6 +129,58 @@ export async function sendNativeUsdc(signer, { to, usdc, memo }) {
   return { hash: tx.hash, block, fee, memo: memo || null };
 }
 
+/**
+ * Busca, en los últimos `lookback` bloques, una transferencia nativa
+ * entrante a `address`. Se usa una sola vez, disparado por una suba de
+ * balance detectada por polling — no hace scanning continuo (protege el
+ * rate limit del RPC público). Si hay más de un candidato en la ventana,
+ * se prefiere el que trae `inv:<factura>` en el memo.
+ *
+ * @param {{ address: string, factura?: string, lookback?: number }} opts
+ * @returns {Promise<{ hash: string, block: number, fee: string|null } | null>}
+ */
+export async function findIncomingTransfer({ address, factura, lookback = 20 }) {
+  if (!address) return null;
+  const target = address.toLowerCase();
+  const latest = await withRetry(() => readProvider.getBlockNumber());
+
+  const candidates = [];
+  for (let n = latest; n > latest - lookback && n >= 0; n--) {
+    const block = await withRetry(() => readProvider.getBlock(n, true));
+    if (!block) continue;
+    for (const tx of block.prefetchedTransactions || []) {
+      if ((tx.to || "").toLowerCase() === target && tx.value > 0n) {
+        candidates.push({ tx, blockNumber: n });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  let chosen = candidates[0];
+  if (candidates.length > 1 && factura) {
+    const matching = candidates.find(({ tx }) => {
+      try {
+        return ethers.toUtf8String(tx.data).includes(`inv:${factura}`);
+      } catch {
+        return false;
+      }
+    });
+    if (matching) chosen = matching;
+  }
+
+  const { tx, blockNumber } = chosen;
+  let fee = null;
+  try {
+    const rec = await withRetry(() => readProvider.getTransactionReceipt(tx.hash));
+    if (rec?.gasUsed && rec?.gasPrice) fee = ethers.formatEther(rec.gasUsed * rec.gasPrice);
+  } catch {
+    /* fee es informativo, no bloquea */
+  }
+
+  return { hash: tx.hash, block: blockNumber, fee };
+}
+
 /** Signer EIP-1193 (Privy / browser wallet) en Arc Testnet. */
 export async function getBrowserSigner(wallet) {
   if (!wallet) throw new Error("No wallet available.");
