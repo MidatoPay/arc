@@ -28,6 +28,7 @@ import {
   searchContacts,
   validateContact,
 } from "./contacts.js";
+import { loadTransactions, addTransaction, mergeByHash } from "./transactions.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -661,7 +662,7 @@ function Home({
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
-        txs.map((tx) => <TxCard key={tx.hash} tx={tx} fxRate={fxRate} compact />)
+        txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} compact />)
       )}
     </div>
   );
@@ -2013,6 +2014,40 @@ function Voice({
   );
 }
 
+// ————— Detalle de transacción (compartido: Success + TxCard) —————
+function TxDetail({ usdc, ars, fx, fee, block, factura, hash, time }) {
+  const { t, locale } = useLanguage();
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{t("success.operation")}</div>
+      <div style={{ display: "grid", gap: 10, fontSize: 14.5 }}>
+        {[
+          [t("success.amountSent"), `${fmt(usdc, 2, locale)} USDC`],
+          [t("success.equals"), `$${fmtArs(ars)} ARS`],
+          [t("success.exchangeRate"), `1 USDC = $${fmtArs(fx)} ARS`],
+          [t("success.networkFee"), fee ? `${Number(fee).toFixed(6)} USDC` : "—"],
+          block ? [t("success.block"), String(block)] : null,
+          [t("success.time"), time],
+        ].filter(Boolean).map(([k, v]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: C.mut }}>{k}:</span>
+            <span style={{ color: C.ink, fontWeight: 600 }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 16, paddingTop: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
+          <span style={{ color: C.mut }}>{t("success.invoiceLabel")}</span>
+          <span style={{ color: C.green, fontWeight: 700 }}>{factura} · {t("success.onchainCheck")}</span>
+        </div>
+        <a href={`${ARC.explorer}/tx/${hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: "#fe6c1c", fontWeight: 600, textDecoration: "none", wordBreak: "break-all" }}>
+          {t("success.viewOnArcScan", short(hash))}
+        </a>
+      </div>
+    </div>
+  );
+}
+
 // ————— Éxito a pantalla completa —————
 function Success({ receipt, onClose }) {
   const { t, locale } = useLanguage();
@@ -2078,33 +2113,16 @@ function Success({ receipt, onClose }) {
         </button>
 
         {detalle && (
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{t("success.operation")}</div>
-            <div style={{ display: "grid", gap: 10, fontSize: 14.5 }}>
-              {[
-                [t("success.amountSent"), `${fmt(usdc, 2, locale)} USDC`],
-                [t("success.equals"), `$${fmtArs(ars)} ARS`],
-                [t("success.exchangeRate"), `1 USDC = $${fmtArs(fx)} ARS`],
-                [t("success.networkFee"), receipt.fee ? `${Number(receipt.fee).toFixed(6)} USDC` : "—"],
-                receipt.block ? [t("success.block"), String(receipt.block)] : null,
-                [t("success.time"), receipt.ts],
-              ].filter(Boolean).map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.mut }}>{k}:</span>
-                  <span style={{ color: C.ink, fontWeight: 600 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 16, paddingTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
-                <span style={{ color: C.mut }}>{t("success.invoiceLabel")}</span>
-                <span style={{ color: C.green, fontWeight: 700 }}>{receipt.factura} · {t("success.onchainCheck")}</span>
-              </div>
-              <a href={`${ARC.explorer}/tx/${receipt.hash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, fontSize: 13.5, color: "#fe6c1c", fontWeight: 600, textDecoration: "none", wordBreak: "break-all" }}>
-                {t("success.viewOnArcScan", short(receipt.hash))}
-              </a>
-            </div>
-          </div>
+          <TxDetail
+            usdc={usdc}
+            ars={ars}
+            fx={fx}
+            fee={receipt.fee}
+            block={receipt.block}
+            factura={receipt.factura}
+            hash={receipt.hash}
+            time={receipt.ts}
+          />
         )}
       </Card>
 
@@ -2127,11 +2145,12 @@ function Success({ receipt, onClose }) {
 
 // ————— Movimientos —————
 /** Card de movimiento — home (compact) y pantalla Movimientos. */
-function TxCard({ tx, fxRate, compact = false }) {
+function TxCard({ tx, compact = false }) {
   const { t, locale } = useLanguage();
+  const [expanded, setExpanded] = useState(false);
   const inbound = tx.direction === "in";
   const isConvert = tx.kind === "convert_ars_usdc" || tx.kind === "convert_usdc_ars";
-  const arsEq = tx.amt * (tx.fxRate || fxRate);
+  const arsEq = tx.ars;
 
   const title = isConvert
     ? tx.kind === "convert_ars_usdc"
@@ -2158,9 +2177,16 @@ function TxCard({ tx, fxRate, compact = false }) {
   const iconBg = isConvert ? C.orangeSoft : inbound ? C.orangeSoft : C.violetSoft;
   const iconColor = isConvert ? "#fe6c1c" : inbound ? C.orange : C.violet;
 
+  const time = tx.createdAt
+    ? new Date(tx.createdAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
+    : "—";
+
   return (
     <Card style={{ padding: compact ? 16 : 18 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+      <div
+        onClick={compact ? undefined : () => setExpanded((v) => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 13, cursor: compact ? "default" : "pointer" }}
+      >
         <div
           style={{
             width: 42,
@@ -2186,6 +2212,7 @@ function TxCard({ tx, fxRate, compact = false }) {
               href={`${ARC.explorer}/tx/${tx.hash}`}
               target="_blank"
               rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
               style={{
                 display: "inline-block",
                 marginTop: 8,
@@ -2205,11 +2232,24 @@ function TxCard({ tx, fxRate, compact = false }) {
           )}
         </div>
       </div>
+
+      {!compact && expanded && (
+        <TxDetail
+          usdc={tx.amt}
+          ars={tx.ars}
+          fx={tx.fxRate}
+          fee={tx.fee}
+          block={tx.block}
+          factura={tx.factura}
+          hash={tx.hash}
+          time={time}
+        />
+      )}
     </Card>
   );
 }
 
-function Movimientos({ txs, address, fxRate }) {
+function Movimientos({ txs, address }) {
   const { t } = useLanguage();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2223,7 +2263,7 @@ function Movimientos({ txs, address, fxRate }) {
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
       ) : (
-        txs.map((tx) => <TxCard key={tx.hash} tx={tx} fxRate={fxRate} />)
+        txs.map((tx) => <TxCard key={tx.hash} tx={tx} />)
       )}
 
       <a
@@ -2629,6 +2669,8 @@ function AppInner() {
   const [arsBalance, setArsBalance] = useState(0);
   const [treasuryBalance, setTreasuryBalance] = useState(null);
   const [txs, setTxs] = useState([]);
+  const txsRef = useRef(txs);
+  txsRef.current = txs;
   const [receipt, setReceipt] = useState(null);
   const [walletError, setWalletError] = useState("");
   const [fxRate, setFxRate] = useState(FALLBACK_FX_ARS_USD);
@@ -2676,6 +2718,24 @@ function AppInner() {
       )
       .then((fresh) => {
         if (!cancelled) setContacts(fresh);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, getAccessToken]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    getAccessToken()
+      .then((token) =>
+        loadTransactions(user.id, token, (cached) => {
+          if (!cancelled) setTxs((prev) => mergeByHash(cached, prev));
+        })
+      )
+      .then((fresh) => {
+        if (!cancelled) setTxs((prev) => mergeByHash(fresh, prev));
       })
       .catch(() => {});
     return () => {
@@ -2758,9 +2818,17 @@ function AppInner() {
     [address]
   );
 
-  const pushTx = useCallback((entry) => {
-    setTxs((t) => [entry, ...t]);
-  }, []);
+  const pushTx = useCallback(
+    (entry) => {
+      const withTimestamp = { ...entry, createdAt: new Date().toISOString() };
+      setTxs((t) => [withTimestamp, ...t]);
+      if (!user?.id) return;
+      getAccessToken()
+        .then((token) => addTransaction(user.id, token, txsRef.current, withTimestamp))
+        .catch(() => {});
+    },
+    [user?.id, getAccessToken]
+  );
 
   const sendPayment = useCallback(
     async (parsed) => {
@@ -2778,12 +2846,18 @@ function AppInner() {
         usdc: parsed.usdc,
         memo,
       });
+      const effectiveFxRate = parsed.fxRate || fxRate;
+      const ars = parsed.usdc * effectiveFxRate;
       pushTx({
         hash: tx.hash,
         who: parsed.contact.name,
         amt: parsed.usdc,
+        fxRate: effectiveFxRate,
+        ars,
         factura: parsed.factura,
-        fxRate: parsed.fxRate,
+        block: tx.block,
+        fee: tx.fee,
+        memo: tx.memo,
         kind,
         direction: "out",
       });
@@ -2796,8 +2870,8 @@ function AppInner() {
         memo: tx.memo,
         factura: parsed.factura,
         usdc: parsed.usdc,
-        ars: parsed.usdc * (parsed.fxRate || fxRate),
-        fxRate: parsed.fxRate || fxRate,
+        ars,
+        fxRate: effectiveFxRate,
         ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       };
     },
@@ -2811,8 +2885,12 @@ function AppInner() {
         hash: result.hash,
         who: t("charge.merchantSelf"),
         amt: result.usdc,
-        factura: result.factura,
         fxRate: result.fxRate,
+        ars: result.ars,
+        factura: result.factura,
+        block: result.block,
+        fee: result.fee,
+        memo: result.memo,
         kind: "charge",
         direction: "in",
       });
@@ -2834,8 +2912,12 @@ function AppInner() {
         hash: result.hash,
         who: t("convert.treasuryLabel"),
         amt: result.usdc,
-        factura: result.factura,
         fxRate: result.fxRate,
+        ars: result.ars,
+        factura: result.factura,
+        block: result.block,
+        fee: result.fee,
+        memo: result.memo,
         kind: "convert_ars_usdc",
         direction: "in",
       });
@@ -2857,8 +2939,12 @@ function AppInner() {
         hash: result.hash,
         who: t("convert.treasuryLabel"),
         amt: result.usdc,
-        factura: result.factura,
         fxRate: result.fxRate,
+        ars: result.ars,
+        factura: result.factura,
+        block: result.block,
+        fee: result.fee,
+        memo: result.memo,
         kind: "convert_usdc_ars",
         direction: "out",
       });
@@ -3018,7 +3104,7 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "movs" && <Movimientos txs={txs} address={address} fxRate={fxRate} />}
+      {tab === "movs" && <Movimientos txs={txs} address={address} />}
       {tab === "stack" && <Stack />}
       {tab === "agenda" && (
         <ContactsScreen

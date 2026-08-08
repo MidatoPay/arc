@@ -33,6 +33,13 @@
   status = 200
   force = true
 
+# API del historial de transacciones (Postgres vía Aiven, ver netlify/functions/transactions.js).
+[[redirects]]
+  from = "/transactions"
+  to = "/.netlify/functions/transactions"
+  status = 200
+  force = true
+
 # SPA: cualquier otra ruta sirve index.html (no hay react-router, pero
 # evita 404 si alguien entra directo a una URL que no sea la raíz).
 [[redirects]]
