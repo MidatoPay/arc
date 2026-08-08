@@ -1,9 +1,9 @@
 /**
  * Riel fiat (ARS) — interfaz desacoplada del on-chain.
  *
- * Hoy: simula que el comercio recibió un pago en pesos.
- * Mañana: reemplazar el cuerpo de `receiveArsPayment` por un proveedor
- * real (Mercado Pago, PSE, transferencia, etc.) sin tocar Cobrar/Convertir.
+ * Hoy: simula el desembolso en pesos de Convertir (USDC→ARS).
+ * Mañana: reemplazar el cuerpo de `payoutArsToUser` por un proveedor
+ * real (Mercado Pago, PSE, transferencia, etc.) sin tocar Convertir.
  */
 
 /**
@@ -15,28 +15,6 @@
  * @property {number} ts
  * @property {string} [provider]
  */
-
-/**
- * Simula la recepción de un pago en ARS por parte del comercio.
- * @param {number} arsAmount
- * @returns {Promise<FiatPaymentResult>}
- */
-export async function receiveArsPayment(arsAmount) {
-  const ars = Number(arsAmount);
-  if (!Number.isFinite(ars) || ars <= 0) {
-    throw new Error("Monto ARS inválido para el riel fiat");
-  }
-  // Latencia artificial mínima para que la UI muestre estado de carga.
-  await new Promise((r) => setTimeout(r, 450));
-  return {
-    id: `fiat_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6)}`,
-    status: "simulated",
-    ars,
-    currency: "ARS",
-    ts: Date.now(),
-    provider: "mock-fiat-rail",
-  };
-}
 
 /**
  * Simula un desembolso fiat al usuario (USDC→ARS).
