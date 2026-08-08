@@ -3080,7 +3080,7 @@ function AppInner() {
     let cancelled = false;
     getAccessToken()
       .then((token) =>
-        loadTransactions(user.id, token, (cached) => {
+        loadTransactions(user.id, token, address, (cached) => {
           if (!cancelled) setTxs((prev) => mergeByHash(cached, prev));
         })
       )
@@ -3091,7 +3091,7 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, getAccessToken]);
+  }, [user?.id, address, getAccessToken]);
 
   const handleAddContact = useCallback(
     async (data) => {

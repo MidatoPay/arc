@@ -97,11 +97,12 @@ export function mergeByHash(serverList, localList) {
  * el cache y es lo que resuelve la promise. Si el request falla, se resuelve
  * con lo que había en cache en vez de rechazar.
  */
-export function loadTransactions(userId, token, onCache) {
+export function loadTransactions(userId, token, address, onCache) {
   const cached = readCache(userId);
   if (onCache) onCache(cached);
   if (!userId || !token) return Promise.resolve(cached);
-  return api("/transactions", token)
+  const path = address ? `/transactions?address=${encodeURIComponent(address)}` : "/transactions";
+  return api(path, token)
     .then(({ transactions }) => {
       const list = transactions.map(fromWire);
       writeCache(userId, list);
