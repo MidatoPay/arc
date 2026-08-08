@@ -1579,7 +1579,7 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
     setErrMsg("");
     setPhase("working");
     try {
-      if (!isTreasuryConfigured()) throw new Error(t("charge.treasuryMissing"));
+      if (!isTreasuryConfigured()) throw new Error(t("convert.treasuryMissing"));
       if (direction === "ars_usdc") {
         const result = await onConvertArsUsdc(n);
         onDone({
