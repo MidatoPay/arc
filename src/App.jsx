@@ -827,7 +827,7 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
 }
 
 // ————— Cobrar (QR P2P: espera y detecta el pago on-chain) —————
-function Charge({ address, fxRate, onDetected }) {
+function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestConsumed }) {
   const { t, locale } = useLanguage();
   const [arsInput, setArsInput] = useState("");
   const [phase, setPhase] = useState("form"); // form | waiting | error
@@ -840,10 +840,10 @@ function Charge({ address, fxRate, onDetected }) {
   const ars = Number(arsInput);
   const quote = Number.isFinite(ars) && ars > 0 ? quoteArsToUsdc(ars, fxRate) : null;
 
-  const startWaiting = async () => {
+  const startWaitingFor = async (arsValue) => {
     const factura = nuevaFactura();
-    const url = buildPayUrl({ addr: address, who: t("charge.merchantSelf"), ars, factura });
-    setRequest({ ars, factura, url });
+    const url = buildPayUrl({ addr: address, who: t("charge.merchantSelf"), ars: arsValue, factura });
+    setRequest({ ars: arsValue, factura, url });
     setPhase("waiting");
     try {
       setQrDataUrl(await QRCode.toDataURL(url, { margin: 1, width: 260 }));
@@ -852,6 +852,13 @@ function Charge({ address, fxRate, onDetected }) {
     }
     baselineRef.current = await getUsdcBalance(address).catch(() => null);
   };
+
+  useEffect(() => {
+    if (!chargeRequest) return;
+    setArsInput(String(chargeRequest.ars));
+    startWaitingFor(chargeRequest.ars);
+    onChargeRequestConsumed();
+  }, [chargeRequest, onChargeRequestConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase !== "waiting" || !request) return undefined;
@@ -1002,7 +1009,7 @@ function Charge({ address, fxRate, onDetected }) {
       </Card>
 
       <button
-        onClick={startWaiting}
+        onClick={() => startWaitingFor(ars)}
         disabled={!quote}
         style={{
           ...btnOrange,
@@ -3470,6 +3477,8 @@ function AppInner() {
           address={address}
           fxRate={fxRate}
           onDetected={handleChargeDetected}
+          chargeRequest={pendingCharge}
+          onChargeRequestConsumed={() => setPendingCharge(null)}
         />
       )}
       {tab === "convert" && (
