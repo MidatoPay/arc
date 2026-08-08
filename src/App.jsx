@@ -2396,21 +2396,23 @@ function Success({ receipt, onClose }) {
     return () => clearTimeout(timer);
   }, []);
 
+  const isChargeIn = kind === "charge" || (kind === "charge_p2p" && receipt.direction === "in");
+
   const splashTitle =
-    kind === "charge" ? t("success.splashCharge")
+    isChargeIn ? t("success.splashCharge")
       : kind === "convert_ars_usdc" || kind === "convert_usdc_ars" ? t("success.splashConvert")
         : t("success.splashTitle");
 
   const summary = () => {
-    if (kind === "charge") return t("success.chargeSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
+    if (isChargeIn) return t("success.chargeSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
     if (kind === "convert_ars_usdc") return t("success.convertArsUsdcSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
     if (kind === "convert_usdc_ars") return t("success.convertUsdcArsSummary", fmt(receipt.usdc, 2, locale), fmtArs(receipt.ars));
     const p = receipt.parsed;
     return t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name);
   };
 
-  const nextTab = kind === "charge" ? "charge" : kind?.startsWith("convert") ? "convert" : kind === "pay" ? "pay" : "voice";
-  const nextLabel = kind === "charge" ? t("success.anotherCharge") : kind?.startsWith("convert") ? t("success.anotherConvert") : t("success.anotherPayment");
+  const nextTab = isChargeIn ? "charge" : kind?.startsWith("convert") ? "convert" : kind === "pay" || kind === "charge_p2p" ? "pay" : "voice";
+  const nextLabel = isChargeIn ? t("success.anotherCharge") : kind?.startsWith("convert") ? t("success.anotherConvert") : t("success.anotherPayment");
 
   if (splash) {
     return (
