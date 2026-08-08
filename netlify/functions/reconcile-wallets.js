@@ -9,7 +9,8 @@ import { fetchArsPerUsd } from "../../src/priceFeed.js";
 
 const { Pool } = pkg;
 
-const getFxRate = () => fetchArsPerUsd(process.env.VITE_ETH_RPC || "https://ethereum.publicnode.com");
+let fxPromise;
+const getFxRate = () => (fxPromise ??= fetchArsPerUsd(process.env.VITE_ETH_RPC || "https://ethereum.publicnode.com"));
 
 let pool;
 function getPool() {

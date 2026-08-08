@@ -22,6 +22,11 @@ export function decodeMemo(rawInputHex) {
   } catch {
     return null;
   }
+  // Buffer#toString("utf8") no lanza en hex/UTF-8 inválido — sustituye por
+  // caracteres de reemplazo y puede producir bytes NUL, que Postgres TEXT
+  // rechaza en el INSERT. Sin este check, esa fila queda como poison pill:
+  // el checkpoint nunca avanza y se reintenta (y refalla) para siempre.
+  if (text.includes("\u0000") || text.includes("�")) return null;
   if (!text.startsWith("MIDATO|v1|")) return { text, fields: null };
   const fields = {};
   for (const part of text.split("|").slice(2)) {
@@ -78,12 +83,20 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
         let ars = null;
         let fxRate;
 
+        // El memo viaja en el calldata de la tx y lo controla quien la
+        // manda — cualquier remitente puede meter texto arbitrario. `amt`
+        // no numérico da NaN, y `NaN == null` es false en JS, así que el
+        // fallback de abajo no dispara para eso: hay que chequear
+        // finitud/positividad explícitamente, no sólo null.
         if (fields && fields.kind) {
-          kind = fields.kind;
-          factura = fields.inv || null;
+          kind = String(fields.kind).slice(0, 32);
+          factura = fields.inv ? String(fields.inv).slice(0, 64) : null;
           if (fields.cur === "ARS" && fields.amt) {
-            ars = Number(fields.amt);
-            fxRate = ars / usdc; // reconstruida del propio memo, no la cotización "de ahora"
+            const parsedArs = Number(fields.amt);
+            if (Number.isFinite(parsedArs) && parsedArs > 0) {
+              ars = parsedArs;
+              fxRate = ars / usdc; // reconstruida del propio memo, no la cotización "de ahora"
+            }
           }
         }
         if (ars == null) {
@@ -101,11 +114,17 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
         // de ArcScan no está verificado contra una transferencia real) — el
         // fee sólo se conoce con certeza en el flujo de detección en vivo
         // (findIncomingTransfer), que sí llama getTransactionReceipt.
+        //
+        // created_at usa el timestamp real de ArcScan (COALESCE a now() si
+        // faltara) en vez de dejar que Postgres lo defaultee a "ahora" —
+        // si no, un pago recibido mientras la app estaba cerrada y
+        // reconciliado días después ordena arriba de todo en Movimientos
+        // con la hora equivocada.
         await db.query(
-          `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo)
-           VALUES ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, NULL, $10)
+          `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at)
+           VALUES ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, NULL, $10, COALESCE($11::timestamptz, now()))
            ON CONFLICT (user_id, hash) DO NOTHING`,
-          [userId, tx.hash, kind, who, usdc, fxRate, ars, factura, tx.block_number, memoText]
+          [userId, tx.hash, kind, who, usdc, fxRate, ars, factura, tx.block_number, memoText, tx.timestamp ?? null]
         );
 
         if (maxBlockSeen == null || tx.block_number > maxBlockSeen) maxBlockSeen = tx.block_number;

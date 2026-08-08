@@ -11,7 +11,8 @@ import { fetchArsPerUsd } from "../../src/priceFeed.js";
 
 const { Pool } = pkg;
 
-const getFxRate = () => fetchArsPerUsd(process.env.VITE_ETH_RPC || "https://ethereum.publicnode.com");
+let fxPromise;
+const getFxRate = () => (fxPromise ??= fetchArsPerUsd(process.env.VITE_ETH_RPC || "https://ethereum.publicnode.com"));
 
 let pool;
 function getPool() {
@@ -71,25 +72,44 @@ export const handler = async (event) => {
     if (event.httpMethod === "GET") {
       const address = event.queryStringParameters?.address;
       if (address && ethers.isAddress(address)) {
-        await db.query(
-          `INSERT INTO wallets (user_id, address, updated_at) VALUES ($1, $2, now())
-           ON CONFLICT (user_id) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
-          [userId, address]
-        );
+        // El address viaja en la query del cliente y no está atado a nada —
+        // hay que verificar que sea una wallet del propio usuario antes de
+        // pisar su fila en `wallets`, o cualquiera podría inyectar el
+        // historial de otra persona en su propia cuenta (ver finding #1 del
+        // review final). Una address ajena/errónea no debe romper la carga
+        // del historial existente — se cae al SELECT normal, como si no se
+        // hubiera mandado address.
+        let owned = false;
         try {
-          const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1", [userId]);
-          const newCheckpoint = await reconcileWallet(db, {
-            userId,
-            address,
-            lastSyncedBlock: walletRows[0]?.last_synced_block ?? null,
-            getFxRate,
-          });
-          if (newCheckpoint != null) {
-            await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2", [newCheckpoint, userId]);
-          }
+          const user = await getPrivy().getUser(userId);
+          owned = (user.linkedAccounts || []).some(
+            (a) => a.type === "wallet" && a.address?.toLowerCase() === address.toLowerCase()
+          );
         } catch {
-          // Si ArcScan falla acá, no bloquea la carga del historial existente
-          // — se reintenta en la próxima apertura o en el próximo tick del job.
+          owned = false;
+        }
+
+        if (owned) {
+          await db.query(
+            `INSERT INTO wallets (user_id, address, updated_at) VALUES ($1, $2, now())
+             ON CONFLICT (user_id) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
+            [userId, address]
+          );
+          try {
+            const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1", [userId]);
+            const newCheckpoint = await reconcileWallet(db, {
+              userId,
+              address,
+              lastSyncedBlock: walletRows[0]?.last_synced_block ?? null,
+              getFxRate,
+            });
+            if (newCheckpoint != null) {
+              await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2", [newCheckpoint, userId]);
+            }
+          } catch {
+            // Si ArcScan falla acá, no bloquea la carga del historial existente
+            // — se reintenta en la próxima apertura o en el próximo tick del job.
+          }
         }
       }
 
