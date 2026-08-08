@@ -7,55 +7,10 @@ import {
   sendNativeUsdc,
 } from "./arc.js";
 import { arsToUsdc, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
-import { receiveArsPayment, payoutArsToUser } from "./fiatRail.js";
+import { payoutArsToUser } from "./fiatRail.js";
 import { getTreasuryAddress, getTreasuryBalance, sendTreasuryPayout } from "./treasury.js";
 
 const MIN_USDC = 0.01;
-
-/**
- * Flujo Cobrar:
- * 1) Simula pago ARS al comercio (fiatRail)
- * 2) Cotiza con Chainlink
- * 3) Tesorería envía USDC al usuario
- */
-export async function runChargeFlow({ userAddress, arsAmount }) {
-  if (!userAddress) throw new Error("Wallet de usuario no disponible");
-  const ars = Number(arsAmount);
-  if (!Number.isFinite(ars) || ars <= 0) throw new Error("Ingresá un monto en ARS válido");
-
-  const fiat = await receiveArsPayment(ars);
-  const fxRate = await getArsPerUsdc();
-  const usdc = arsToUsdc(ars, fxRate);
-  if (usdc < MIN_USDC) throw new Error("El equivalente es menor a 0.01 USDC");
-
-  const treasuryBal = await getTreasuryBalance();
-  if (treasuryBal !== null && usdc > treasuryBal) {
-    throw new Error(`La recaudadora no tiene USDC suficiente (tiene ${treasuryBal.toFixed(2)}, necesita ${usdc.toFixed(2)})`);
-  }
-
-  const payout = await sendTreasuryPayout({
-    to: userAddress,
-    usdc,
-    ars,
-    fxRate,
-    kind: "charge",
-  });
-
-  return {
-    kind: "charge",
-    fiat,
-    fxRate,
-    ars,
-    usdc,
-    hash: payout.hash,
-    block: payout.block,
-    fee: payout.fee,
-    memo: payout.memo,
-    factura: payout.factura,
-    from: payout.from,
-    to: userAddress,
-  };
-}
 
 /**
  * Convertir ARS → USDC:

@@ -1,18 +1,21 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ethers } from "ethers";
 import { usePrivy, useWallets, useCreateWallet } from "@privy-io/react-auth";
+import QRCode from "qrcode";
+import jsQR from "jsqr";
 import { ARC } from "./chain.js";
 import {
   armarMemo,
   estimateNativeUsdcTransfer,
+  findIncomingTransfer,
   getBrowserSigner,
+  getUsdcBalance,
   nuevaFactura,
   sendNativeUsdc,
 } from "./arc.js";
 import { FALLBACK_FX_ARS_USD, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
 import {
   estimateConvertUsdcToArs,
-  runChargeFlow,
   runConvertArsToUsdc,
   runConvertUsdcToArs,
   refreshPairBalances,
@@ -29,6 +32,7 @@ import {
   validateContact,
 } from "./contacts.js";
 import { loadTransactions, addTransaction, mergeByHash } from "./transactions.js";
+import { buildPayUrl, parsePayUrl, slugifyAlias } from "./payQr.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -338,6 +342,22 @@ const IconLogout = ({ size = 20 }) => (
 const IconChevron = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconQrCode = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="3" y="3" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="2" />
+    <rect x="14" y="3" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="2" />
+    <rect x="3" y="14" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="2" />
+    <path d="M14 14h3v3h-3zM19 14v3M14 19h3M17 19h3v3M19 21v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconCopy = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="8" y="8" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="2" />
+    <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" stroke="currentColor" strokeWidth="2" />
   </svg>
 );
 
@@ -799,36 +819,143 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
   return { estimate, loading, error, retry };
 }
 
-// ————— Cobrar (ARS → USDC vía recaudadora) —————
-function Charge({ fxRate, onCharge, onDone }) {
+// ————— Cobrar (QR P2P: espera y detecta el pago on-chain) —————
+function Charge({ address, fxRate, onDetected }) {
   const { t, locale } = useLanguage();
   const [arsInput, setArsInput] = useState("");
-  const [phase, setPhase] = useState("form"); // form | working | error
+  const [phase, setPhase] = useState("form"); // form | waiting | error
   const [errMsg, setErrMsg] = useState("");
+  const [request, setRequest] = useState(null); // { ars, factura, url }
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const baselineRef = useRef(null);
+
   const ars = Number(arsInput);
   const quote = Number.isFinite(ars) && ars > 0 ? quoteArsToUsdc(ars, fxRate) : null;
 
-  const submit = async () => {
-    setErrMsg("");
-    setPhase("working");
+  const startWaiting = async () => {
+    const factura = nuevaFactura();
+    const url = buildPayUrl({ addr: address, who: t("charge.merchantSelf"), ars, factura });
+    setRequest({ ars, factura, url });
+    setPhase("waiting");
     try {
-      if (!isTreasuryConfigured()) throw new Error(t("charge.treasuryMissing"));
-      const result = await onCharge(ars);
-      onDone({
-        kind: "charge",
-        ...result,
-        parsed: { usdc: result.usdc, amount: result.ars, currency: "ARS", fxRate: result.fxRate, contact: { name: t("charge.merchantSelf"), alias: "self" } },
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      setQrDataUrl(await QRCode.toDataURL(url, { margin: 1, width: 260 }));
+    } catch {
+      setQrDataUrl("");
+    }
+    baselineRef.current = await getUsdcBalance(address).catch(() => null);
+  };
+
+  useEffect(() => {
+    if (phase !== "waiting" || !request) return undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      const current = await getUsdcBalance(address).catch(() => null);
+      if (cancelled || current == null || baselineRef.current == null) return;
+      if (current <= baselineRef.current) return;
+
+      const found = await findIncomingTransfer({ address, factura: request.factura }).catch(() => null);
+      if (cancelled) return;
+      if (!found) {
+        setErrMsg(t("charge.detectError"));
+        setPhase("error");
+        return;
+      }
+      const rate = await getArsPerUsdc().catch(() => fxRate);
+      const usdc = current - baselineRef.current;
+      onDetected({
+        hash: found.hash,
+        who: t("charge.merchantSelf"),
+        amt: usdc,
+        fxRate: rate,
+        ars: request.ars,
+        factura: request.factura,
+        block: found.block,
+        fee: found.fee,
+        memo: null,
+        kind: "charge_p2p",
+        direction: "in",
+        usdc,
       });
-    } catch (e) {
-      setErrMsg(String(e?.message || e));
-      setPhase("error");
+    };
+
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [phase, request, address, fxRate, onDetected, t]);
+
+  const copyLink = async () => {
+    if (!request) return;
+    try {
+      await navigator.clipboard.writeText(request.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard puede no estar disponible (http no seguro, permisos) */
     }
   };
+
+  const cancel = () => {
+    setPhase("form");
+    setRequest(null);
+    setQrDataUrl("");
+    baselineRef.current = null;
+  };
+
+  if (phase === "waiting" || phase === "error") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
+
+        <Card style={{ textAlign: "center", padding: 24 }}>
+          <div style={{ fontSize: 32, fontWeight: 700, color: C.ink }}>${fmtArs(request.ars)}</div>
+          {qrDataUrl ? (
+            <img src={qrDataUrl} alt="QR" width={220} height={220} style={{ marginTop: 16, borderRadius: 12 }} />
+          ) : (
+            <div style={{ marginTop: 16, height: 220, display: "grid", placeItems: "center", color: C.mut }}>
+              <IconQrCode size={64} />
+            </div>
+          )}
+
+          <div style={{ marginTop: 18, fontSize: 15, fontWeight: 700, color: C.ink }}>{t("charge.waitingTitle")}</div>
+          <div style={{ fontSize: 13, color: C.mut, marginTop: 6, lineHeight: 1.45 }}>{t("charge.waitingHint")}</div>
+
+          <div style={{ marginTop: 18, textAlign: "left" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.mut, marginBottom: 6 }}>{t("charge.linkLabel")}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px" }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.ink, fontFamily: "ui-monospace, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {request.url}
+              </span>
+              <button
+                onClick={copyLink}
+                aria-label={t("charge.copyLink")}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#fe6c1c", display: "grid", placeItems: "center", padding: 4, flexShrink: 0 }}
+              >
+                <IconCopy />
+              </button>
+            </div>
+            {copied && <div style={{ fontSize: 12, color: C.green, marginTop: 6 }}>{t("charge.linkCopied")}</div>}
+          </div>
+
+          {phase === "error" && (
+            <div style={{ marginTop: 16, padding: "12px 14px", background: "#FDECEA", color: C.red, borderRadius: 12, fontSize: 13.5, lineHeight: 1.5 }}>
+              {errMsg}
+            </div>
+          )}
+        </Card>
+
+        <button onClick={cancel} style={btnOutline}>{t("charge.cancel")}</button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
+      <div style={{ fontSize: 14, color: C.mut, lineHeight: 1.5 }}>{t("charge.subtitle")}</div>
 
       <Card style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         <AmountField
@@ -867,33 +994,17 @@ function Charge({ fxRate, onCharge, onDone }) {
         </div>
       </Card>
 
-      {phase === "working" && (
-        <Card style={{ textAlign: "center", padding: 28 }}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 14 }}>
-            <img src="/monedas/ars.png" alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: "50%" }} />
-            <span style={{ color: C.mut, fontSize: 22, lineHeight: "36px" }}>→</span>
-            <img src="/monedas/usdc.png" alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: "50%" }} />
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{t("charge.working")}</div>
-          <div style={{ fontSize: 13.5, color: C.mut, marginTop: 8 }}>{t("charge.workingHint")}</div>
-        </Card>
-      )}
-
-      {(phase === "error" || errMsg) && phase !== "working" && (
-        <Card style={{ background: "#FDECEA", color: C.red, fontSize: 14, lineHeight: 1.5 }}>{errMsg}</Card>
-      )}
-
       <button
-        onClick={submit}
-        disabled={phase === "working" || !quote}
+        onClick={startWaiting}
+        disabled={!quote}
         style={{
           ...btnOrange,
-          opacity: phase === "working" || !quote ? 0.5 : 1,
+          opacity: !quote ? 0.5 : 1,
           background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
           boxShadow: "0 10px 22px rgba(254,108,28,.28)",
         }}
       >
-        {phase === "working" ? t("charge.working") : t("charge.cta")}
+        {t("charge.cta")}
       </button>
     </div>
   );
@@ -2878,26 +2989,25 @@ function AppInner() {
     [wallet, refreshBalances, pushTx, locale, fxRate]
   );
 
-  const handleCharge = useCallback(
-    async (arsAmount) => {
-      const result = await runChargeFlow({ userAddress: address, arsAmount });
-      pushTx({
-        hash: result.hash,
-        who: t("charge.merchantSelf"),
-        amt: result.usdc,
-        fxRate: result.fxRate,
-        ars: result.ars,
-        factura: result.factura,
-        block: result.block,
-        fee: result.fee,
-        memo: result.memo,
-        kind: "charge",
+  const handleChargeDetected = useCallback(
+    (entry) => {
+      pushTx(entry);
+      refreshBalances();
+      setReceipt({
+        kind: "charge_p2p",
         direction: "in",
+        hash: entry.hash,
+        block: entry.block,
+        fee: entry.fee,
+        memo: entry.memo,
+        factura: entry.factura,
+        usdc: entry.usdc,
+        ars: entry.ars,
+        fxRate: entry.fxRate,
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       });
-      await refreshBalances();
-      return result;
     },
-    [address, pushTx, refreshBalances, t]
+    [pushTx, refreshBalances, locale]
   );
 
   const handleConvertArsUsdc = useCallback(
@@ -3088,9 +3198,9 @@ function AppInner() {
       )}
       {tab === "charge" && (
         <Charge
+          address={address}
           fxRate={fxRate}
-          onCharge={handleCharge}
-          onDone={setReceipt}
+          onDetected={handleChargeDetected}
         />
       )}
       {tab === "convert" && (
