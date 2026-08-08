@@ -855,10 +855,14 @@ function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestCon
 
   useEffect(() => {
     if (!chargeRequest) return;
+    if (phase !== "form") {
+      onChargeRequestConsumed();
+      return;
+    }
     setArsInput(String(chargeRequest.ars));
     startWaitingFor(chargeRequest.ars);
     onChargeRequestConsumed();
-  }, [chargeRequest, onChargeRequestConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chargeRequest, phase, onChargeRequestConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase !== "waiting" || !request) return undefined;
