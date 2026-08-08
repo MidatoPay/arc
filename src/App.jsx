@@ -3016,6 +3016,17 @@ function AppInner() {
   const voiceApiRef = useRef(null);
   const [pendingScan, setPendingScan] = useState(null);
 
+  useEffect(() => {
+    if (!ready || !authenticated) return;
+    const parsed = parsePayUrl(window.location.href);
+    if (!parsed) return;
+    setPendingScan(parsed);
+    setTab("pay");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("pay");
+    window.history.replaceState({}, "", url.toString());
+  }, [ready, authenticated]);
+
   const wallet = useMemo(() => wallets.find((w) => w.walletClientType === "privy") || wallets[0], [wallets]);
   const address = wallet?.address || "";
   const treasuryAddress = useMemo(() => getTreasuryAddress(), []);
