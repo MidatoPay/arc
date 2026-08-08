@@ -66,48 +66,53 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
       if (tx.status !== "ok") continue;
       if (lastSyncedBlock != null && tx.block_number <= lastSyncedBlock) continue;
 
-      const decoded = decodeMemo(tx.raw_input);
-      const fields = decoded?.fields ?? null;
-      const memoText = decoded?.text ?? null;
-      const usdc = Number(tx.value) / 1e18;
-      if (!(usdc > 0)) continue; // filtra llamadas a contrato sin valor nativo
+      try {
+        const decoded = decodeMemo(tx.raw_input);
+        const fields = decoded?.fields ?? null;
+        const memoText = decoded?.text ?? null;
+        const usdc = Number(tx.value) / 1e18;
+        if (!(usdc > 0)) continue; // filtra llamadas a contrato sin valor nativo
 
-      let kind = "received";
-      let factura = null;
-      let ars = null;
-      let fxRate;
+        let kind = "received";
+        let factura = null;
+        let ars = null;
+        let fxRate;
 
-      if (fields && fields.kind) {
-        kind = fields.kind;
-        factura = fields.inv || null;
-        if (fields.cur === "ARS" && fields.amt) {
-          ars = Number(fields.amt);
-          fxRate = ars / usdc; // reconstruida del propio memo, no la cotización "de ahora"
+        if (fields && fields.kind) {
+          kind = fields.kind;
+          factura = fields.inv || null;
+          if (fields.cur === "ARS" && fields.amt) {
+            ars = Number(fields.amt);
+            fxRate = ars / usdc; // reconstruida del propio memo, no la cotización "de ahora"
+          }
         }
+        if (ars == null) {
+          fxRate = await getFxRate();
+          ars = usdc * fxRate;
+        }
+
+        const contact = await db.query(
+          "SELECT name FROM contacts WHERE user_id = $1 AND LOWER(address) = LOWER($2) LIMIT 1",
+          [userId, tx.from.hash]
+        );
+        const who = contact.rows[0]?.name || `${tx.from.hash.slice(0, 6)}…${tx.from.hash.slice(-4)}`;
+
+        // fee no se popula acá (el formato exacto del campo `fee` de la API
+        // de ArcScan no está verificado contra una transferencia real) — el
+        // fee sólo se conoce con certeza en el flujo de detección en vivo
+        // (findIncomingTransfer), que sí llama getTransactionReceipt.
+        await db.query(
+          `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo)
+           VALUES ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, NULL, $10)
+           ON CONFLICT (user_id, hash) DO NOTHING`,
+          [userId, tx.hash, kind, who, usdc, fxRate, ars, factura, tx.block_number, memoText]
+        );
+
+        if (maxBlockSeen == null || tx.block_number > maxBlockSeen) maxBlockSeen = tx.block_number;
+      } catch (err) {
+        console.error(`Failed to process transaction ${tx.hash || "unknown"}:`, err);
+        continue;
       }
-      if (ars == null) {
-        fxRate = await getFxRate();
-        ars = usdc * fxRate;
-      }
-
-      const contact = await db.query(
-        "SELECT name FROM contacts WHERE user_id = $1 AND LOWER(address) = LOWER($2) LIMIT 1",
-        [userId, tx.from.hash]
-      );
-      const who = contact.rows[0]?.name || `${tx.from.hash.slice(0, 6)}…${tx.from.hash.slice(-4)}`;
-
-      // fee no se popula acá (el formato exacto del campo `fee` de la API
-      // de ArcScan no está verificado contra una transferencia real) — el
-      // fee sólo se conoce con certeza en el flujo de detección en vivo
-      // (findIncomingTransfer), que sí llama getTransactionReceipt.
-      await db.query(
-        `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo)
-         VALUES ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, NULL, $10)
-         ON CONFLICT (user_id, hash) DO NOTHING`,
-        [userId, tx.hash, kind, who, usdc, fxRate, ars, factura, tx.block_number, memoText]
-      );
-
-      if (maxBlockSeen == null || tx.block_number > maxBlockSeen) maxBlockSeen = tx.block_number;
     }
 
     const stoppedAtCheckpoint = lastSyncedBlock != null && items.some((tx) => tx.block_number <= lastSyncedBlock);
