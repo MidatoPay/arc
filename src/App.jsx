@@ -1888,7 +1888,7 @@ function Voice({
       }
 
       if (result?.intent === "charge") {
-        if (!result.amount) {
+        if (!(result.amount > 0)) {
           setErrMsg(t("voice.noPaymentUnderstood"));
           setPhase("error");
           return;
@@ -3354,7 +3354,7 @@ function AppInner() {
   const handleVoiceCharge = (ars) => {
     closeVoice();
     setPendingCharge({ ars });
-    setTab("charge");
+    goTab("charge");
   };
   const openVoiceListen = () => {
     setReceipt(null);
