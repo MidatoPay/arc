@@ -40,7 +40,8 @@ Supporting files:
 - `src/arc.js` — Arc RPC provider, retries, native USDC transfers, memos.
 - `src/treasury.js` — collector/treasury wallet (`VITE_TREASURY_PRIVATE_KEY`) for payouts.
 - `src/fiatRail.js` — simulated ARS payment rail (swap body later for a real PSP).
-- `src/flows.js` — `runChargeFlow`, `runConvertArsToUsdc`, `runConvertUsdcToArs` orchestration.
+- `src/flows.js` — `runConvertArsToUsdc`, `runConvertUsdcToArs` orchestration (both still go through the treasury; Cobrar/Charge no longer does — see Payment mechanic below).
+- `src/payQr.js` — builds/parses the P2P charge QR/link payload (`buildPayUrl`/`parsePayUrl`): a URL with a single `pay` query param encoding recipient address, display name, ARS amount, and invoice. Pure module, no React/DOM.
 - `src/contacts.js` — contacts agenda client: talks to the `/contacts` Netlify Function (Postgres via Aiven), with a `localStorage` stale-while-revalidate cache keyed by Privy `user.id` so the agenda survives across devices. Not a local-storage-only module — see `netlify/functions/contacts.js` and `db/schema.sql`.
 - `src/transactions.js` — transaction history client, same pattern as `src/contacts.js`: talks to the `/transactions` Netlify Function (Postgres via Aiven) with a `localStorage` stale-while-revalidate cache keyed by Privy `user.id`. See `netlify/functions/transactions.js` and `db/schema.sql`.
 - `db/schema.sql` — `contacts` and `transactions` table DDL for Aiven Postgres; run manually once against the DB, not an auto-migration.
@@ -56,6 +57,8 @@ Privy (`@privy-io/react-auth`) handles login (email/SMS) and provisions an embed
 There's no ERC-20 contract call: USDC is the chain's *native* currency on Arc, so a "payment" is a plain native-value transfer (`signer.sendTransaction`) to one of the hardcoded `CONTACTS` addresses. The invoice/reference travels as UTF-8-encoded tx `data` (built by `armarMemo`, format `MIDATO|v1|inv:<factura>|to:<alias>|cur:<currency>|amt:<amount>`) — this is how the app claims on-chain reconciliation without an external database. When decoding it back, ArcScan's "Input Data" viewed as UTF-8 shows the memo.
 
 RPC calls (`readProvider.getBalance`, `waitForTransaction`, `sendTransaction`) are wrapped in `withRetry`, which does exponential backoff specifically on rate-limit errors (`"limit reached"`, `-32011`, `429`) — this pattern exists because the public Arc RPC throttles aggressively; keep using `withRetry` for new RPC calls rather than calling the provider directly.
+
+**Cobrar is P2P, not a treasury cash-in.** Unlike Convert (both directions still settle through the treasury wallet via `sendTreasuryPayout`), Charge (`App.jsx`) generates a QR/link (`src/payQr.js`) for the collector's own address and ARS amount — no treasury involved. The payer scans it (or opens the link) from their own session and pays the collector's wallet directly with `sendNativeUsdc`, same as a regular send. While the QR screen is open, the collector polls their own balance (`getUsdcBalance`) and, on a balance-diff, runs one bounded block scan (`findIncomingTransfer` in `src/arc.js`) to attribute the exact tx hash before recording it. Because both sides of the same on-chain hash now get their own `transactions` row, the table's uniqueness is `UNIQUE(user_id, hash)`, not a bare `UNIQUE(hash)` — see `docs/superpowers/specs/2026-08-08-qr-charge-design.md`.
 
 ### Voice → intent parsing
 
