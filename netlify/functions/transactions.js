@@ -5,8 +5,13 @@
 
 import pkg from "pg";
 import { PrivyClient } from "@privy-io/server-auth";
+import { ethers } from "ethers";
+import { reconcileWallet } from "./lib/reconcile.js";
+import { fetchArsPerUsd } from "../../src/priceFeed.js";
 
 const { Pool } = pkg;
+
+const getFxRate = () => fetchArsPerUsd(process.env.VITE_ETH_RPC || "https://ethereum.publicnode.com");
 
 let pool;
 function getPool() {
@@ -64,6 +69,30 @@ export const handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
+      const address = event.queryStringParameters?.address;
+      if (address && ethers.isAddress(address)) {
+        await db.query(
+          `INSERT INTO wallets (user_id, address, updated_at) VALUES ($1, $2, now())
+           ON CONFLICT (user_id) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
+          [userId, address]
+        );
+        try {
+          const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1", [userId]);
+          const newCheckpoint = await reconcileWallet(db, {
+            userId,
+            address,
+            lastSyncedBlock: walletRows[0]?.last_synced_block ?? null,
+            getFxRate,
+          });
+          if (newCheckpoint != null) {
+            await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2", [newCheckpoint, userId]);
+          }
+        } catch {
+          // Si ArcScan falla acá, no bloquea la carga del historial existente
+          // — se reintenta en la próxima apertura o en el próximo tick del job.
+        }
+      }
+
       const { rows } = await db.query(
         `SELECT id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at
          FROM transactions WHERE user_id = $1 ORDER BY created_at DESC`,
