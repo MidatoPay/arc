@@ -1010,13 +1010,144 @@ function Charge({ address, fxRate, onDetected }) {
   );
 }
 
-// ————— Pagar (alias o address, sin mic) —————
-function Pay({ address, balance, fxRate, contacts, onPay, onDone }) {
+/** Escaneo de QR por cámara (getUserMedia + jsQR sobre frames de <video>). */
+function QrScanner({ onDecode, onCameraError }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const streamRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const tick = () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(frame.data, frame.width, frame.height);
+      if (code?.data) {
+        onDecode(code.data);
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    navigator.mediaDevices
+      ?.getUserMedia({ video: { facingMode: "environment" } })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((tr) => tr.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      })
+      .catch((e) => onCameraError(String(e?.message || e)));
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      streamRef.current?.getTracks().forEach((tr) => tr.stop());
+    };
+  }, [onDecode, onCameraError]);
+
+  return (
+    <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", background: "#000" }}>
+      <video ref={videoRef} muted playsInline style={{ width: "100%", display: "block" }} />
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+    </div>
+  );
+}
+
+// ————— Pagar (alias o address, sin mic; + escaneo QR) —————
+function Pay({ address, balance, fxRate, contacts, onPay, onDone, onSaveContact, scanRequest, onScanRequestConsumed }) {
   const { t, locale } = useLanguage();
+  const [mode, setMode] = useState("manual"); // manual | scan
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [phase, setPhase] = useState("form");
   const [errMsg, setErrMsg] = useState("");
+  const [scanErr, setScanErr] = useState("");
+  const [manualLink, setManualLink] = useState("");
+  const [qr, setQr] = useState(null); // { addr, who, ars, factura }
+  const [savePrompt, setSavePrompt] = useState(false);
+
+  useEffect(() => {
+    if (!scanRequest) return;
+    setMode("scan");
+    setQr(scanRequest);
+    onScanRequestConsumed();
+  }, [scanRequest, onScanRequestConsumed]);
+
+  const applyDecoded = (raw) => {
+    const parsed = parsePayUrl(raw);
+    if (!parsed) {
+      setScanErr(t("pay.invalidQr"));
+      return;
+    }
+    if (parsed.addr.toLowerCase() === (address || "").toLowerCase()) {
+      setScanErr(t("pay.selfPay"));
+      return;
+    }
+    setScanErr("");
+    setQr(parsed);
+  };
+
+  const qrUsdc = qr ? qr.ars / fxRate : null;
+  const qrContact = qr ? { name: qr.who || short(qr.addr), alias: "qr", addr: qr.addr } : null;
+  const knownContact = qr ? contacts.find((c) => c.addr.toLowerCase() === qr.addr.toLowerCase()) : null;
+
+  const submitQr = async () => {
+    setErrMsg("");
+    setPhase("working");
+    try {
+      if (qrUsdc == null || qrUsdc < 0.01) throw new Error(t("pay.amountTooLow"));
+      if (balance !== null && qrUsdc > balance) {
+        throw new Error(t("voice.insufficientBalance", fmt(qrUsdc, 2, locale), fmt(balance, 2, locale)));
+      }
+      const parsed = {
+        amount: qr.ars,
+        currency: "ARS",
+        usdc: qrUsdc,
+        fxRate,
+        contact: qrContact,
+        factura: qr.factura || nuevaFactura(),
+        kind: "charge_p2p",
+      };
+      const result = await onPay(parsed);
+      onDone({
+        ...result,
+        direction: "out",
+        parsed,
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      });
+      if (!knownContact) setSavePrompt(true);
+    } catch (e) {
+      setErrMsg(String(e?.message || e));
+      setPhase("error");
+    }
+  };
+
+  const saveContact = async () => {
+    setSavePrompt(false);
+    try {
+      await onSaveContact({ name: qr.who || short(qr.addr), alias: slugifyAlias(qr.who) || qr.addr.slice(2, 8).toLowerCase(), addr: qr.addr, note: "" });
+    } catch {
+      /* alias duplicado u otro error — no bloquea el flujo de pago, ya se hizo */
+    }
+  };
 
   const n = Number(amount);
   const contact = useMemo(() => {
@@ -1096,6 +1227,98 @@ function Pay({ address, balance, fxRate, contacts, onPay, onDone }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("pay.title")}</h2>
 
+      {phase === "form" && !qr && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => setMode("manual")}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: `1.5px solid ${C.line}`, background: mode === "manual" ? C.orangeSoft : "transparent", color: mode === "manual" ? "#fe6c1c" : C.mut, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}
+          >
+            {t("pay.modeManual")}
+          </button>
+          <button
+            onClick={() => setMode("scan")}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: `1.5px solid ${C.line}`, background: mode === "scan" ? C.orangeSoft : "transparent", color: mode === "scan" ? "#fe6c1c" : C.mut, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}
+          >
+            {t("pay.modeScan")}
+          </button>
+        </div>
+      )}
+
+      {mode === "scan" && !qr && (
+        <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {!scanErr.startsWith("CAMERA:") && (
+            <>
+              <div style={{ fontSize: 13.5, color: C.mut }}>{t("pay.scanHint")}</div>
+              <QrScanner onDecode={applyDecoded} onCameraError={() => setScanErr("CAMERA:" + t("pay.scanCameraError"))} />
+            </>
+          )}
+          {scanErr && (
+            <div style={{ fontSize: 13.5, color: C.red }}>{scanErr.replace(/^CAMERA:/, "")}</div>
+          )}
+          <label style={{ display: "block" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{t("pay.scanLinkPlaceholder")}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={manualLink}
+                onChange={(e) => setManualLink(e.target.value)}
+                placeholder="https://…"
+                style={{ flex: 1, boxSizing: "border-box", background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px", fontSize: 14, color: C.ink, outline: "none", fontFamily: "inherit" }}
+              />
+              <button onClick={() => applyDecoded(manualLink)} style={{ ...btnOutline, width: "auto", padding: "0 18px" }}>
+                {t("pay.scanLinkCta")}
+              </button>
+            </div>
+          </label>
+        </Card>
+      )}
+
+      {qr && (
+        <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: "#fe6c1c", fontWeight: 700, flexShrink: 0 }}>
+              {(qr.who || "?").slice(0, 1).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("pay.payTo", qr.who || short(qr.addr))}</div>
+              <div style={{ fontSize: 12.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(qr.addr)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 20, fontWeight: 700, color: C.ink }}>
+            <span>${fmtArs(qr.ars)} ARS</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: C.mut }}>
+            <span>{t("pay.youSend")}</span>
+            <span>{qrUsdc != null ? `≈ ${fmt(qrUsdc, 2, locale)} USDC` : "—"}</span>
+          </div>
+
+          {(phase === "error" || errMsg) && phase !== "working" && (
+            <div style={{ padding: "12px 14px", background: "#FDECEA", color: C.red, borderRadius: 12, fontSize: 13.5, lineHeight: 1.5 }}>{errMsg}</div>
+          )}
+
+          <button
+            onClick={submitQr}
+            disabled={phase === "working"}
+            style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: phase === "working" ? 0.5 : 1 }}
+          >
+            {phase === "working" ? t("pay.working") : t("pay.confirmPayCta")}
+          </button>
+          <button onClick={() => { setQr(null); setScanErr(""); }} style={btnOutline}>{t("charge.cancel")}</button>
+        </Card>
+      )}
+
+      {savePrompt && qr && (
+        <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("qr.saveContactTitle")}</div>
+          <div style={{ fontSize: 13.5, color: C.mut }}>{t("qr.saveContactBody", qr.who || short(qr.addr))}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={saveContact} style={{ ...btnOrange, background: C.orange, boxShadow: "none" }}>{t("qr.saveContactYes")}</button>
+            <button onClick={() => setSavePrompt(false)} style={btnOutline}>{t("qr.saveContactNo")}</button>
+          </div>
+        </Card>
+      )}
+
+      {mode === "manual" && !qr && (
+      <>
       <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <label style={{ display: "block" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{t("pay.recipientLabel")}</div>
@@ -1231,6 +1454,8 @@ function Pay({ address, balance, fxRate, contacts, onPay, onDone }) {
       >
         {phase === "working" ? t("pay.working") : t("pay.cta")}
       </button>
+      </>
+      )}
     </div>
   );
 }
@@ -2789,6 +3014,7 @@ function AppInner() {
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const voiceApiRef = useRef(null);
+  const [pendingScan, setPendingScan] = useState(null);
 
   const wallet = useMemo(() => wallets.find((w) => w.walletClientType === "privy") || wallets[0], [wallets]);
   const address = wallet?.address || "";
@@ -3194,6 +3420,9 @@ function AppInner() {
           contacts={contacts}
           onPay={sendPayment}
           onDone={setReceipt}
+          onSaveContact={handleAddContact}
+          scanRequest={pendingScan}
+          onScanRequestConsumed={() => setPendingScan(null)}
         />
       )}
       {tab === "charge" && (
