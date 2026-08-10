@@ -20,7 +20,7 @@ import {
   runConvertUsdcToArs,
   refreshPairBalances,
 } from "./flows.js";
-import { getTreasuryAddress, isTreasuryConfigured } from "./treasury.js";
+import { getTreasuryAddress, getTreasuryBalance, isTreasuryConfigured, sendTreasuryPayout } from "./treasury.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
 import {
   loadContacts,
@@ -77,6 +77,14 @@ const C = {
   violetSoft: "#ECEAFA",
   green: "#21B95B",
   red: "#E4483D",
+};
+
+/** Paleta del cliente externo (otra “app”, sin naranja MidatoPay). */
+const G = {
+  accent: "#5B4DB7",
+  soft: "#EEEBF8",
+  mid: "#7A6EC9",
+  deep: "#4338A0",
 };
 
 // ————— util —————
@@ -361,6 +369,14 @@ const IconQrCode = ({ size = 22 }) => (
   </svg>
 );
 
+const IconFlash = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M9 3.5h6l1.8 4.2H7.2L9 3.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <rect x="8" y="7.5" width="8" height="11" rx="2" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M12 11.5v3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
 const IconCopy = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <rect x="8" y="8" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="2" />
@@ -372,7 +388,8 @@ const GRAD_COBRAR = "linear-gradient(180deg, #fe6c1c, #fe6c1c, #fe6c1c, #ffb58d,
 const GRAD_CONVERTIR = "radial-gradient(circle at 0% 0%, #ffb58d, #fe6c1c, #fe6c1c, #ffb58d, #fe6c1c)";
 const GRAD_PAGAR = "linear-gradient(180deg, #ffb58d, #ffb58d, #fe6c1c, #fe6c1c, #fe6c1c)";
 
-function NavButton({ active, icon, label, onClick }) {
+function NavButton({ active, icon, label, onClick, accent = "#fe6c1c" }) {
+  const glow = accent === "#fe6c1c" ? "rgba(254,108,28,.35)" : "rgba(91,77,183,.35)";
   return (
     <button
       onClick={onClick}
@@ -387,7 +404,7 @@ function NavButton({ active, icon, label, onClick }) {
         gap: 4,
         fontFamily: "inherit",
         padding: "4px 0 0",
-        color: active ? "#fe6c1c" : "#8A8A96",
+        color: active ? accent : "#8A8A96",
         transition: "color .2s ease, transform .15s ease",
         transform: active ? "translateY(-1px)" : "none",
       }}
@@ -398,7 +415,7 @@ function NavButton({ active, icon, label, onClick }) {
           placeItems: "center",
           width: 36,
           height: 28,
-          filter: active ? "drop-shadow(0 4px 10px rgba(254,108,28,.35))" : "none",
+          filter: active ? `drop-shadow(0 4px 10px ${glow})` : "none",
         }}
       >
         {icon}
@@ -475,7 +492,6 @@ function Login({ onLogin, ready }) {
             boxSizing: "border-box",
           }}
         >
-          {/* Idioma en su propia fila — no flota sobre el título */}
           <div
             style={{
               display: "flex",
@@ -550,6 +566,348 @@ function Login({ onLogin, ready }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Nombre del comercio embebido en el QR (vacío si era el label genérico). */
+function guestMerchantName(who) {
+  const w = String(who || "").trim();
+  if (!w || /^your commerce$/i.test(w) || /^tu comercio$/i.test(w)) return "";
+  return w;
+}
+
+// ————— Cliente demo (sin Privy): saldo ARS vía recaudadora + FAB QR —————
+function GuestApp({ onExit, initialScan = null }) {
+  const { t, locale } = useLanguage();
+  // home | scan | link | confirm
+  const [tab, setTab] = useState(initialScan ? "confirm" : "home");
+  const [fxRate, setFxRate] = useState(FALLBACK_FX_ARS_USD);
+  const [treasuryUsdc, setTreasuryUsdc] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [qr, setQr] = useState(initialScan);
+  const [scanErr, setScanErr] = useState(""); // "" | invalid | CAMERA:...
+  const [manualLink, setManualLink] = useState("");
+  const [phase, setPhase] = useState("form");
+  const [errMsg, setErrMsg] = useState("");
+  const [torchOn, setTorchOn] = useState(false);
+
+  const refreshTreasury = useCallback(async () => {
+    try {
+      const [bal, rate] = await Promise.all([getTreasuryBalance(), getArsPerUsdc()]);
+      setTreasuryUsdc(bal);
+      setFxRate(rate);
+    } catch {
+      /* RPC puede fallar */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshTreasury();
+    const id = setInterval(refreshTreasury, 45_000);
+    return () => clearInterval(id);
+  }, [refreshTreasury]);
+
+  const availableArs = treasuryUsdc == null ? null : usdcBalanceToArs(treasuryUsdc, fxRate);
+  const quote = qr ? quoteArsToUsdc(qr.ars, fxRate) : null;
+
+  const openScan = () => {
+    setTab("scan");
+    setQr(null);
+    setScanErr("");
+    setErrMsg("");
+    setPhase("form");
+    setManualLink("");
+    setTorchOn(false);
+  };
+
+  const openLink = () => {
+    setTab("link");
+    setManualLink("");
+    setScanErr("");
+    setErrMsg("");
+  };
+
+  const goHome = () => {
+    setTab("home");
+    setQr(null);
+    setScanErr("");
+    setErrMsg("");
+    setPhase("form");
+    setManualLink("");
+  };
+
+  const applyDecoded = (raw) => {
+    const parsed = parsePayUrl(raw);
+    if (!parsed) {
+      setScanErr("invalid");
+      setTab("scan");
+      setQr(null);
+      return;
+    }
+    setScanErr("");
+    setQr(parsed);
+    setPhase("form");
+    setErrMsg("");
+    setTab("confirm");
+  };
+
+  const submit = async () => {
+    setErrMsg("");
+    setPhase("working");
+    try {
+      if (!isTreasuryConfigured()) throw new Error(t("guest.treasuryMissing"));
+      if (!qr || !quote) throw new Error(t("pay.invalidQr"));
+      if (availableArs != null && qr.ars > availableArs) throw new Error(t("guest.insufficient"));
+      if (treasuryUsdc != null && quote.usdc > treasuryUsdc) throw new Error(t("guest.insufficient"));
+
+      const result = await sendTreasuryPayout({
+        to: qr.addr,
+        usdc: quote.usdc,
+        kind: "guest_qr",
+        ars: qr.ars,
+        fxRate,
+        factura: qr.factura,
+      });
+      await refreshTreasury();
+      setReceipt({
+        ...result,
+        kind: "charge_p2p",
+        ars: qr.ars,
+        direction: "out",
+        parsed: {
+          amount: qr.ars,
+          currency: "ARS",
+          usdc: result.usdc,
+          fxRate,
+          contact: { name: guestMerchantName(qr.who) || t("guest.merchant"), alias: "qr", addr: qr.addr },
+        },
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      });
+      setQr(null);
+      setPhase("form");
+      setTab("home");
+    } catch (e) {
+      setErrMsg(String(e?.message || e));
+      setPhase("error");
+    }
+  };
+
+  const shell = (children, { pad = true, nav = true } = {}) => (
+    <div className="mp-stage">
+      <div className="mp-device mp-guest">
+        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 120px" : 0 }}>{children}</div>
+        {nav && (
+          <nav className="mp-nav">
+            <NavButton active={tab === "home"} icon={<IconHome />} label={t("nav.home")} onClick={goHome} accent={G.accent} />
+            <div style={{ flex: 1 }} aria-hidden="true" />
+            <div style={{ width: 64, flexShrink: 0 }} aria-hidden="true" />
+            <div style={{ flex: 1 }} aria-hidden="true" />
+            <NavButton active={false} icon={<IconLogout />} label={t("guest.exit")} onClick={onExit} accent={G.accent} />
+            <button
+              type="button"
+              onClick={openScan}
+              className="mp-fab"
+              aria-label={t("guest.scanCta")}
+            >
+              <span className="mp-fab-shine" aria-hidden />
+              <IconQrCode size={26} />
+            </button>
+          </nav>
+        )}
+      </div>
+    </div>
+  );
+
+  if (receipt) {
+    return shell(
+      <Success
+        receipt={receipt}
+        hideFx
+        onClose={(next) => {
+          setReceipt(null);
+          if (next === "pay" || next === "scan") openScan();
+          else setTab("home");
+        }}
+      />
+    );
+  }
+
+  if (tab === "scan" && scanErr === "invalid" && !qr) {
+    return shell(
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "28px 22px 28px", boxSizing: "border-box", background: C.card }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 12 }}>
+          <div style={{ width: 88, height: 88, borderRadius: 22, background: "#FDECEA", display: "grid", placeItems: "center", color: C.red }}>
+            <IconQrCode size={44} />
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, marginTop: 8 }}>{t("guest.invalidTitle")}</div>
+          <div style={{ fontSize: 15, color: C.mut, lineHeight: 1.45, maxWidth: 280 }}>{t("guest.invalidBody")}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <button type="button" onClick={() => { setScanErr(""); setTab("scan"); }} style={{ ...btnOrange, background: C.ink, boxShadow: "none" }}>
+            {t("guest.scanAgain")}
+          </button>
+          <button type="button" onClick={goHome} style={{ ...btnOutline, borderColor: C.line, color: C.ink, background: C.bg }}>
+            {t("guest.goHome")}
+          </button>
+        </div>
+      </div>,
+      { pad: false, nav: false }
+    );
+  }
+
+  if (tab === "link") {
+    return shell(
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "22px 22px 28px", boxSizing: "border-box", background: C.card }}>
+        <button type="button" onClick={openScan} aria-label={t("guest.backHome")} style={{ alignSelf: "flex-start", width: 40, height: 40, borderRadius: "50%", border: "none", background: C.bg, color: C.ink, fontSize: 26, lineHeight: 1, cursor: "pointer", fontFamily: "inherit", marginBottom: 18 }}>
+          ‹
+        </button>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: "0 0 8px", letterSpacing: -0.4 }}>{t("guest.useLinkTitle")}</h2>
+        <p style={{ fontSize: 15, color: C.mut, lineHeight: 1.45, margin: "0 0 20px" }}>{t("guest.useLinkBody")}</p>
+        <textarea
+          value={manualLink}
+          onChange={(e) => setManualLink(e.target.value)}
+          placeholder={t("pay.scanLinkPlaceholder")}
+          rows={4}
+          style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 16, padding: "14px 16px", fontSize: 15, fontFamily: "inherit", outline: "none", resize: "vertical", color: C.ink, background: C.bg }}
+        />
+        <div style={{ marginTop: "auto", paddingTop: 24, display: "flex", flexDirection: "column", gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => applyDecoded(manualLink)}
+            disabled={!manualLink.trim()}
+            style={{ ...btnOrange, background: G.accent, boxShadow: "none", opacity: manualLink.trim() ? 1 : 0.5 }}
+          >
+            {t("guest.useLinkCta")}
+          </button>
+          <button type="button" onClick={openScan} style={{ ...btnOutline, border: "none", color: C.mut }}>
+            {t("guest.scanAgain")}
+          </button>
+        </div>
+      </div>,
+      { pad: false, nav: false }
+    );
+  }
+
+  if (tab === "scan" && !qr) {
+    return shell(
+      <div className="mp-guest-scan">
+        <div className="mp-guest-scan-top">
+          <button type="button" onClick={goHome} className="mp-guest-scan-iconbtn" aria-label={t("guest.backHome")}>‹</button>
+        </div>
+        {!scanErr.startsWith("CAMERA:") ? (
+          <div className="mp-guest-scan-stage">
+            <QrScanner
+              fill
+              torchOn={torchOn}
+              onDecode={applyDecoded}
+              onCameraError={() => setScanErr("CAMERA:" + t("pay.scanCameraError"))}
+            />
+            <div className="mp-guest-scan-frame" aria-hidden />
+            <div className="mp-guest-scan-laser" aria-hidden />
+          </div>
+        ) : (
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, color: "#fff", textAlign: "center", background: "#0b0b0d" }}>
+            {scanErr.replace(/^CAMERA:/, "")}
+          </div>
+        )}
+        <div className="mp-guest-scan-bottom">
+          <button
+            type="button"
+            onClick={() => setTorchOn((v) => !v)}
+            className={`mp-guest-scan-flash${torchOn ? " is-on" : ""}`}
+            aria-label={t("guest.flash")}
+            aria-pressed={torchOn}
+          >
+            <IconFlash size={24} />
+          </button>
+          <button type="button" onClick={openLink} style={{ ...btnOrange, background: "#fff", color: C.ink, boxShadow: "none" }}>
+            {t("guest.useLink")}
+          </button>
+        </div>
+      </div>,
+      { pad: false, nav: false }
+    );
+  }
+
+  if (tab === "confirm" && qr) {
+    const merchantName = guestMerchantName(qr.who);
+    return shell(
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("guest.scanTitle")}</h2>
+        <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 13, color: C.mut }}>{t("guest.payToLabel")}</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.ink }}>{t("guest.merchant")}</div>
+            {merchantName ? (
+              <div style={{ fontSize: 20, fontWeight: 700, color: G.accent, marginTop: 2, letterSpacing: -0.3 }}>
+                {merchantName}
+              </div>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, marginTop: 6 }}>
+            <span style={{ color: C.mut }}>{t("guest.youPay")}</span>
+            <span style={{ fontWeight: 700, color: C.ink }}>$ {fmtArs(qr.ars)}</span>
+          </div>
+          {(phase === "error" || errMsg) && phase !== "working" && (
+            <div style={{ background: "#FDECEA", color: C.red, fontSize: 14, lineHeight: 1.5, borderRadius: 12, padding: "12px 14px" }}>{errMsg}</div>
+          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={phase === "working" || !quote}
+            style={{ ...btnOrange, background: G.accent, boxShadow: "none", opacity: phase === "working" || !quote ? 0.5 : 1 }}
+          >
+            {phase === "working" ? t("guest.paying") : t("guest.confirmCta")}
+          </button>
+          <button type="button" onClick={openScan} style={{ ...btnOutline, border: "none", color: C.mut }}>
+            {t("guest.scanAgain")}
+          </button>
+        </Card>
+      </div>
+    );
+  }
+
+  return shell(
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div
+          aria-hidden
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: G.soft,
+            color: G.accent,
+            display: "grid",
+            placeItems: "center",
+            fontWeight: 700,
+            fontSize: 18,
+          }}
+        >
+          C
+        </div>
+        <div>
+          <div style={{ fontSize: 15, color: C.mut }}>{t("home.greetingHi")}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: G.accent, letterSpacing: -0.3 }}>{t("guest.name")}</div>
+        </div>
+      </div>
+
+      <Card>
+        <div style={{ fontSize: 14, color: C.mut, fontWeight: 600 }}>{t("home.available")}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+          <img
+            src="/monedas/ars.png"
+            alt="ARS"
+            width={34}
+            height={34}
+            style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }}
+          />
+          <div style={{ fontSize: 34, fontWeight: 700, color: C.ink, letterSpacing: -0.8, lineHeight: 1.1 }}>
+            {availableArs == null ? "—" : `$ ${fmtArs(availableArs)}`}
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -827,7 +1185,7 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
 }
 
 // ————— Cobrar (QR P2P: espera y detecta el pago on-chain) —————
-function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestConsumed }) {
+function Charge({ address, fxRate, onDetected, merchantName, chargeRequest, onChargeRequestConsumed }) {
   const { t, locale } = useLanguage();
   const [arsInput, setArsInput] = useState("");
   const [phase, setPhase] = useState("form"); // form | waiting | error
@@ -839,10 +1197,11 @@ function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestCon
 
   const ars = Number(arsInput);
   const quote = Number.isFinite(ars) && ars > 0 ? quoteArsToUsdc(ars, fxRate) : null;
+  const whoForQr = (merchantName || "").trim() || t("charge.merchantSelf");
 
   const startWaitingFor = async (arsValue) => {
     const factura = nuevaFactura();
-    const url = buildPayUrl({ addr: address, who: t("charge.merchantSelf"), ars: arsValue, factura });
+    const url = buildPayUrl({ addr: address, who: whoForQr, ars: arsValue, factura });
     setRequest({ ars: arsValue, factura, url });
     setPhase("waiting");
     try {
@@ -884,7 +1243,7 @@ function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestCon
       const usdc = current - baselineRef.current;
       onDetected({
         hash: found.hash,
-        who: t("charge.merchantSelf"),
+        who: whoForQr,
         amt: usdc,
         fxRate: rate,
         ars: request.ars,
@@ -1029,14 +1388,16 @@ function Charge({ address, fxRate, onDetected, chargeRequest, onChargeRequestCon
 }
 
 /** Escaneo de QR por cámara (getUserMedia + jsQR sobre frames de <video>). */
-function QrScanner({ onDecode, onCameraError }) {
+function QrScanner({ onDecode, onCameraError, fill = false, torchOn = false }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const streamRef = useRef(null);
+  const [streamReady, setStreamReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setStreamReady(false);
 
     const tick = () => {
       const video = videoRef.current;
@@ -1059,16 +1420,17 @@ function QrScanner({ onDecode, onCameraError }) {
     };
 
     navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: "environment" } })
+      ?.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
       .then((stream) => {
         if (cancelled) {
           stream.getTracks().forEach((tr) => tr.stop());
           return;
         }
         streamRef.current = stream;
+        setStreamReady(true);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          videoRef.current.play().catch(() => {});
         }
         rafRef.current = requestAnimationFrame(tick);
       })
@@ -1078,12 +1440,36 @@ function QrScanner({ onDecode, onCameraError }) {
       cancelled = true;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((tr) => tr.stop());
+      streamRef.current = null;
+      setStreamReady(false);
     };
   }, [onDecode, onCameraError]);
 
+  useEffect(() => {
+    if (!streamReady) return;
+    const track = streamRef.current?.getVideoTracks?.()[0];
+    if (!track) return;
+    track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {});
+  }, [torchOn, streamReady]);
+
   return (
-    <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", background: "#000" }}>
-      <video ref={videoRef} muted playsInline style={{ width: "100%", display: "block" }} />
+    <div
+      style={
+        fill
+          ? { position: "absolute", inset: 0, background: "#000", overflow: "hidden" }
+          : { position: "relative", borderRadius: 16, overflow: "hidden", background: "#000" }
+      }
+    >
+      <video
+        ref={videoRef}
+        muted
+        playsInline
+        style={
+          fill
+            ? { width: "100%", height: "100%", objectFit: "cover", display: "block" }
+            : { width: "100%", display: "block" }
+        }
+      />
       <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
   );
@@ -2382,17 +2768,17 @@ function Voice({
 }
 
 // ————— Detalle de transacción (compartido: Success + TxCard) —————
-function TxDetail({ usdc, ars, fx, fee, block, factura, hash, time }) {
+function TxDetail({ usdc, ars, fx, fee, block, factura, hash, time, hideFx = false }) {
   const { t, locale } = useLanguage();
   return (
     <div style={{ marginTop: 18 }}>
       <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{t("success.operation")}</div>
       <div style={{ display: "grid", gap: 10, fontSize: 14.5 }}>
         {[
-          [t("success.amountSent"), `${fmt(usdc, 2, locale)} USDC`],
-          [t("success.equals"), `$${fmtArs(ars)} ARS`],
-          [t("success.exchangeRate"), `1 USDC = $${fmtArs(fx)} ARS`],
-          [t("success.networkFee"), fee ? `${Number(fee).toFixed(6)} USDC` : "—"],
+          hideFx ? null : [t("success.amountSent"), `${fmt(usdc, 2, locale)} USDC`],
+          [hideFx ? t("guest.youPay") : t("success.equals"), `$${fmtArs(ars)} ARS`],
+          hideFx ? null : [t("success.exchangeRate"), `1 USDC = $${fmtArs(fx)} ARS`],
+          hideFx ? null : [t("success.networkFee"), fee ? `${Number(fee).toFixed(6)} USDC` : "—"],
           block ? [t("success.block"), String(block)] : null,
           [t("success.time"), time],
         ].filter(Boolean).map(([k, v]) => (
@@ -2416,7 +2802,7 @@ function TxDetail({ usdc, ars, fx, fee, block, factura, hash, time }) {
 }
 
 // ————— Éxito a pantalla completa —————
-function Success({ receipt, onClose }) {
+function Success({ receipt, onClose, hideFx = false }) {
   const { t, locale } = useLanguage();
   const [detalle, setDetalle] = useState(false);
   const [splash, setSplash] = useState(true);
@@ -2430,11 +2816,17 @@ function Success({ receipt, onClose }) {
   const isChargeIn = kind === "charge" || (kind === "charge_p2p" && receipt.direction === "in");
 
   const splashTitle =
-    isChargeIn ? t("success.splashCharge")
-      : kind === "convert_ars_usdc" || kind === "convert_usdc_ars" ? t("success.splashConvert")
-        : t("success.splashTitle");
+    hideFx ? t("guest.successSplash")
+      : isChargeIn ? t("success.splashCharge")
+        : kind === "convert_ars_usdc" || kind === "convert_usdc_ars" ? t("success.splashConvert")
+          : t("success.splashTitle");
 
   const summary = () => {
+    if (hideFx) {
+      const p = receipt.parsed || {};
+      const who = p.contact?.name || t("guest.merchant");
+      return t("guest.paidSummary", who, fmtArs(p.amount ?? receipt.ars));
+    }
     if (isChargeIn) return t("success.chargeSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
     if (kind === "convert_ars_usdc") return t("success.convertArsUsdcSummary", fmtArs(receipt.ars), fmt(receipt.usdc, 2, locale));
     if (kind === "convert_usdc_ars") return t("success.convertUsdcArsSummary", fmt(receipt.usdc, 2, locale), fmtArs(receipt.ars));
@@ -2458,6 +2850,28 @@ function Success({ receipt, onClose }) {
   const fx = receipt.fxRate || p.fxRate || FALLBACK_FX_ARS_USD;
   const usdc = receipt.usdc ?? p.usdc;
   const ars = receipt.ars ?? (usdc * fx);
+
+  if (hideFx) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          minHeight: "70%",
+          padding: "32px 18px 24px",
+          boxSizing: "border-box",
+          gap: 16,
+        }}
+      >
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.green, display: "grid", placeItems: "center", color: "#fff", fontSize: 34 }}>✓</div>
+        <div style={{ fontSize: 26, fontWeight: 700, color: C.ink, letterSpacing: -0.3 }}>{t("guest.successTitle")}</div>
+        <div style={{ fontSize: 17, fontWeight: 600, color: C.ink, lineHeight: 1.45, maxWidth: 280 }}>{summary()}</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2525,7 +2939,7 @@ function TxCard({ tx, compact = false }) {
     ? tx.kind === "convert_ars_usdc"
       ? "ARS → USDC"
       : "USDC → ARS"
-    : tx.kind === "charge"
+    : tx.kind === "charge" || (tx.kind === "charge_p2p" && inbound)
       ? t("movs.charge")
       : tx.who;
 
@@ -3048,18 +3462,41 @@ function AppInner() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const voiceApiRef = useRef(null);
   const [pendingScan, setPendingScan] = useState(null);
+  const [guestMode, setGuestMode] = useState(false);
+  const [guestInitialScan, setGuestInitialScan] = useState(null);
   const [pendingCharge, setPendingCharge] = useState(null);
 
   useEffect(() => {
-    if (!ready || !authenticated) return;
+    const url = new URL(window.location.href);
+    const wantsGuest = url.searchParams.get("guest") === "1" || url.searchParams.get("cliente") === "1";
+    if (wantsGuest) {
+      setGuestMode(true);
+      url.searchParams.delete("guest");
+      url.searchParams.delete("cliente");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
+  useEffect(() => {
     const parsed = parsePayUrl(window.location.href);
     if (!parsed) return;
     setPendingScan(parsed);
-    setTab("pay");
+    setGuestInitialScan(parsed);
+    if (ready && authenticated) {
+      setTab("pay");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("pay");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [ready, authenticated]);
+
+  useEffect(() => {
+    if (!guestMode || !guestInitialScan) return;
     const url = new URL(window.location.href);
+    if (!url.searchParams.has("pay")) return;
     url.searchParams.delete("pay");
     window.history.replaceState({}, "", url.toString());
-  }, [ready, authenticated]);
+  }, [guestMode, guestInitialScan]);
 
   const wallet = useMemo(() => wallets.find((w) => w.walletClientType === "privy") || wallets[0], [wallets]);
   const address = wallet?.address || "";
@@ -3418,7 +3855,21 @@ function AppInner() {
     </div>
   );
 
-  if (!ready || !authenticated) return <Login onLogin={login} ready={ready} />;
+  if (guestMode && !authenticated) {
+    return (
+      <GuestApp
+        onExit={() => {
+          setGuestMode(false);
+          setGuestInitialScan(null);
+        }}
+        initialScan={guestInitialScan}
+      />
+    );
+  }
+
+  if (!ready || !authenticated) {
+    return <Login onLogin={login} ready={ready} />;
+  }
 
   if (!address) {
     return shell(
@@ -3481,6 +3932,7 @@ function AppInner() {
           address={address}
           fxRate={fxRate}
           onDetected={handleChargeDetected}
+          merchantName={nombre}
           chargeRequest={pendingCharge}
           onChargeRequestConsumed={() => setPendingCharge(null)}
         />
