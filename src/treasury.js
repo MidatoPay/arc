@@ -38,9 +38,9 @@ export async function getTreasuryBalance() {
  * Payout desde la recaudadora → usuario (USDC nativo en Arc).
  * Usado por Cobrar y Convertir ARS→USDC.
  */
-export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate }) {
+export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate, factura: facturaIn }) {
   const wallet = getTreasuryWallet();
-  const factura = nuevaFactura();
+  const factura = facturaIn || nuevaFactura();
   const memo = armarMemo({
     inv: factura,
     kind,
