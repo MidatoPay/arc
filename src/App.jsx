@@ -222,12 +222,12 @@ function CircleAction({ icon, label, onClick, background }) {
   return (
     <button
       onClick={onClick}
-      style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flex: 1, fontFamily: "inherit", padding: 0 }}
+      style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flex: 1, fontFamily: "inherit", padding: 0, minWidth: 0 }}
     >
       <div
         style={{
-          width: 58,
-          height: 58,
+          width: 54,
+          height: 54,
           borderRadius: "50%",
           background: background || C.orange,
           display: "grid",
@@ -238,7 +238,7 @@ function CircleAction({ icon, label, onClick, background }) {
       >
         {icon}
       </div>
-      <span style={{ fontSize: 13.5, fontWeight: 600, color: C.mut }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: C.mut, textAlign: "center", lineHeight: 1.2 }}>{label}</span>
     </button>
   );
 }
@@ -319,6 +319,13 @@ const IconContacts = ({ size = 22 }) => (
   </svg>
 );
 
+const IconProfile = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M5.5 19.5c1.6-3.2 4-4.8 6.5-4.8s4.9 1.6 6.5 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
 const IconMic = ({ size = 26 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <rect x="9" y="3.5" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.9" />
@@ -360,6 +367,23 @@ const IconChevron = ({ size = 18 }) => (
   </svg>
 );
 
+const IconChevronDown = ({ size = 16, up = false }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden
+    style={{
+      display: "block",
+      transform: up ? "rotate(180deg)" : "none",
+      transition: "transform .15s ease",
+    }}
+  >
+    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 const IconQrCode = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <rect x="3" y="3" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="2" />
@@ -387,6 +411,7 @@ const IconCopy = ({ size = 18 }) => (
 const GRAD_COBRAR = "linear-gradient(180deg, #fe6c1c, #fe6c1c, #fe6c1c, #ffb58d, #ffb58d)";
 const GRAD_CONVERTIR = "radial-gradient(circle at 0% 0%, #ffb58d, #fe6c1c, #fe6c1c, #ffb58d, #fe6c1c)";
 const GRAD_PAGAR = "linear-gradient(180deg, #ffb58d, #ffb58d, #fe6c1c, #fe6c1c, #fe6c1c)";
+const GRAD_ENVIAR = "linear-gradient(180deg, #fe6c1c, #fe6c1c, #e85a10, #ffb58d)";
 
 function NavButton({ active, icon, label, onClick, accent = "#fe6c1c" }) {
   const glow = accent === "#fe6c1c" ? "rgba(254,108,28,.35)" : "rgba(91,77,183,.35)";
@@ -915,7 +940,7 @@ function GuestApp({ onExit, initialScan = null }) {
 // ————— Inicio —————
 function Home({
   nombre, address, balance, arsBalance,
-  txs, goCharge, goConvert, goPay, goMore, fxRate,
+  txs, goCharge, goConvert, goPay, goSend, goMore, fxRate,
 }) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
@@ -998,10 +1023,11 @@ function Home({
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 20 }}>
-          <CircleAction icon={<IconArrowDown />} label={t("home.actionReceive")} onClick={goCharge} background={GRAD_COBRAR} />
-          <CircleAction icon={<IconSwap />} label={t("home.actionConvert")} onClick={goConvert} background={GRAD_CONVERTIR} />
-          <CircleAction icon={<IconArrowUp />} label={t("home.actionPay")} onClick={goPay} background={GRAD_PAGAR} />
+        <div style={{ display: "flex", gap: 4, marginTop: 20 }}>
+          <CircleAction icon={<IconArrowDown size={20} />} label={t("home.actionReceive")} onClick={goCharge} background={GRAD_COBRAR} />
+          <CircleAction icon={<IconSwap size={20} />} label={t("home.actionConvert")} onClick={goConvert} background={GRAD_CONVERTIR} />
+          <CircleAction icon={<IconQrCode size={20} />} label={t("home.actionPay")} onClick={goPay} background={GRAD_PAGAR} />
+          <CircleAction icon={<IconArrowUp size={20} />} label={t("home.actionSend")} onClick={goSend} background={GRAD_ENVIAR} />
         </div>
       </Card>
 
@@ -1032,6 +1058,25 @@ function Home({
           <span style={{ fontSize: 13.5, color: C.violet, flex: 1 }}>{t("home.infoDigitalAssets")}</span>
         </div>
       </Card>
+
+      <div
+        style={{
+          width: "100%",
+          borderRadius: 22,
+          overflow: "hidden",
+          lineHeight: 0,
+        }}
+      >
+        <img
+          src="/banner/banner.png"
+          alt=""
+          style={{
+            display: "block",
+            width: "100%",
+            height: "auto",
+          }}
+        />
+      </div>
 
       {balance !== null && balance < 0.5 && (
         <Card style={{ background: "#16161A", color: "#fff" }}>
@@ -1476,82 +1521,14 @@ function QrScanner({ onDecode, onCameraError, fill = false, torchOn = false }) {
 }
 
 // ————— Pagar (alias o address, sin mic; + escaneo QR) —————
-function Pay({ address, balance, fxRate, contacts, onPay, onDone, onSaveContact, scanRequest, onScanRequestConsumed }) {
+// ————— Enviar (alias / address → USDC) —————
+function Send({ address, balance, fxRate, contacts, onPay, onDone }) {
   const { t, locale } = useLanguage();
-  const [mode, setMode] = useState("manual"); // manual | scan
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [phase, setPhase] = useState("form");
   const [errMsg, setErrMsg] = useState("");
-  const [scanErr, setScanErr] = useState("");
-  const [manualLink, setManualLink] = useState("");
-  const [qr, setQr] = useState(null); // { addr, who, ars, factura }
-  const [savePrompt, setSavePrompt] = useState(false);
-
-  useEffect(() => {
-    if (!scanRequest) return;
-    setMode("scan");
-    setQr(scanRequest);
-    onScanRequestConsumed();
-  }, [scanRequest, onScanRequestConsumed]);
-
-  const applyDecoded = (raw) => {
-    const parsed = parsePayUrl(raw);
-    if (!parsed) {
-      setScanErr(t("pay.invalidQr"));
-      return;
-    }
-    if (parsed.addr.toLowerCase() === (address || "").toLowerCase()) {
-      setScanErr(t("pay.selfPay"));
-      return;
-    }
-    setScanErr("");
-    setQr(parsed);
-  };
-
-  const qrUsdc = qr ? qr.ars / fxRate : null;
-  const qrContact = qr ? { name: qr.who || short(qr.addr), alias: "qr", addr: qr.addr } : null;
-  const knownContact = qr ? contacts.find((c) => c.addr.toLowerCase() === qr.addr.toLowerCase()) : null;
-
-  const submitQr = async () => {
-    setErrMsg("");
-    setPhase("working");
-    try {
-      if (qrUsdc == null || qrUsdc < 0.01) throw new Error(t("pay.amountTooLow"));
-      if (balance !== null && qrUsdc > balance) {
-        throw new Error(t("voice.insufficientBalance", fmt(qrUsdc, 2, locale), fmt(balance, 2, locale)));
-      }
-      const parsed = {
-        amount: qr.ars,
-        currency: "ARS",
-        usdc: qrUsdc,
-        fxRate,
-        contact: qrContact,
-        factura: qr.factura || nuevaFactura(),
-        kind: "charge_p2p",
-      };
-      const result = await onPay(parsed);
-      onDone({
-        ...result,
-        direction: "out",
-        parsed,
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
-      });
-      if (!knownContact) setSavePrompt(true);
-    } catch (e) {
-      setErrMsg(String(e?.message || e));
-      setPhase("error");
-    }
-  };
-
-  const saveContact = async () => {
-    setSavePrompt(false);
-    try {
-      await onSaveContact({ name: qr.who || short(qr.addr), alias: slugifyAlias(qr.who) || qr.addr.slice(2, 8).toLowerCase(), addr: qr.addr, note: "" });
-    } catch {
-      /* alias duplicado u otro error — no bloquea el flujo de pago, ya se hizo */
-    }
-  };
+  const [feeOpen, setFeeOpen] = useState(false);
 
   const n = Number(amount);
   const contact = useMemo(() => {
@@ -1629,100 +1606,8 @@ function Pay({ address, balance, fxRate, contacts, onPay, onDone, onSaveContact,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("pay.title")}</h2>
+      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("send.title")}</h2>
 
-      {phase === "form" && !qr && (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setMode("manual")}
-            style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: `1.5px solid ${C.line}`, background: mode === "manual" ? C.orangeSoft : "transparent", color: mode === "manual" ? "#fe6c1c" : C.mut, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}
-          >
-            {t("pay.modeManual")}
-          </button>
-          <button
-            onClick={() => setMode("scan")}
-            style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: `1.5px solid ${C.line}`, background: mode === "scan" ? C.orangeSoft : "transparent", color: mode === "scan" ? "#fe6c1c" : C.mut, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}
-          >
-            {t("pay.modeScan")}
-          </button>
-        </div>
-      )}
-
-      {mode === "scan" && !qr && (
-        <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {!scanErr.startsWith("CAMERA:") && (
-            <>
-              <div style={{ fontSize: 13.5, color: C.mut }}>{t("pay.scanHint")}</div>
-              <QrScanner onDecode={applyDecoded} onCameraError={() => setScanErr("CAMERA:" + t("pay.scanCameraError"))} />
-            </>
-          )}
-          {scanErr && (
-            <div style={{ fontSize: 13.5, color: C.red }}>{scanErr.replace(/^CAMERA:/, "")}</div>
-          )}
-          <label style={{ display: "block" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{t("pay.scanLinkPlaceholder")}</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={manualLink}
-                onChange={(e) => setManualLink(e.target.value)}
-                placeholder="https://…"
-                style={{ flex: 1, boxSizing: "border-box", background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px", fontSize: 14, color: C.ink, outline: "none", fontFamily: "inherit" }}
-              />
-              <button onClick={() => applyDecoded(manualLink)} style={{ ...btnOutline, width: "auto", padding: "0 18px" }}>
-                {t("pay.scanLinkCta")}
-              </button>
-            </div>
-          </label>
-        </Card>
-      )}
-
-      {qr && (
-        <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: "#fe6c1c", fontWeight: 700, flexShrink: 0 }}>
-              {(qr.who || "?").slice(0, 1).toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("pay.payTo", qr.who || short(qr.addr))}</div>
-              <div style={{ fontSize: 12.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(qr.addr)}</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 20, fontWeight: 700, color: C.ink }}>
-            <span>${fmtArs(qr.ars)} ARS</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: C.mut }}>
-            <span>{t("pay.youSend")}</span>
-            <span>{qrUsdc != null ? `≈ ${fmt(qrUsdc, 2, locale)} USDC` : "—"}</span>
-          </div>
-
-          {(phase === "error" || errMsg) && phase !== "working" && (
-            <div style={{ padding: "12px 14px", background: "#FDECEA", color: C.red, borderRadius: 12, fontSize: 13.5, lineHeight: 1.5 }}>{errMsg}</div>
-          )}
-
-          <button
-            onClick={submitQr}
-            disabled={phase === "working"}
-            style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: phase === "working" ? 0.5 : 1 }}
-          >
-            {phase === "working" ? t("pay.working") : t("pay.confirmPayCta")}
-          </button>
-          <button onClick={() => { setQr(null); setScanErr(""); }} style={btnOutline}>{t("charge.cancel")}</button>
-        </Card>
-      )}
-
-      {savePrompt && qr && (
-        <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("qr.saveContactTitle")}</div>
-          <div style={{ fontSize: 13.5, color: C.mut }}>{t("qr.saveContactBody", qr.who || short(qr.addr))}</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={saveContact} style={{ ...btnOrange, background: C.orange, boxShadow: "none" }}>{t("qr.saveContactYes")}</button>
-            <button onClick={() => setSavePrompt(false)} style={btnOutline}>{t("qr.saveContactNo")}</button>
-          </div>
-        </Card>
-      )}
-
-      {mode === "manual" && !qr && (
-      <>
       <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <label style={{ display: "block" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{t("pay.recipientLabel")}</div>
@@ -1828,18 +1713,6 @@ function Pay({ address, balance, fxRate, contacts, onPay, onDone, onSaveContact,
             {usdc != null ? `${fmt(usdc, 2, locale)} USDC` : "—"}
           </span>
         </div>
-
-        {canSubmit && (
-          <GasEstimatePanel
-            estimate={gas.estimate}
-            loading={gas.loading}
-            error={gas.error}
-            onRetry={gas.retry}
-            fxRate={fxRate}
-            locale={locale}
-            t={t}
-          />
-        )}
       </Card>
 
       {(phase === "error" || errMsg) && phase !== "working" && (
@@ -1856,9 +1729,322 @@ function Pay({ address, balance, fxRate, contacts, onPay, onDone, onSaveContact,
           opacity: phase === "working" || !canSubmit ? 0.5 : 1,
         }}
       >
-        {phase === "working" ? t("pay.working") : t("pay.cta")}
+        {phase === "working" ? t("pay.working") : t("send.cta")}
       </button>
-      </>
+
+      {canSubmit && (
+        <div style={{ padding: "4px 2px 0" }}>
+          <button
+            type="button"
+            onClick={() => setFeeOpen((v) => !v)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#fe6c1c",
+              fontWeight: 700,
+              cursor: "pointer",
+              padding: 0,
+              fontFamily: "inherit",
+              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {feeOpen ? t("send.hideFeeDetails") : t("send.viewFeeDetails")}
+            <IconChevronDown size={16} up={feeOpen} />
+          </button>
+
+          {feeOpen && (
+            <div
+              style={{
+                background: C.bg,
+                borderRadius: 16,
+                padding: "14px 16px",
+                marginTop: 10,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
+              <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4, lineHeight: 1.4 }}>{t("gas.disclaimer")}</div>
+
+              {gas.loading && (
+                <div style={{ fontSize: 14, color: C.mut, marginTop: 14 }}>{t("convert.feePending")}</div>
+              )}
+              {!gas.loading && gas.error && (
+                <button
+                  type="button"
+                  onClick={gas.retry}
+                  style={{ display: "block", marginTop: 14, background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
+                >
+                  {t("gas.retry")}
+                </button>
+              )}
+              {!gas.loading && !gas.error && gas.estimate && (
+                <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16 }}>
+                    <span style={{ fontSize: 14, color: C.mut, flexShrink: 0 }}>{t("gas.totalNative")}</span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, textAlign: "right", whiteSpace: "nowrap" }}>
+                      − {fmt(gas.estimate.feeNative, 6, locale)} USDC
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ————— Pagar (escaneo QR P2P, UI tipo guest en naranja) —————
+function PayScan({
+  address, balance, fxRate, contacts, onPay, onDone, onSaveContact,
+  scanRequest, onScanRequestConsumed, onBack, onFullscreenChange,
+}) {
+  const { t, locale } = useLanguage();
+  const [view, setView] = useState(scanRequest ? "confirm" : "scan"); // scan | link | invalid | confirm
+  const [qr, setQr] = useState(scanRequest);
+  const [scanErr, setScanErr] = useState("");
+  const [manualLink, setManualLink] = useState("");
+  const [phase, setPhase] = useState("form");
+  const [errMsg, setErrMsg] = useState("");
+  const [torchOn, setTorchOn] = useState(false);
+  const [savePrompt, setSavePrompt] = useState(false);
+
+  const fullscreen = view === "scan" || view === "link" || view === "invalid";
+
+  useEffect(() => {
+    onFullscreenChange?.(fullscreen);
+  }, [fullscreen, onFullscreenChange]);
+
+  useEffect(() => {
+    if (!scanRequest) return;
+    setQr(scanRequest);
+    setView("confirm");
+    onScanRequestConsumed();
+  }, [scanRequest, onScanRequestConsumed]);
+
+  const openScan = () => {
+    setView("scan");
+    setQr(null);
+    setScanErr("");
+    setErrMsg("");
+    setPhase("form");
+    setManualLink("");
+    setTorchOn(false);
+    setSavePrompt(false);
+  };
+
+  const applyDecoded = (raw) => {
+    const parsed = parsePayUrl(raw);
+    if (!parsed) {
+      setScanErr("invalid");
+      setView("invalid");
+      setQr(null);
+      return;
+    }
+    if (parsed.addr.toLowerCase() === (address || "").toLowerCase()) {
+      setScanErr(t("pay.selfPay"));
+      setView("invalid");
+      setQr(null);
+      return;
+    }
+    setScanErr("");
+    setQr(parsed);
+    setPhase("form");
+    setErrMsg("");
+    setView("confirm");
+  };
+
+  const qrUsdc = qr ? qr.ars / fxRate : null;
+  const merchantName = guestMerchantName(qr?.who);
+  const qrContact = qr ? { name: merchantName || qr.who || short(qr.addr), alias: "qr", addr: qr.addr } : null;
+  const knownContact = qr ? contacts.find((c) => c.addr.toLowerCase() === qr.addr.toLowerCase()) : null;
+
+  const submitQr = async () => {
+    setErrMsg("");
+    setPhase("working");
+    try {
+      if (qrUsdc == null || qrUsdc < 0.01) throw new Error(t("pay.amountTooLow"));
+      if (balance !== null && qrUsdc > balance) {
+        throw new Error(t("voice.insufficientBalance", fmt(qrUsdc, 2, locale), fmt(balance, 2, locale)));
+      }
+      const parsed = {
+        amount: qr.ars,
+        currency: "ARS",
+        usdc: qrUsdc,
+        fxRate,
+        contact: qrContact,
+        factura: qr.factura || nuevaFactura(),
+        kind: "charge_p2p",
+      };
+      const result = await onPay(parsed);
+      onDone({
+        ...result,
+        direction: "out",
+        parsed,
+        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      });
+      if (!knownContact) setSavePrompt(true);
+    } catch (e) {
+      setErrMsg(String(e?.message || e));
+      setPhase("error");
+    }
+  };
+
+  const saveContact = async () => {
+    setSavePrompt(false);
+    try {
+      await onSaveContact({
+        name: qr.who || short(qr.addr),
+        alias: slugifyAlias(qr.who) || qr.addr.slice(2, 8).toLowerCase(),
+        addr: qr.addr,
+        note: "",
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  if (view === "invalid") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "28px 22px 28px", boxSizing: "border-box", background: C.card }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 12 }}>
+          <div style={{ width: 88, height: 88, borderRadius: 22, background: "#FDECEA", display: "grid", placeItems: "center", color: C.red }}>
+            <IconQrCode size={44} />
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, marginTop: 8 }}>
+            {scanErr && scanErr !== "invalid" ? scanErr : t("guest.invalidTitle")}
+          </div>
+          <div style={{ fontSize: 15, color: C.mut, lineHeight: 1.45, maxWidth: 280 }}>{t("guest.invalidBody")}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <button type="button" onClick={openScan} style={{ ...btnOrange, background: C.ink, boxShadow: "none" }}>
+            {t("guest.scanAgain")}
+          </button>
+          <button type="button" onClick={onBack} style={{ ...btnOutline, borderColor: C.line, color: C.ink, background: C.bg }}>
+            {t("guest.goHome")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "link") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "22px 22px 28px", boxSizing: "border-box", background: C.card }}>
+        <button type="button" onClick={openScan} aria-label={t("guest.backHome")} style={{ alignSelf: "flex-start", width: 40, height: 40, borderRadius: "50%", border: "none", background: C.bg, color: C.ink, fontSize: 26, lineHeight: 1, cursor: "pointer", fontFamily: "inherit", marginBottom: 18 }}>
+          ‹
+        </button>
+        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: "0 0 8px", letterSpacing: -0.4 }}>{t("guest.useLinkTitle")}</h2>
+        <p style={{ fontSize: 15, color: C.mut, lineHeight: 1.45, margin: "0 0 20px" }}>{t("guest.useLinkBody")}</p>
+        <textarea
+          value={manualLink}
+          onChange={(e) => setManualLink(e.target.value)}
+          placeholder={t("pay.scanLinkPlaceholder")}
+          rows={4}
+          style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 16, padding: "14px 16px", fontSize: 15, fontFamily: "inherit", outline: "none", resize: "vertical", color: C.ink, background: C.bg }}
+        />
+        <div style={{ marginTop: "auto", paddingTop: 24, display: "flex", flexDirection: "column", gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => applyDecoded(manualLink)}
+            disabled={!manualLink.trim()}
+            style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: manualLink.trim() ? 1 : 0.5 }}
+          >
+            {t("guest.useLinkCta")}
+          </button>
+          <button type="button" onClick={openScan} style={{ ...btnOutline, border: "none", color: C.mut }}>
+            {t("guest.scanAgain")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "scan") {
+    return (
+      <div className="mp-guest-scan mp-pay-scan">
+        <div className="mp-guest-scan-top">
+          <button type="button" onClick={onBack} className="mp-guest-scan-iconbtn" aria-label={t("guest.backHome")}>‹</button>
+        </div>
+        {!scanErr.startsWith("CAMERA:") ? (
+          <div className="mp-guest-scan-stage">
+            <QrScanner
+              fill
+              torchOn={torchOn}
+              onDecode={applyDecoded}
+              onCameraError={() => setScanErr("CAMERA:" + t("pay.scanCameraError"))}
+            />
+            <div className="mp-guest-scan-frame" aria-hidden />
+            <div className="mp-guest-scan-laser" aria-hidden />
+          </div>
+        ) : (
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, color: "#fff", textAlign: "center", background: "#0b0b0d" }}>
+            {scanErr.replace(/^CAMERA:/, "")}
+          </div>
+        )}
+        <div className="mp-guest-scan-bottom">
+          <button
+            type="button"
+            onClick={() => setTorchOn((v) => !v)}
+            className={`mp-guest-scan-flash${torchOn ? " is-on" : ""}`}
+            aria-label={t("guest.flash")}
+            aria-pressed={torchOn}
+          >
+            <IconFlash size={24} />
+          </button>
+          <button type="button" onClick={() => { setView("link"); setManualLink(""); }} style={{ ...btnOrange, background: "#fff", color: C.ink, boxShadow: "none" }}>
+            {t("guest.useLink")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // confirm
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("pay.title")}</h2>
+      <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontSize: 13, color: C.mut }}>{t("guest.payToLabel")}</div>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.ink }}>{t("guest.merchant")}</div>
+          {merchantName ? (
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#fe6c1c", marginTop: 2, letterSpacing: -0.3 }}>{merchantName}</div>
+          ) : null}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, marginTop: 6 }}>
+          <span style={{ color: C.mut }}>{t("guest.youPay")}</span>
+          <span style={{ fontWeight: 700, color: C.ink }}>$ {fmtArs(qr.ars)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: C.mut }}>
+          <span>{t("pay.youSend")}</span>
+          <span>{qrUsdc != null ? `≈ ${fmt(qrUsdc, 2, locale)} USDC` : "—"}</span>
+        </div>
+        {(phase === "error" || errMsg) && phase !== "working" && (
+          <div style={{ padding: "12px 14px", background: "#FDECEA", color: C.red, borderRadius: 12, fontSize: 13.5, lineHeight: 1.5 }}>{errMsg}</div>
+        )}
+        <button
+          onClick={submitQr}
+          disabled={phase === "working"}
+          style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: phase === "working" ? 0.5 : 1 }}
+        >
+          {phase === "working" ? t("pay.working") : t("pay.confirmPayCta")}
+        </button>
+        <button onClick={openScan} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("guest.scanAgain")}</button>
+      </Card>
+
+      {savePrompt && qr && (
+        <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("qr.saveContactTitle")}</div>
+          <div style={{ fontSize: 13.5, color: C.mut }}>{t("qr.saveContactBody", qr.who || short(qr.addr))}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={saveContact} style={{ ...btnOrange, background: C.orange, boxShadow: "none" }}>{t("qr.saveContactYes")}</button>
+            <button onClick={() => setSavePrompt(false)} style={btnOutline}>{t("qr.saveContactNo")}</button>
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -1871,6 +2057,7 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
   const [amount, setAmount] = useState("");
   const [phase, setPhase] = useState("form");
   const [errMsg, setErrMsg] = useState("");
+  const [feeOpen, setFeeOpen] = useState(false);
   const n = Number(amount);
   const sellIsArs = direction === "ars_usdc";
   const needsUserSignature = direction === "usdc_ars";
@@ -2197,41 +2384,62 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
       </div>
 
       {needsUserSignature && Number.isFinite(n) && n > 0 && phase === "form" && (
-        <div
-          style={{
-            background: C.bg,
-            borderRadius: 16,
-            padding: "14px 16px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
-            <div style={{ fontSize: 12.5, color: C.mut, marginTop: 2 }}>{t("convert.feeDeducted")}</div>
-          </div>
-          <div style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700, color: C.ink }}>
-            {gas.loading && <span style={{ color: C.mut, fontWeight: 600 }}>{t("convert.feePending")}</span>}
-            {!gas.loading && gas.error && (
-              <button
-                type="button"
-                onClick={gas.retry}
-                style={{ background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
-              >
-                {t("gas.retry")}
-              </button>
-            )}
-            {!gas.loading && !gas.error && feeReady && (
-              <>
-                <div>− {fmt(feeUsdc, 4, locale)} USDC</div>
-                <div style={{ fontSize: 12.5, color: C.mut, fontWeight: 600, marginTop: 2 }}>
-                  − $ {fmtArs(feeUsdc * fxRate)} ARS
+        <div style={{ padding: "4px 2px 0" }}>
+          <button
+            type="button"
+            onClick={() => setFeeOpen((v) => !v)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#fe6c1c",
+              fontWeight: 700,
+              cursor: "pointer",
+              padding: 0,
+              fontFamily: "inherit",
+              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {feeOpen ? t("send.hideFeeDetails") : t("send.viewFeeDetails")}
+            <IconChevronDown size={16} up={feeOpen} />
+          </button>
+
+          {feeOpen && (
+            <div
+              style={{
+                background: C.bg,
+                borderRadius: 16,
+                padding: "14px 16px",
+                marginTop: 10,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
+              <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4, lineHeight: 1.4 }}>{t("convert.feeDeducted")}</div>
+
+              {gas.loading && (
+                <div style={{ fontSize: 14, color: C.mut, marginTop: 14 }}>{t("convert.feePending")}</div>
+              )}
+              {!gas.loading && gas.error && (
+                <button
+                  type="button"
+                  onClick={gas.retry}
+                  style={{ display: "block", marginTop: 14, background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
+                >
+                  {t("gas.retry")}
+                </button>
+              )}
+              {!gas.loading && !gas.error && feeReady && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16, marginTop: 14 }}>
+                  <span style={{ fontSize: 14, color: C.mut, flexShrink: 0 }}>{t("gas.totalNative")}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, textAlign: "right", whiteSpace: "nowrap" }}>
+                    − {fmt(feeUsdc, 4, locale)} USDC
+                  </span>
                 </div>
-              </>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2834,7 +3042,7 @@ function Success({ receipt, onClose, hideFx = false }) {
     return t("success.sentSummary", fmt(p.usdc, 2, locale), p.contact.name);
   };
 
-  const nextTab = isChargeIn ? "charge" : kind?.startsWith("convert") ? "convert" : kind === "pay" || kind === "charge_p2p" ? "pay" : "voice";
+  const nextTab = isChargeIn ? "charge" : kind?.startsWith("convert") ? "convert" : kind === "pay" ? "send" : kind === "charge_p2p" ? "pay" : "voice";
   const nextLabel = isChargeIn ? t("success.anotherCharge") : kind?.startsWith("convert") ? t("success.anotherConvert") : t("success.anotherPayment");
 
   if (splash) {
@@ -3465,6 +3673,7 @@ function AppInner() {
   const [guestMode, setGuestMode] = useState(false);
   const [guestInitialScan, setGuestInitialScan] = useState(null);
   const [pendingCharge, setPendingCharge] = useState(null);
+  const [payFullscreen, setPayFullscreen] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -3775,12 +3984,13 @@ function AppInner() {
   const navTabs = [
     { id: "home", label: t("nav.home"), icon: <IconHome /> },
     { id: "movs", label: t("nav.movements"), icon: <IconActivity /> },
-    { id: "stack", label: t("nav.stack"), icon: <IconStack /> },
     { id: "agenda", label: t("nav.agenda"), icon: <IconContacts /> },
+    { id: "mas", label: t("nav.profile"), icon: <IconProfile /> },
   ];
   const navMid = Math.ceil(navTabs.length / 2);
   const goTab = (id) => {
     setReceipt(null);
+    setPayFullscreen(false);
     setTab(id);
   };
   const closeVoice = () => {
@@ -3807,10 +4017,10 @@ function AppInner() {
     setVoiceKick((n) => n + 1);
   };
 
-  const shell = (children) => (
+  const shell = (children, { pad = true, nav = true } = {}) => (
     <div className="mp-stage">
       <div className="mp-device">
-        <div className="mp-scroll" style={{ padding: "22px 18px 120px" }}>{children}</div>
+        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 120px" : 0 }}>{children}</div>
 
         {voiceOpen && (
           <div className="mp-voice-sheet">
@@ -3834,23 +4044,25 @@ function AppInner() {
           </div>
         )}
 
-        <nav className="mp-nav">
-          {navTabs.slice(0, navMid).map((tItem) => (
-            <NavButton key={tItem.id} active={tab === tItem.id && !voiceOpen} icon={tItem.icon} label={tItem.label} onClick={() => { closeVoice(); goTab(tItem.id); }} />
-          ))}
-          <div style={{ width: 64, flexShrink: 0 }} aria-hidden="true" />
-          {navTabs.slice(navMid).map((tItem) => (
-            <NavButton key={tItem.id} active={tab === tItem.id && !voiceOpen} icon={tItem.icon} label={tItem.label} onClick={() => { closeVoice(); goTab(tItem.id); }} />
-          ))}
-          <button
-            onClick={openVoiceListen}
-            className={`mp-fab${voiceListening ? " is-listening" : ""}`}
-            aria-label={voiceListening ? t("voice.listening") : t("nav.voiceAria")}
-          >
-            <span className="mp-fab-shine" aria-hidden />
-            <IconMic />
-          </button>
-        </nav>
+        {nav && (
+          <nav className="mp-nav">
+            {navTabs.slice(0, navMid).map((tItem) => (
+              <NavButton key={tItem.id} active={tab === tItem.id && !voiceOpen} icon={tItem.icon} label={tItem.label} onClick={() => { closeVoice(); goTab(tItem.id); }} />
+            ))}
+            <div style={{ width: 64, flexShrink: 0 }} aria-hidden="true" />
+            {navTabs.slice(navMid).map((tItem) => (
+              <NavButton key={tItem.id} active={tab === tItem.id && !voiceOpen} icon={tItem.icon} label={tItem.label} onClick={() => { closeVoice(); goTab(tItem.id); }} />
+            ))}
+            <button
+              onClick={openVoiceListen}
+              className={`mp-fab${voiceListening ? " is-listening" : ""}`}
+              aria-label={voiceListening ? t("voice.listening") : t("nav.voiceAria")}
+            >
+              <span className="mp-fab-shine" aria-hidden />
+              <IconMic />
+            </button>
+          </nav>
+        )}
       </div>
     </div>
   );
@@ -3891,6 +4103,7 @@ function AppInner() {
         receipt={receipt}
         onClose={(dest) => {
           setReceipt(null);
+          setPayFullscreen(false);
           if (dest === "voice") openVoiceListen();
           else setTab(dest);
         }}
@@ -3909,13 +4122,14 @@ function AppInner() {
           txs={txs}
           goCharge={() => setTab("charge")}
           goConvert={() => setTab("convert")}
-          goPay={() => setTab("pay")}
+          goPay={() => { setPayFullscreen(true); setTab("pay"); }}
+          goSend={() => setTab("send")}
           goMore={() => setTab("mas")}
           fxRate={fxRate}
         />
       )}
       {tab === "pay" && (
-        <Pay
+        <PayScan
           address={address}
           balance={balance}
           fxRate={fxRate}
@@ -3925,6 +4139,18 @@ function AppInner() {
           onSaveContact={handleAddContact}
           scanRequest={pendingScan}
           onScanRequestConsumed={() => setPendingScan(null)}
+          onBack={() => { setPayFullscreen(false); setTab("home"); }}
+          onFullscreenChange={setPayFullscreen}
+        />
+      )}
+      {tab === "send" && (
+        <Send
+          address={address}
+          balance={balance}
+          fxRate={fxRate}
+          contacts={contacts}
+          onPay={sendPayment}
+          onDone={setReceipt}
         />
       )}
       {tab === "charge" && (
@@ -3967,7 +4193,8 @@ function AppInner() {
           goStack={() => setTab("stack")}
         />
       )}
-    </>
+    </>,
+    { pad: !(tab === "pay" && payFullscreen), nav: !(tab === "pay" && payFullscreen) }
   );
 }
 
