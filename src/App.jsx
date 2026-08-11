@@ -636,7 +636,7 @@ function AuthEntry({ onLogin, ready }) {
   // splash | welcome | slides
   const [slide, setSlide] = useState(0);
   const slideCount = 5;
-  const slideImages = ["/slides/1-slide.png", null, null, null, null];
+  const slideImages = ["/slides/1-slide.png", "/slides/2-slide.png", "/slides/3-slide.png", "/slides/4-slide.png", "/slides/5-slide.png"];
   const pausedRef = useRef(false);
   const swipeXRef = useRef(null);
 
@@ -750,7 +750,7 @@ function AuthEntry({ onLogin, ready }) {
           </div>
 
           <div className="mp-onboard-slide" key={slide}>
-            <div className="mp-onboard-slide-visual" aria-hidden>
+            <div className={`mp-onboard-slide-visual${slide === slideCount - 1 ? " is-last" : ""}`} aria-hidden>
               {slideImages[slide] ? <img src={slideImages[slide]} alt="" /> : null}
             </div>
             <h1 className="mp-onboard-title">
