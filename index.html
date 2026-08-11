@@ -31,6 +31,7 @@
 
       /* Marco tipo teléfono */
       .mp-device {
+        --mp-nav-space: 96px;
         position: relative;
         width: 100%;
         max-width: 400px;
@@ -46,14 +47,18 @@
           0 0 0 1px rgba(24, 24, 44, .05);
       }
 
+      /* Reserva el alto de la botonera flotante como margen real, no solo padding,
+         para que el viewport de scroll nunca se extienda detrás de ella. */
       .mp-scroll {
         flex: 1;
+        margin-bottom: var(--mp-nav-space);
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
       }
       .mp-scroll::-webkit-scrollbar { width: 0; }
+      .mp-device.mp-no-nav .mp-scroll { margin-bottom: 0; }
 
       /* Barra inferior glass + FAB cromado naranja */
       @property --fab-angle {
@@ -782,6 +787,7 @@
         body { background: #FFFFFF; background-image: none; }
         .mp-stage { padding: 0; }
         .mp-device {
+          --mp-nav-space: calc(96px + 12px + env(safe-area-inset-bottom));
           max-width: none;
           height: 100dvh;
           border-radius: 0;
