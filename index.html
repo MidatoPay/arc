@@ -286,6 +286,402 @@
         background: rgba(254, 108, 28, 0.92);
         color: #fff;
       }
+
+      /* Onboarding / splash pre-login */
+      .mp-onboard {
+        background:
+          radial-gradient(120% 80% at 50% -10%, #ffb58d 0%, #fe6c1c 42%, #1a0f0a 100%);
+        color: #fff;
+      }
+      .mp-onboard-welcome {
+        background: linear-gradient(180deg, #ffffff 0%, #fffaf7 70%, #fff5ee 100%);
+        color: #1a1a1a;
+        overflow: hidden;
+      }
+      .mp-onboard-welcome .mp-onboard-shell {
+        padding: 18px 22px 24px;
+      }
+      .mp-onboard-welcome .mp-onboard-shell::before {
+        content: none;
+      }
+      .mp-onboard-hero {
+        position: relative;
+        z-index: 1;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        min-height: 0;
+        margin: 4px 0 -8px;
+        padding-top: 28px;
+      }
+      .mp-onboard-hero::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 42%;
+        transform: translate(-50%, -50%);
+        width: min(100%, 400px);
+        height: min(100%, 400px);
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(254, 108, 28, 0.22) 0%,
+          rgba(255, 181, 141, 0.12) 32%,
+          rgba(254, 108, 28, 0.04) 52%,
+          transparent 70%
+        );
+        filter: blur(28px);
+        z-index: 0;
+        pointer-events: none;
+      }
+      .mp-onboard-hero img {
+        position: relative;
+        z-index: 1;
+        width: min(124%, 480px);
+        max-height: 84%;
+        height: auto;
+        object-fit: contain;
+        display: block;
+        filter: drop-shadow(0 14px 28px rgba(254, 108, 28, 0.16));
+        user-select: none;
+        pointer-events: none;
+      }
+      .mp-onboard-welcome .mp-onboard-welcome-body {
+        flex: 0 0 auto;
+        justify-content: flex-start;
+        padding-top: 0;
+        padding-bottom: 12px;
+        margin-bottom: 22px;
+      }
+      .mp-onboard-welcome .mp-onboard-brand {
+        color: #1a1a1a;
+      }
+      .mp-onboard-welcome .mp-onboard-eyebrow {
+        color: #fe6c1c;
+        margin-bottom: 8px;
+      }
+      .mp-onboard-welcome .mp-onboard-title {
+        color: #1a1a1a;
+        font-size: 36px;
+        line-height: 1.12;
+      }
+      .mp-onboard-welcome .mp-onboard-title-line {
+        display: block;
+        white-space: nowrap;
+      }
+      .mp-onboard-welcome .mp-onboard-sub {
+        color: rgba(26, 26, 26, 0.62);
+        margin-top: 8px;
+        font-size: 14px;
+        max-width: 34ch;
+      }
+      .mp-onboard-welcome .mp-onboard-slide-cta {
+        background: radial-gradient(circle at 0% 0%, #fe6c1c 0%, #ffb58d 18%, #fe6c1c 42%, #fe6c1c 100%);
+        box-shadow: 0 10px 22px rgba(254, 108, 28, 0.28);
+      }
+      .mp-onboard-welcome .mp-onboard-slide-cta.is-done {
+        background: radial-gradient(circle at 0% 0%, #ffb58d 0%, #fe6c1c 40%, #fe6c1c 100%);
+      }
+      .mp-onboard-welcome .mp-onboard-slide-fill {
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06));
+      }
+      .mp-onboard-welcome .mp-onboard-slide-label {
+        color: #fff;
+      }
+      .mp-onboard-welcome .mp-onboard-slide-chevs {
+        color: rgba(255, 255, 255, 0.7);
+      }
+      .mp-onboard-welcome .mp-onboard-slide-knob {
+        background: #fff;
+        color: #1a0f0a;
+      }
+      .mp-onboard-shell {
+        position: relative;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 22px 22px 28px;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      .mp-onboard-splash {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        animation: mp-onboard-fade 0.6s ease both;
+      }
+      .mp-onboard-splash-logo {
+        width: min(32%, 120px);
+        height: auto;
+        display: block;
+        animation: mp-onboard-pulse 1.6s ease-in-out infinite;
+      }
+      .mp-onboard-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        z-index: 2;
+        flex-shrink: 0;
+      }
+      .mp-onboard-top-slides {
+        justify-content: flex-end;
+      }
+      .mp-onboard-brand {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
+        color: #fff;
+      }
+      .mp-onboard-brand span { color: #fe6c1c; }
+      .mp-onboard-welcome-body {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        padding-bottom: 18px;
+        min-height: 0;
+      }
+      .mp-onboard-slide {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        text-align: center;
+        padding: 12px 8px 0;
+        min-height: 0;
+        animation: mp-onboard-slide-in 0.45s ease both;
+      }
+      .mp-onboard-slide-visual {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .mp-onboard-slide-visual img {
+        width: auto;
+        height: auto;
+        max-width: 88%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+        pointer-events: none;
+        user-select: none;
+      }
+      .mp-onboard-title {
+        margin: 0;
+      }
+      .mp-onboard-eyebrow {
+        font-size: 13px;
+        font-weight: 600;
+        color: #ffd0b2;
+        margin-bottom: 10px;
+      }
+      .mp-onboard-title {
+        margin: 0;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.6px;
+        line-height: 1.22;
+        color: #fff;
+      }
+      .mp-onboard-hi { color: #ffb58d; }
+      .mp-onboard-sub {
+        margin: 12px 0 0;
+        font-size: 15px;
+        line-height: 1.45;
+        color: rgba(255,255,255,0.78);
+        max-width: 32ch;
+      }
+      .mp-onboard-dots {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin: 22px 0 18px;
+        z-index: 1;
+      }
+      .mp-onboard-dot {
+        width: 6px;
+        height: 6px;
+        border: none;
+        border-radius: 50%;
+        padding: 0;
+        background: rgba(255,255,255,0.28);
+        cursor: pointer;
+      }
+      .mp-onboard-dot.is-active {
+        background: #fe6c1c;
+        transform: scale(1.15);
+      }
+      .mp-onboard-auth {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+        flex-shrink: 0;
+        z-index: 1;
+      }
+      .mp-onboard-create {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,0.88);
+        font-size: 15px;
+        font-weight: 600;
+        font-family: inherit;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+        cursor: pointer;
+        padding: 4px 0 8px;
+        opacity: 1;
+      }
+      .mp-onboard-create:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .mp-onboard-slide-cta {
+        position: relative;
+        width: 100%;
+        height: 52px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 0% 0%, #fe6c1c 0%, #ffb58d 18%, #fe6c1c 42%, #fe6c1c 100%);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+        z-index: 1;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        overflow: hidden;
+        flex-shrink: 0;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+        --mp-slide-p: 0;
+      }
+      .mp-onboard-slide-cta.is-dragging {
+        transform: scale(1.015);
+        box-shadow: 0 14px 30px rgba(0,0,0,0.28);
+      }
+      .mp-onboard-slide-cta.is-done {
+        background: radial-gradient(circle at 0% 0%, #ffb58d 0%, #fe6c1c 40%, #fe6c1c 100%);
+      }
+      .mp-onboard-slide-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0;
+        background: linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0.08));
+        pointer-events: none;
+        transition: width 0.22s ease;
+        opacity: calc(0.35 + (var(--mp-slide-p) * 0.65));
+      }
+      .mp-onboard-slide-cta.is-dragging .mp-onboard-slide-fill {
+        transition: none;
+      }
+      .mp-onboard-slide-label {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 700;
+        font-family: inherit;
+        letter-spacing: -0.2px;
+        pointer-events: none;
+        z-index: 1;
+        opacity: calc(1 - (var(--mp-slide-p) * 0.85));
+        transform: translateX(calc(var(--mp-slide-p) * -10px));
+        transition: opacity 0.12s ease;
+      }
+      .mp-onboard-slide-chevs {
+        position: absolute;
+        right: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: rgba(255,255,255,0.75);
+        pointer-events: none;
+        z-index: 1;
+        opacity: calc(1 - (var(--mp-slide-p) * 1.1));
+      }
+      .mp-onboard-slide-chevs svg {
+        width: 11px;
+        height: 18px;
+        display: block;
+        opacity: 0.55;
+      }
+      .mp-onboard-slide-chevs svg:nth-child(1) { opacity: 0.4; }
+      .mp-onboard-slide-chevs svg:nth-child(2) { opacity: 0.65; }
+      .mp-onboard-slide-chevs svg:nth-child(3) { opacity: 0.9; }
+      .mp-onboard-slide-cta.is-dragging .mp-onboard-slide-chevs svg {
+        animation: mp-onboard-chev 0.7s ease-in-out infinite;
+      }
+      .mp-onboard-slide-cta.is-dragging .mp-onboard-slide-chevs svg:nth-child(2) {
+        animation-delay: 0.1s;
+      }
+      .mp-onboard-slide-cta.is-dragging .mp-onboard-slide-chevs svg:nth-child(3) {
+        animation-delay: 0.2s;
+      }
+      .mp-onboard-slide-knob {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: none;
+        padding: 0;
+        background: #fff;
+        color: #1a0f0a;
+        display: grid;
+        place-items: center;
+        cursor: grab;
+        z-index: 2;
+        box-shadow: none;
+        touch-action: none;
+        font-family: inherit;
+        transition: transform 0.22s ease;
+        will-change: transform;
+      }
+      .mp-onboard-slide-knob.is-dragging {
+        transition: none;
+        cursor: grabbing;
+        filter: brightness(1.03);
+      }
+      .mp-onboard-slide-knob.is-dragging svg {
+        transform: translateX(2px);
+      }
+      .mp-onboard-slide-knob:active { cursor: grabbing; }
+      .mp-onboard-slide-knob svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+        transition: transform 0.15s ease;
+      }
+      @keyframes mp-onboard-chev {
+        0%, 100% { transform: translateX(0); opacity: 0.45; }
+        50% { transform: translateX(3px); opacity: 1; }
+      }
+      @keyframes mp-onboard-fade {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes mp-onboard-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.04); opacity: 0.92; }
+      }
+      @keyframes mp-onboard-slide-in {
+        from { opacity: 0; transform: translateY(14px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
       .mp-voice-sheet {
         position: absolute;
         inset: 0 0 128px 0;

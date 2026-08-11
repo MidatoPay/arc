@@ -476,21 +476,38 @@ function Logo({ size = 44 }) {
 }
 
 // ————— Selector de idioma —————
-function LangToggle({ style }) {
+function LangToggle({ style, variant = "default" }) {
   const { lang, setLang } = useLanguage();
+  const subtle = variant === "subtle";
   const pill = (id, label) => ({
-    background: lang === id ? C.ink : "transparent",
-    color: lang === id ? "#fff" : C.mut,
+    background: lang === id
+      ? (subtle ? "rgba(255,255,255,0.18)" : C.ink)
+      : "transparent",
+    color: lang === id
+      ? "#fff"
+      : (subtle ? "rgba(255,255,255,0.55)" : C.mut),
     border: "none",
     borderRadius: 20,
-    padding: "6px 13px",
-    fontSize: 12.5,
+    padding: subtle ? "5px 10px" : "6px 13px",
+    fontSize: subtle ? 11.5 : 12.5,
     fontWeight: 700,
     cursor: "pointer",
     fontFamily: "inherit",
   });
   return (
-    <div style={{ display: "flex", gap: 4, background: C.bg, borderRadius: 22, padding: 3, ...style }}>
+    <div
+      style={{
+        display: "flex",
+        gap: 2,
+        background: subtle ? "rgba(0,0,0,0.28)" : C.bg,
+        borderRadius: 22,
+        padding: subtle ? 2 : 3,
+        border: subtle ? "1px solid rgba(255,255,255,0.18)" : "none",
+        backdropFilter: subtle ? "blur(8px)" : undefined,
+        WebkitBackdropFilter: subtle ? "blur(8px)" : undefined,
+        ...style,
+      }}
+    >
       <button onClick={() => setLang("en")} style={pill("en")} aria-pressed={lang === "en"}>
         EN
       </button>
@@ -502,93 +519,270 @@ function LangToggle({ style }) {
 }
 
 // ————— Login —————
-function Login({ onLogin, ready }) {
+/** Slide-to-unlock CTA (deslizar el knob hasta el final). */
+function SlideToStart({ label, onComplete }) {
+  const trackRef = useRef(null);
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const originRef = useRef(0);
+  const maxRef = useRef(0);
+  const doneRef = useRef(false);
+  const [x, setX] = useState(0);
+  const [done, setDone] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  const measure = () => {
+    const track = trackRef.current;
+    if (!track) return 0;
+    const knob = 44;
+    const pad = 4;
+    return Math.max(0, track.clientWidth - knob - pad * 2);
+  };
+
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    setDone(true);
+    setDragging(false);
+    setX(maxRef.current);
+    onComplete?.();
+  };
+
+  const onPointerDown = (e) => {
+    if (doneRef.current) return;
+    e.preventDefault();
+    maxRef.current = measure();
+    draggingRef.current = true;
+    setDragging(true);
+    startXRef.current = e.clientX;
+    originRef.current = x;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    if (!draggingRef.current || doneRef.current) return;
+    const dx = e.clientX - startXRef.current;
+    const next = Math.min(maxRef.current, Math.max(0, originRef.current + dx));
+    setX(next);
+  };
+
+  const xRef = useRef(0);
+  xRef.current = x;
+
+  const handleUp = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setDragging(false);
+    if (doneRef.current) return;
+    const cur = xRef.current;
+    const threshold = maxRef.current * 0.82;
+    if (cur >= threshold) finish();
+    else setX(0);
+  };
+
+  // Keyboard fallback: Enter / ArrowRight completes
+  const onKeyDown = (e) => {
+    if (doneRef.current) return;
+    if (e.key === "Enter" || e.key === " " || e.key === "ArrowRight") {
+      e.preventDefault();
+      maxRef.current = measure();
+      finish();
+    }
+  };
+
+  const progress = maxRef.current > 0 ? x / maxRef.current : 0;
+
+  return (
+    <div
+      ref={trackRef}
+      className={`mp-onboard-slide-cta${done ? " is-done" : ""}${dragging ? " is-dragging" : ""}`}
+      style={{ "--mp-slide-p": progress }}
+      role="slider"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={done ? 100 : Math.round(progress * 100)}
+      aria-label={label}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+    >
+      <div className="mp-onboard-slide-fill" style={{ width: x + 44 }} aria-hidden />
+      <div className="mp-onboard-slide-label">{label}</div>
+      <div className="mp-onboard-slide-chevs" aria-hidden>
+        <svg viewBox="0 0 10 16" fill="none">
+          <path d="M2 2l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <svg viewBox="0 0 10 16" fill="none">
+          <path d="M2 2l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <svg viewBox="0 0 10 16" fill="none">
+          <path d="M2 2l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <button
+        type="button"
+        className={`mp-onboard-slide-knob${dragging ? " is-dragging" : ""}`}
+        style={{ transform: `translateX(${x}px) scale(${dragging || done ? 1.06 : 1})` }}
+        aria-hidden
+        tabIndex={-1}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={handleUp}
+        onPointerCancel={handleUp}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 12h14" />
+          <path d="M13 6l6 6-6 6" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/** Entrada auth: splash → Get Started (slide) → carrusel → Login. Siempre desde splash si no hay sesión. */
+function AuthEntry({ onLogin, ready }) {
   const { t } = useLanguage();
+  const [phase, setPhase] = useState("splash");
+  // splash | welcome | slides
+  const [slide, setSlide] = useState(0);
+  const slideCount = 5;
+  const slideImages = ["/slides/1-slide.png", null, null, null, null];
+  const pausedRef = useRef(false);
+  const swipeXRef = useRef(null);
+
+  useEffect(() => {
+    if (phase !== "splash") return undefined;
+    const id = setTimeout(() => setPhase("welcome"), 3000);
+    return () => clearTimeout(id);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "slides") return undefined;
+    const id = setInterval(() => {
+      if (pausedRef.current) return;
+      setSlide((s) => (s + 1) % slideCount);
+    }, 4500);
+    return () => clearInterval(id);
+  }, [phase, slideCount]);
+
+  const startOnboarding = () => {
+    setPhase("slides");
+    setSlide(0);
+  };
+
+  const onSlidePointerDown = (e) => {
+    pausedRef.current = true;
+    swipeXRef.current = e.clientX;
+  };
+
+  const onSlidePointerUp = (e) => {
+    pausedRef.current = false;
+    const start = swipeXRef.current;
+    swipeXRef.current = null;
+    if (start == null) return;
+    const dx = e.clientX - start;
+    if (dx > 48) setSlide((s) => (s - 1 + slideCount) % slideCount);
+    else if (dx < -48) setSlide((s) => (s + 1) % slideCount);
+  };
+
+  const authButtons = (
+    <div className="mp-onboard-auth">
+      <button onClick={onLogin} disabled={!ready} style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: ready ? 1 : 0.5 }}>
+        {ready ? t("login.loginBtn") : t("login.loadingBtn")}
+      </button>
+      <button
+        type="button"
+        className="mp-onboard-create"
+        onClick={onLogin}
+        disabled={!ready}
+      >
+        {t("login.createAccountBtn")}
+      </button>
+    </div>
+  );
+
+  if (phase === "splash") {
+    return (
+      <div className="mp-stage">
+        <div className="mp-device mp-onboard" style={{ background: C.orange }}>
+          <div className="mp-onboard-splash">
+            <img src="/logo/logo.png" alt="MidatoPay" className="mp-onboard-splash-logo" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "welcome") {
+    return (
+      <div className="mp-stage">
+        <div className="mp-device mp-onboard mp-onboard-welcome">
+          <div className="mp-onboard-shell">
+            <div className="mp-onboard-top">
+              <div className="mp-onboard-brand">Midato<span>Pay</span></div>
+              <LangToggle />
+            </div>
+            <div className="mp-onboard-hero" aria-hidden>
+              <img src="/inicio-app/gato-solo3d.png" alt="" />
+            </div>
+            <div className="mp-onboard-welcome-body">
+              <div className="mp-onboard-eyebrow">{t("onboarding.welcomeEyebrow")}</div>
+              <h1 className="mp-onboard-title">
+                {String(t("onboarding.welcomeTitle")).split("\n").map((line) => (
+                  <span key={line} className="mp-onboard-title-line">{line}</span>
+                ))}
+              </h1>
+            </div>
+            <SlideToStart label={t("onboarding.getStarted")} onComplete={startOnboarding} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // slides
+  const slideKey = `onboarding.slides.${slide}`;
+  const before = t(`${slideKey}.before`);
+  const highlight = t(`${slideKey}.highlight`);
+  const after = t(`${slideKey}.after`);
+
   return (
     <div className="mp-stage">
-      <div className="mp-device" style={{ background: C.card }}>
+      <div className="mp-device mp-onboard">
         <div
-          className="mp-scroll"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-            padding: "22px 28px 28px",
-            boxSizing: "border-box",
-          }}
+          className="mp-onboard-shell"
+          onPointerDown={onSlidePointerDown}
+          onPointerUp={onSlidePointerUp}
+          onPointerCancel={() => { pausedRef.current = false; swipeXRef.current = null; }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              flexShrink: 0,
-              marginBottom: 28,
-            }}
-          >
-            <LangToggle />
+          <div className="mp-onboard-top mp-onboard-top-slides">
+            <LangToggle variant="subtle" />
           </div>
 
-          <div style={{ textAlign: "center", flexShrink: 0 }}>
-            <h1
-              style={{
-                fontSize: 28,
-                fontWeight: 700,
-                letterSpacing: -0.5,
-                margin: 0,
-                color: C.ink,
-                lineHeight: 1.25,
-              }}
-            >
-              {t("login.welcome")}{" "}
-              <span style={{ color: "#6A6A72" }}>Midato</span>
-              <span style={{ color: C.orange }}>Pay</span>
+          <div className="mp-onboard-slide" key={slide}>
+            <div className="mp-onboard-slide-visual" aria-hidden>
+              {slideImages[slide] ? <img src={slideImages[slide]} alt="" /> : null}
+            </div>
+            <h1 className="mp-onboard-title">
+              {before}
+              {highlight ? <span className="mp-onboard-hi">{highlight}</span> : null}
+              {after}
             </h1>
-            <p
-              style={{
-                fontSize: 16,
-                fontWeight: 400,
-                color: C.mut,
-                marginTop: 8,
-                lineHeight: 1.4,
-              }}
-            >
-              {t("login.subtitle")}
-            </p>
           </div>
 
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: 0,
-              marginTop: 8,
-              marginBottom: 8,
-            }}
-          >
-            <img
-              src="/inicio-app/gato-inicio.png"
-              alt="MidatoPay"
-              style={{
-                width: "100%",
-                maxWidth: 280,
-                height: "auto",
-                maxHeight: "100%",
-                objectFit: "contain",
-                display: "block",
-              }}
-            />
+          <div className="mp-onboard-dots" role="tablist" aria-label={t("onboarding.progressAria")}>
+            {Array.from({ length: slideCount }, (_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={t("onboarding.slideAria", i + 1)}
+                aria-current={i === slide ? "true" : undefined}
+                className={`mp-onboard-dot${i === slide ? " is-active" : ""}`}
+                onClick={() => setSlide(i)}
+              />
+            ))}
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, flexShrink: 0 }}>
-            <button onClick={onLogin} disabled={!ready} style={{ ...btnOrange, opacity: ready ? 1 : 0.5 }}>
-              {ready ? t("login.loginBtn") : t("login.loadingBtn")}
-            </button>
-            <button onClick={onLogin} disabled={!ready} style={{ ...btnOutline, opacity: ready ? 1 : 0.5 }}>
-              {t("login.createAccountBtn")}
-            </button>
-          </div>
+          {authButtons}
         </div>
       </div>
     </div>
@@ -4080,7 +4274,7 @@ function AppInner() {
   }
 
   if (!ready || !authenticated) {
-    return <Login onLogin={login} ready={ready} />;
+    return <AuthEntry onLogin={login} ready={ready} />;
   }
 
   if (!address) {
