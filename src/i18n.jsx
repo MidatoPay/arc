@@ -382,6 +382,17 @@ const translations = {
       profile: "Profile",
       voiceAria: "Pay by voice",
     },
+    install: {
+      title: "Install MidatoPay",
+      body: "Add the app to your home screen for faster access.",
+      cta: "Install",
+      dismiss: "Not now",
+      iosTitle: "Install MidatoPay",
+      iosBody: "On iPhone or iPad, tap the Share button and choose \"Add to Home Screen\".",
+      iosStep1: "Tap Share",
+      iosStep2: "Choose \"Add to Home Screen\"",
+      iosCta: "Got it",
+    },
   },
   es: {
     login: {
@@ -727,6 +738,17 @@ const translations = {
       more: "Más",
       profile: "Perfil",
       voiceAria: "Pagar por voz",
+    },
+    install: {
+      title: "Instalá MidatoPay",
+      body: "Tené la app en tu pantalla de inicio para acceder más rápido.",
+      cta: "Instalar",
+      dismiss: "Ahora no",
+      iosTitle: "Instalá MidatoPay",
+      iosBody: "En iPhone o iPad, tocá el botón Compartir y elegí \"Agregar a pantalla de inicio\".",
+      iosStep1: "Tocá Compartir",
+      iosStep2: "Elegí \"Agregar a pantalla de inicio\"",
+      iosCta: "Listo",
     },
   },
 };

@@ -629,6 +629,201 @@ function SlideToStart({ label, onComplete }) {
   );
 }
 
+// ————— PWA: sugerencia de instalación —————
+// El navegador no deja mostrar el prompt de instalación a demanda: hay que
+// capturar `beforeinstallprompt` (solo Chrome/Edge/Android) y dispararlo con
+// un botón propio. iOS Safari no emite ese evento → fallback con pasos.
+// El listener se registra a nivel de módulo para no perder el evento si
+// tarda en dispararse mientras corre el login de Privy.
+let deferredInstallPrompt = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+  });
+}
+
+const INSTALL_DISMISS_KEY = "mp_pwa_dismissed";
+const INSTALL_DISMISS_MS = 24 * 60 * 60 * 1000;
+
+function isStandalone() {
+  return (
+    (typeof window !== "undefined" && window.matchMedia?.("(display-mode: standalone)").matches) ||
+    (typeof window !== "undefined" && window.navigator.standalone === true)
+  );
+}
+
+function isIosSafari() {
+  return (
+    typeof window !== "undefined" &&
+    "standalone" in window.navigator &&
+    /iphone|ipad|ipod/i.test(window.navigator.userAgent || "")
+  );
+}
+
+function installDismissedRecently() {
+  try {
+    const t = Number(localStorage.getItem(INSTALL_DISMISS_KEY));
+    return Number.isFinite(t) && Date.now() - t < INSTALL_DISMISS_MS;
+  } catch {
+    return false;
+  }
+}
+
+function dismissInstallPrompt() {
+  try {
+    localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+}
+
+function useInstallPrompt() {
+  const [status, setStatus] = useState(() => {
+    if (isStandalone()) return "installed";
+    if (installDismissedRecently()) return "hidden";
+    if (isIosSafari()) return "ios";
+    return deferredInstallPrompt ? "available" : "checking";
+  });
+
+  useEffect(() => {
+    if (isStandalone()) {
+      setStatus("installed");
+      return undefined;
+    }
+    const onBip = (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      setStatus((s) => (s === "installed" ? s : "available"));
+    };
+    const onInstalled = () => setStatus("installed");
+    window.addEventListener("beforeinstallprompt", onBip);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBip);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const install = useCallback(async () => {
+    const ev = deferredInstallPrompt;
+    if (!ev) {
+      setStatus("hidden");
+      return;
+    }
+    try {
+      await ev.prompt();
+      const choice = await ev.userChoice;
+      if (choice?.outcome === "accepted") {
+        deferredInstallPrompt = null;
+        setStatus("installed");
+      } else {
+        setStatus("hidden");
+      }
+    } catch {
+      setStatus("hidden");
+    }
+  }, []);
+
+  const hide = useCallback(() => {
+    dismissInstallPrompt();
+    setStatus("hidden");
+  }, []);
+
+  return { status, install, hide };
+}
+
+/** Aviso de instalación PWA: banner (beforeinstallprompt) o modal iOS. */
+function InstallPrompt() {
+  const { status, install, hide } = useInstallPrompt();
+  const { t } = useLanguage();
+
+  if (status === "available") {
+    return (
+      <div
+        role="dialog"
+        aria-label={t("install.title")}
+        style={{
+          position: "absolute",
+          top: "calc(10px + env(safe-area-inset-top))",
+          left: 10,
+          right: 10,
+          zIndex: 30,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: "rgba(255,255,255,0.94)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          border: "1px solid rgba(22,22,26,0.08)",
+          borderRadius: 16,
+          padding: "10px 10px 10px 12px",
+          boxShadow: "0 10px 30px rgba(24,24,44,0.18)",
+        }}
+      >
+        <img src="/logo-192.png" alt="" width={38} height={38} style={{ borderRadius: 9, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{t("install.title")}</div>
+          <div style={{ fontSize: 11, color: C.mut, lineHeight: 1.35 }}>{t("install.body")}</div>
+        </div>
+        <button
+          type="button"
+          onClick={install}
+          style={{ ...btnOrange, width: "auto", padding: "9px 14px", fontSize: 12, background: C.orange, boxShadow: "none", flexShrink: 0 }}
+        >
+          {t("install.cta")}
+        </button>
+        <button
+          type="button"
+          onClick={hide}
+          aria-label={t("install.dismiss")}
+          title={t("install.dismiss")}
+          style={{ background: "none", border: "none", color: C.mut, fontSize: 15, cursor: "pointer", padding: 4, flexShrink: 0, fontFamily: "inherit" }}
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "ios") {
+    return (
+      <div className="mp-overlay" style={{ background: "rgba(16,16,22,0.45)", alignItems: "flex-end" }} onClick={hide}>
+        <div
+          role="dialog"
+          aria-label={t("install.iosTitle")}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "#fff",
+            width: "100%",
+            borderTopLeftRadius: 22,
+            borderTopRightRadius: 22,
+            padding: "22px 20px calc(20px + env(safe-area-inset-bottom))",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="/logo-192.png" alt="" width={40} height={40} style={{ borderRadius: 10 }} />
+            <div style={{ fontWeight: 700, color: C.ink, fontSize: 16 }}>{t("install.iosTitle")}</div>
+          </div>
+          <div style={{ fontSize: 13, color: C.mut, lineHeight: 1.5 }}>{t("install.iosBody")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 2 }}>
+            <div style={{ fontSize: 13, color: C.ink }}>1. {t("install.iosStep1")}</div>
+            <div style={{ fontSize: 13, color: C.ink }}>2. {t("install.iosStep2")}</div>
+          </div>
+          <button type="button" onClick={hide} style={{ ...btnOrange, background: C.orange, boxShadow: "none" }}>
+            {t("install.iosCta")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 /** Entrada auth: splash → Get Started (slide) → carrusel → Login. Siempre desde splash si no hay sesión. */
 function AuthEntry({ onLogin, ready }) {
   const { t } = useLanguage();
@@ -707,6 +902,7 @@ function AuthEntry({ onLogin, ready }) {
     return (
       <div className="mp-stage">
         <div className="mp-device mp-onboard mp-onboard-welcome">
+          <InstallPrompt />
           <div className="mp-onboard-shell">
             <div className="mp-onboard-top">
               <div className="mp-onboard-brand">Midato<span>Pay</span></div>
@@ -739,6 +935,7 @@ function AuthEntry({ onLogin, ready }) {
   return (
     <div className="mp-stage">
       <div className="mp-device mp-onboard">
+        <InstallPrompt />
         <div
           className="mp-onboard-shell"
           onPointerDown={onSlidePointerDown}
@@ -4187,6 +4384,7 @@ function AppInner() {
   const shell = (children, { pad = true, nav = true } = {}) => (
     <div className="mp-stage">
       <div className={`mp-device${nav ? "" : " mp-no-nav"}`}>
+        <InstallPrompt />
         <div className="mp-scroll" style={{ padding: pad ? "22px 18px 24px" : 0 }}>{children}</div>
 
         {voiceOpen && (
