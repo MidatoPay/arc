@@ -274,15 +274,6 @@ const IconEye = ({ size = 22, crossed = false }) => (
   </svg>
 );
 
-const IconMenuList = ({ size = 24 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-    <circle cx="4" cy="6" r="1.4" fill="currentColor" />
-    <circle cx="4" cy="12" r="1.4" fill="currentColor" />
-    <circle cx="4" cy="18" r="1.4" fill="currentColor" />
-  </svg>
-);
-
 const IconArFlag = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
     <circle cx="12" cy="12" r="12" fill="#74ACDF" />
@@ -914,8 +905,8 @@ function GuestApp({ onExit, initialScan = null }) {
 
   const shell = (children, { pad = true, nav = true } = {}) => (
     <div className="mp-stage">
-      <div className="mp-device mp-guest">
-        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 120px" : 0 }}>{children}</div>
+      <div className={`mp-device mp-guest${nav ? "" : " mp-no-nav"}`}>
+        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 24px" : 0 }}>{children}</div>
         {nav && (
           <nav className="mp-nav">
             <NavButton active={tab === "home"} icon={<IconHome />} label={t("nav.home")} onClick={goHome} accent={G.accent} />
@@ -1134,7 +1125,7 @@ function GuestApp({ onExit, initialScan = null }) {
 // ————— Inicio —————
 function Home({
   nombre, address, balance, arsBalance,
-  txs, goCharge, goConvert, goPay, goSend, goMore, fxRate,
+  txs, goCharge, goConvert, goPay, goSend, fxRate,
 }) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
@@ -1168,24 +1159,6 @@ function Home({
           <span style={{ fontWeight: 500, color: C.mut }}>{t("home.greetingHi")} </span>
           <span style={{ fontWeight: 700, color: "#fe6c1c" }}>{nombre}</span>
         </div>
-        <button
-          onClick={goMore}
-          aria-label={t("nav.more")}
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 12,
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            color: "#fe6c1c",
-            display: "grid",
-            placeItems: "center",
-            padding: 0,
-          }}
-        >
-          <IconMenuList />
-        </button>
       </div>
 
       <Card>
@@ -4213,8 +4186,8 @@ function AppInner() {
 
   const shell = (children, { pad = true, nav = true } = {}) => (
     <div className="mp-stage">
-      <div className="mp-device">
-        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 120px" : 0 }}>{children}</div>
+      <div className={`mp-device${nav ? "" : " mp-no-nav"}`}>
+        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 24px" : 0 }}>{children}</div>
 
         {voiceOpen && (
           <div className="mp-voice-sheet">
@@ -4318,7 +4291,6 @@ function AppInner() {
           goConvert={() => setTab("convert")}
           goPay={() => { setPayFullscreen(true); setTab("pay"); }}
           goSend={() => setTab("send")}
-          goMore={() => setTab("mas")}
           fxRate={fxRate}
         />
       )}
