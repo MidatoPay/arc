@@ -1485,52 +1485,65 @@ function AmountField({ label, value, onChange, placeholder, suffix, logo }) {
   );
 }
 
-/** Panel de estimación de gas (previo a firmar con la wallet del usuario). */
-function GasEstimatePanel({ estimate, loading, error, onRetry, fxRate, locale, t }) {
-  const rows = [];
-  if (estimate) {
-    rows.push([t("gas.gasLimit"), estimate.gasLimit.toString()]);
-    if (estimate.eip1559) {
-      rows.push([t("gas.maxFee"), `${fmt(estimate.maxFeePerGasGwei, 4, locale)} gwei`]);
-      if (estimate.maxPriorityFeePerGasGwei != null) {
-        rows.push([t("gas.maxPriority"), `${fmt(estimate.maxPriorityFeePerGasGwei, 4, locale)} gwei`]);
-      }
-    } else if (estimate.gasPriceGwei != null) {
-      rows.push([t("gas.gasPrice"), `${fmt(estimate.gasPriceGwei, 4, locale)} gwei`]);
-    }
-    rows.push([t("gas.totalNative"), `${fmt(estimate.feeNative, 6, locale)} ${estimate.nativeSymbol}`]);
-    rows.push([t("gas.totalUsd"), `$${fmt(estimate.feeUsd, 6, locale)} USD`]);
-    if (fxRate) {
-      rows.push([t("gas.totalArs"), `$ ${fmtArs(estimate.feeNative * fxRate)} ARS`]);
-    }
-  }
-
+/** Panel colapsable de fee de red (mismo UI que envío manual). Solo total nativo estimado. */
+function NetworkFeeDetails({ gas, locale, t, open, onToggle }) {
   return (
-    <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginBottom: 10 }}>{t("gas.title")}</div>
-      {loading && <div style={{ fontSize: 13.5, color: C.mut }}>{t("gas.estimating")}</div>}
-      {!loading && error && (
-        <div style={{ fontSize: 13.5, color: C.red, lineHeight: 1.45 }}>
-          {error === "WALLET_DISCONNECTED" ? t("gas.walletMissing") : error}
-          {onRetry && error !== "WALLET_DISCONNECTED" && (
+    <div style={{ padding: "4px 2px 0" }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          background: "none",
+          border: "none",
+          color: "#fe6c1c",
+          fontWeight: 700,
+          cursor: "pointer",
+          padding: 0,
+          fontFamily: "inherit",
+          fontSize: 13,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        {open ? t("send.hideFeeDetails") : t("send.viewFeeDetails")}
+        <IconChevronDown size={16} up={open} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            background: C.bg,
+            borderRadius: 16,
+            padding: "14px 16px",
+            marginTop: 10,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
+          <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4, lineHeight: 1.4 }}>{t("gas.disclaimer")}</div>
+
+          {gas.loading && (
+            <div style={{ fontSize: 14, color: C.mut, marginTop: 14 }}>{t("convert.feePending")}</div>
+          )}
+          {!gas.loading && gas.error && (
             <button
-              onClick={onRetry}
-              style={{ display: "block", marginTop: 8, background: "none", border: "none", color: C.violet, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
+              type="button"
+              onClick={gas.retry}
+              style={{ display: "block", marginTop: 14, background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
             >
               {t("gas.retry")}
             </button>
           )}
-        </div>
-      )}
-      {!loading && !error && estimate && (
-        <div style={{ display: "grid", gap: 8, fontSize: 13.5 }}>
-          {rows.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <span style={{ color: C.mut }}>{k}</span>
-              <span style={{ color: C.ink, fontWeight: 600, textAlign: "right", wordBreak: "break-all" }}>{v}</span>
+          {!gas.loading && !gas.error && gas.estimate && (
+            <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16 }}>
+                <span style={{ fontSize: 14, color: C.mut, flexShrink: 0 }}>{t("gas.totalNative")}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, textAlign: "right", whiteSpace: "nowrap" }}>
+                  − {fmt(gas.estimate.feeNative, 6, locale)} USDC
+                </span>
+              </div>
             </div>
-          ))}
-          <div style={{ fontSize: 11.5, color: C.mut, marginTop: 2 }}>{t("gas.disclaimer")}</div>
+          )}
         </div>
       )}
     </div>
@@ -2097,65 +2110,13 @@ function Send({ address, balance, fxRate, contacts, onPay, onDone }) {
       </button>
 
       {canSubmit && (
-        <div style={{ padding: "4px 2px 0" }}>
-          <button
-            type="button"
-            onClick={() => setFeeOpen((v) => !v)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#fe6c1c",
-              fontWeight: 700,
-              cursor: "pointer",
-              padding: 0,
-              fontFamily: "inherit",
-              fontSize: 13,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {feeOpen ? t("send.hideFeeDetails") : t("send.viewFeeDetails")}
-            <IconChevronDown size={16} up={feeOpen} />
-          </button>
-
-          {feeOpen && (
-            <div
-              style={{
-                background: C.bg,
-                borderRadius: 16,
-                padding: "14px 16px",
-                marginTop: 10,
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
-              <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4, lineHeight: 1.4 }}>{t("gas.disclaimer")}</div>
-
-              {gas.loading && (
-                <div style={{ fontSize: 14, color: C.mut, marginTop: 14 }}>{t("convert.feePending")}</div>
-              )}
-              {!gas.loading && gas.error && (
-                <button
-                  type="button"
-                  onClick={gas.retry}
-                  style={{ display: "block", marginTop: 14, background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
-                >
-                  {t("gas.retry")}
-                </button>
-              )}
-              {!gas.loading && !gas.error && gas.estimate && (
-                <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16 }}>
-                    <span style={{ fontSize: 14, color: C.mut, flexShrink: 0 }}>{t("gas.totalNative")}</span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, textAlign: "right", whiteSpace: "nowrap" }}>
-                      − {fmt(gas.estimate.feeNative, 6, locale)} USDC
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <NetworkFeeDetails
+          gas={gas}
+          locale={locale}
+          t={t}
+          open={feeOpen}
+          onToggle={() => setFeeOpen((v) => !v)}
+        />
       )}
     </div>
   );
@@ -2831,6 +2792,7 @@ function Voice({
   const [parsed, setParsed] = useState(null);
   const [errMsg, setErrMsg] = useState("");
   const [manual, setManual] = useState("");
+  const [feeOpen, setFeeOpen] = useState(false);
   const recRef = useRef(null);
   const supported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -2884,6 +2846,7 @@ function Voice({
         return;
       }
       setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
+      setFeeOpen(false);
       setPhase("confirm");
     },
     [balance, fxRate, lang, locale, t, contacts, onCharge]
@@ -3013,6 +2976,7 @@ function Voice({
     setParsed(null);
     setTranscript("");
     setErrMsg("");
+    setFeeOpen(false);
   };
 
   const active = phase === "listening";
@@ -3229,65 +3193,49 @@ function Voice({
 
       {phase === "confirm" && parsed && (
         <>
-          <Card>
-            <div style={{ fontSize: 13.5, color: C.mut }}>«{transcript}»</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 13, margin: "18px 0" }}>
+          <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {transcript ? (
+              <div style={{ fontSize: 13.5, color: C.mut }}>«{transcript}»</div>
+            ) : null}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                background: C.card,
+                border: `1px solid ${C.line}`,
+                borderRadius: 14,
+                padding: "12px 14px",
+              }}
+            >
               <div
                 style={{
-                  width: 46,
-                  height: 46,
+                  width: 40,
+                  height: 40,
                   borderRadius: "50%",
                   background: C.orangeSoft,
                   display: "grid",
                   placeItems: "center",
                   color: "#fe6c1c",
                   fontWeight: 700,
-                  fontSize: 15,
+                  flexShrink: 0,
                 }}
               >
-                {parsed.contact.name.slice(0, 1).toUpperCase()}
+                {(parsed.contact.name || "?").slice(0, 1).toUpperCase()}
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16.5, fontWeight: 700, color: C.ink }}>{parsed.contact.name}</div>
-                <div style={{ fontSize: 13, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(parsed.contact.addr)}</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{parsed.contact.name}</div>
+                <div style={{ fontSize: 12.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(parsed.contact.addr)}</div>
               </div>
+              {parsed.contact.alias && parsed.contact.alias !== "addr" && (
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#fe6c1c" }}>@{parsed.contact.alias}</span>
+              )}
             </div>
-            <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 16, display: "grid", gap: 10 }}>
-              {[
-                [t("voice.amount"), `${fmt(parsed.usdc, 2, locale)} USDC`],
-                parsed.currency === "ARS" ? [t("voice.equals"), `$${fmtArs(parsed.amount)} ARS`] : [t("voice.equals"), `$${fmtArs(parsed.usdc * parsed.fxRate)} ARS`],
-                [t("voice.exchangeRate"), `1 USDC = $${fmtArs(parsed.fxRate)} ARS`],
-                [t("voice.invoice"), parsed.factura],
-                [t("voice.network"), "Arc Testnet"],
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
-                  <span style={{ color: C.mut }}>{k}:</span>
-                  <span style={{ color: C.ink, fontWeight: 600 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-            <GasEstimatePanel
-              estimate={gas.estimate}
-              loading={gas.loading}
-              error={gas.error}
-              onRetry={gas.retry}
-              fxRate={parsed.fxRate || fxRate}
-              locale={locale}
-              t={t}
-            />
-            <div
-              style={{
-                background: C.card,
-                borderRadius: 12,
-                padding: "12px 14px",
-                marginTop: 16,
-                fontSize: 12.5,
-                color: C.mut,
-                lineHeight: 1.5,
-                border: `1px solid ${C.line}`,
-              }}
-            >
-              {t("voice.memoNote")}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
+              <span style={{ color: C.mut }}>{t("pay.youSend")}</span>
+              <span style={{ fontWeight: 700, color: C.ink }}>
+                {fmt(parsed.usdc, 2, locale)} USDC
+              </span>
             </div>
           </Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3297,14 +3245,21 @@ function Voice({
               style={{
                 ...btnOrange,
                 opacity: !address || gas.loading ? 0.5 : 1,
-                background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
-                boxShadow: "0 10px 22px rgba(254,108,28,.28)",
+                background: C.orange,
+                boxShadow: "none",
               }}
             >
               {t("voice.confirmSend")}
             </button>
             <button onClick={reset} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("voice.cancel")}</button>
           </div>
+          <NetworkFeeDetails
+            gas={gas}
+            locale={locale}
+            t={t}
+            open={feeOpen}
+            onToggle={() => setFeeOpen((v) => !v)}
+          />
         </>
       )}
 
