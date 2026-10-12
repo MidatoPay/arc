@@ -22,7 +22,10 @@ function json(statusCode, body) {
   return {
     statusCode,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    // @solana/kit a veces devuelve BigInt (slot/amount); JSON no los serializa.
+    body: JSON.stringify(body, (_key, value) =>
+      typeof value === "bigint" ? Number(value) : value
+    ),
   };
 }
 

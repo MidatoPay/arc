@@ -88,6 +88,14 @@ function rawToUsdc(raw) {
   return Number(raw) / 10 ** USDC_DECIMALS;
 }
 
+/** JSON.stringify no soporta BigInt (slots/fees de @solana/kit). */
+function toJsonNumber(value) {
+  if (value == null) return null;
+  if (typeof value === "bigint") return Number(value);
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function nuevaFactura() {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
@@ -168,9 +176,9 @@ async function waitForSignature(rpc, sig, timeoutMs) {
           })
           .send();
         fee = tx?.meta?.fee ?? null;
-        return { slot: tx?.slot ?? st.slot ?? null, fee };
+        return { slot: toJsonNumber(tx?.slot ?? st.slot), fee: toJsonNumber(fee) };
       } catch {
-        return { slot: st.slot ?? null, fee };
+        return { slot: toJsonNumber(st.slot), fee: null };
       }
     }
     await new Promise((r) => setTimeout(r, 1200));
@@ -264,5 +272,17 @@ export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate, factura:
     /* ok */
   }
 
-  return { hash, block, fee, memo, factura, from, to, usdc, ars, fxRate, kind };
+  return {
+    hash: String(hash),
+    block: toJsonNumber(block),
+    fee,
+    memo,
+    factura,
+    from: String(from),
+    to: String(to),
+    usdc: Number(usdc),
+    ars: Number(ars),
+    fxRate: Number(fxRate),
+    kind,
+  };
 }
