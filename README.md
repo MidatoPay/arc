@@ -16,11 +16,12 @@ npm run dev
 | Variable | De dónde sale | ¿Obligatoria? |
 |---|---|---|
 | `VITE_PRIVY_APP_ID` | dashboard.privy.io → tu app | Sí, sin esto no hay login |
-| `VITE_ANTHROPIC_API_KEY` | console.anthropic.com | No (sin ella usa parser local) |
+| `ANTHROPIC_API_KEY` | console.anthropic.com (server-side, Netlify Function) | No (sin ella usa parser local) |
 | `VITE_SOLANA_RPC` | Triton / Helius (HTTPS) | No (sin ella usa el RPC público de devnet, que limita) |
 | `VITE_SOLANA_WSS` | Mismo provider (WSS) | No (default: wss público de devnet) |
 | `VITE_ETH_RPC` | RPC Ethereum Mainnet | No (sin ella usa publicnode; necesario para el FX Chainlink) |
-| `VITE_TREASURY_SECRET_KEY` | Keypair Solana de la recaudadora (base58 o JSON) | Sí para Convertir ARS→USDC (solo devnet) |
+| `TREASURY_SECRET_KEY` | Keypair Solana de la recaudadora (base58 o JSON, server-side) | Sí para Convertir ARS→USDC (solo devnet) |
+| `PRIVY_APP_SECRET` | Privy dashboard → App secret | Sí para Functions (contactos, treasury, parse-intent) |
 
 ### Configurar Privy (3 minutos)
 

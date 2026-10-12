@@ -39,6 +39,16 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/transactions/, "/.netlify/functions/transactions"),
         },
+        "/treasury": {
+          target: "http://127.0.0.1:9999",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/treasury/, "/.netlify/functions/treasury"),
+        },
+        "/parse-intent": {
+          target: "http://127.0.0.1:9999",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/parse-intent/, "/.netlify/functions/parse-intent"),
+        },
       },
     },
   };

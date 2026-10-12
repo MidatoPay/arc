@@ -20,7 +20,12 @@ import {
   runConvertUsdcToArs,
   refreshPairBalances,
 } from "./flows.js";
-import { getTreasuryAddress, getTreasuryBalance, isTreasuryConfigured, sendTreasuryPayout } from "./treasury.js";
+import {
+  getTreasuryAddress,
+  getTreasuryBalance,
+  isTreasuryConfigured,
+  refreshTreasuryStatus,
+} from "./treasury.js";
 import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
 import {
   loadContacts,
@@ -39,8 +44,6 @@ import { buildPayUrl, parsePayUrl, slugifyAlias } from "./payQr.js";
 // Login con email o teléfono (Privy) → wallet embebida Solana.
 // Transferencias reales de USDC (SPL) en Solana Devnet.
 // ————————————————————————————————————————————————
-
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 
 const arsStorageKey = (address) => `mp_ars_balance_${address || ""}`;
 
@@ -130,48 +133,20 @@ function localParse(text, lang) {
   return { intent, amount, currency, recipient };
 }
 
-async function claudeParse(text, lang, aliases) {
-  if (!API_KEY) throw new Error("no-key");
-  const prompt =
-    lang === "en"
-      ? `You are MidatoPay's voice payment agent. Extract the intent from this English command and respond ONLY with valid JSON, no markdown or extra text.
-
-Command: "${text}"
-
-Valid contact aliases: ${aliases.join(", ")}
-
-Exact format:
-{"intent":"send"|"charge"|"unknown","amount":<number or null>,"currency":"USDC"|"ARS","recipient":"<closest matching contact alias or null>","confidence":<0 to 1>}
-
-Rules: "charge"/"collect" means the user wants to request/collect a payment, not send one — recipient is always null for "charge". "dollars", "usd" or "usdc" → USDC. "pesos" or "ars" → ARS. If the currency isn't stated or is unclear, default to USDC for "send" — never guess ARS — and to ARS for "charge". Match the alias even if misheard (e.g. "caty" → "katy").`
-      : `Sos el agente de pagos por voz de MidatoPay. Extraé la intención de este comando en español rioplatense y respondé SOLO con JSON válido, sin markdown ni texto extra.
-
-Comando: "${text}"
-
-Contactos válidos (alias): ${aliases.join(", ")}
-
-Formato exacto:
-{"intent":"send"|"charge"|"unknown","amount":<número o null>,"currency":"USDC"|"ARS","recipient":"<alias del contacto más parecido o null>","confidence":<0 a 1>}
-
-Reglas: "cobrar"/"charge"/"collect" significa que el usuario quiere solicitar un pago, no enviarlo — recipient siempre es null para "charge". "dólares", "usd" o "usdc" → USDC. "pesos" o "ars" → ARS. Si la moneda no está clara o no se menciona, default a USDC para "send" — nunca asumas ARS — y a ARS para "charge". Matcheá el alias aunque esté mal transcripto (ej: "caty" → "katy").`;
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function claudeParse(text, lang, aliases, token) {
+  if (!token) throw new Error("no-key");
+  const res = await fetch("/parse-intent", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": API_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5",
-      max_tokens: 300,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    body: JSON.stringify({ text, lang, aliases }),
   });
-  const data = await res.json();
-  const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
-  return JSON.parse(raw.replace(/```json|```/g, "").trim());
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 503 || data.error === "no-key") throw new Error("no-key");
+  if (!res.ok) throw new Error(data.error || `parse_${res.status}`);
+  return data.intent;
 }
 
 // ————— primitivos de UI —————
@@ -866,37 +841,8 @@ function GuestApp({ onExit, initialScan = null }) {
     setErrMsg("");
     setPhase("working");
     try {
-      if (!isTreasuryConfigured()) throw new Error(t("guest.treasuryMissing"));
-      if (!qr || !quote) throw new Error(t("pay.invalidQr"));
-      if (availableArs != null && qr.ars > availableArs) throw new Error(t("guest.insufficient"));
-      if (treasuryUsdc != null && quote.usdc > treasuryUsdc) throw new Error(t("guest.insufficient"));
-
-      const result = await sendTreasuryPayout({
-        to: qr.addr,
-        usdc: quote.usdc,
-        kind: "guest_qr",
-        ars: qr.ars,
-        fxRate,
-        factura: qr.factura,
-      });
-      await refreshTreasury();
-      setReceipt({
-        ...result,
-        kind: "charge_p2p",
-        ars: qr.ars,
-        direction: "out",
-        parsed: {
-          amount: qr.ars,
-          currency: "ARS",
-          usdc: result.usdc,
-          fxRate,
-          contact: { name: guestMerchantName(qr.who) || t("guest.merchant"), alias: "qr", addr: qr.addr },
-        },
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
-      });
-      setQr(null);
-      setPhase("form");
-      setTab("home");
+      // Payouts de recaudadora firman en el server y requieren sesión Privy.
+      throw new Error(t("guest.loginRequired"));
     } catch (e) {
       setErrMsg(String(e?.message || e));
       setPhase("error");
@@ -2317,6 +2263,7 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
     setErrMsg("");
     setPhase("working");
     try {
+      await refreshTreasuryStatus();
       if (!isTreasuryConfigured()) throw new Error(t("convert.treasuryMissing"));
       if (direction === "ars_usdc") {
         const result = await onConvertArsUsdc(n);
@@ -2602,6 +2549,7 @@ function Voice({
   fxRate,
   address,
   contacts,
+  getAccessToken,
   voiceKick = 0,
   onListeningChange,
   voiceApiRef,
@@ -2614,8 +2562,24 @@ function Voice({
   const [parsed, setParsed] = useState(null);
   const [errMsg, setErrMsg] = useState("");
   const [manual, setManual] = useState("");
+  const [claudeConfigured, setClaudeConfigured] = useState(null);
   const recRef = useRef(null);
   const supported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/parse-intent")
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled) setClaudeConfigured(Boolean(body.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setClaudeConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const analyze = useCallback(
     async (text) => {
@@ -2623,7 +2587,8 @@ function Voice({
       setPhase("parsing");
       let result;
       try {
-        result = await claudeParse(text, lang, contacts.map((c) => c.alias));
+        const token = getAccessToken ? await getAccessToken() : null;
+        result = await claudeParse(text, lang, contacts.map((c) => c.alias), token);
       } catch {
         result = localParse(text, lang);
       }
@@ -2669,7 +2634,7 @@ function Voice({
       setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
       setPhase("confirm");
     },
-    [balance, fxRate, lang, locale, t, contacts, onCharge]
+    [balance, fxRate, lang, locale, t, contacts, onCharge, getAccessToken]
   );
 
   const stopListen = useCallback(() => {
@@ -3003,7 +2968,7 @@ function Voice({
             >
               {t("voice.tryExample")}
             </button>
-            {!import.meta.env.VITE_ANTHROPIC_API_KEY && (
+            {claudeConfigured === false && (
               <div style={{ fontSize: 12, color: C.mut, marginTop: 10 }}>{t("voice.noApiKeyHint")}</div>
             )}
           </Card>
@@ -3904,7 +3869,10 @@ function AppInner() {
     lastWalletDebugSignature.current = walletDebugSignature;
     console.info("[MidatoPay wallet] Estado de Privy", walletDebug);
   }, [walletDebugSignature]);
-  const treasuryAddress = useMemo(() => getTreasuryAddress(), []);
+  const [treasuryAddress, setTreasuryAddress] = useState(() => getTreasuryAddress());
+  useEffect(() => {
+    refreshTreasuryStatus().then((st) => setTreasuryAddress(st.address));
+  }, []);
   const email = user?.email?.address || user?.phone?.number || "";
   const nombre = email ? email.split("@")[0].split(/[.\-_]/)[0].replace(/^./, (c) => c.toUpperCase()) : "👋";
 
@@ -4171,7 +4139,9 @@ function AppInner() {
 
   const handleConvertArsUsdc = useCallback(
     async (arsAmount) => {
+      const token = await getAccessToken();
       const result = await runConvertArsToUsdc({
+        token,
         userAddress: address,
         arsAmount,
         arsBalance,
@@ -4193,7 +4163,7 @@ function AppInner() {
       await refreshBalances();
       return result;
     },
-    [address, arsBalance, applyArsDelta, pushTx, refreshBalances, t]
+    [address, arsBalance, applyArsDelta, pushTx, refreshBalances, t, getAccessToken]
   );
 
   const handleConvertUsdcArs = useCallback(
@@ -4304,6 +4274,7 @@ function AppInner() {
               fxRate={fxRate}
               address={address}
               contacts={contacts}
+              getAccessToken={getAccessToken}
               voiceKick={voiceKick}
               onListeningChange={setVoiceListening}
               voiceApiRef={voiceApiRef}
