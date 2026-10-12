@@ -1,77 +1,88 @@
-import { armarMemo, nuevaFactura, getUsdcBalance, sendUsdcWithKeypair, keypairSignerFromSecret } from "./solana.js";
-
 /**
- * Wallet recaudadora (tesorería) fondeada en Solana Devnet.
- * En demo: clave en VITE_TREASURY_SECRET_KEY (base58 o JSON array, solo devnet).
- * En producción: reemplazar por un servicio/backend que firme payouts.
+ * Cliente HTTP de la recaudadora.
+ * La secret key vive solo en la Netlify Function (`TREASURY_SECRET_KEY`).
+ * El browser solo ve address/balance públicos y pide payouts autenticados.
  */
-const TREASURY_SECRET = import.meta.env.VITE_TREASURY_SECRET_KEY || import.meta.env.VITE_TREASURY_PRIVATE_KEY || "";
 
-let cachedSignerPromise = null;
+let _status = { configured: false, address: null, balance: null };
+let _statusPromise = null;
+
+async function api(path, token, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || `http_${res.status}`);
+    err.code = body.error;
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+/** Refresca configured/address/balance desde GET /treasury (público). */
+export async function refreshTreasuryStatus() {
+  _statusPromise = api("/treasury")
+    .then((body) => {
+      _status = {
+        configured: Boolean(body.configured),
+        address: body.address || null,
+        balance: body.balance == null ? null : Number(body.balance),
+      };
+      return _status;
+    })
+    .catch(() => {
+      _status = { configured: false, address: null, balance: null };
+      return _status;
+    });
+  return _statusPromise;
+}
+
+function ensureStatus() {
+  if (!_statusPromise) refreshTreasuryStatus();
+  return _statusPromise;
+}
 
 export function isTreasuryConfigured() {
-  return Boolean(TREASURY_SECRET && TREASURY_SECRET.length >= 32);
-}
-
-async function getTreasurySigner() {
-  if (!isTreasuryConfigured()) {
-    throw new Error("Treasury no configurada. Definí VITE_TREASURY_SECRET_KEY en .env");
-  }
-  if (!cachedSignerPromise) {
-    cachedSignerPromise = keypairSignerFromSecret(TREASURY_SECRET);
-  }
-  return cachedSignerPromise;
-}
-
-export async function getTreasuryWallet() {
-  return getTreasurySigner();
+  return Boolean(_status.configured && _status.address);
 }
 
 export function getTreasuryAddress() {
-  if (!isTreasuryConfigured()) return null;
-  // Derivación sync no está disponible sin await — cacheamos al primer uso async.
-  // Para UI temprana devolvemos null hasta que se resuelva; flows usan getTreasuryAddressAsync.
-  return _treasuryAddressCache;
+  return _status.address;
 }
-
-let _treasuryAddressCache = null;
 
 export async function getTreasuryAddressAsync() {
-  if (!isTreasuryConfigured()) return null;
-  try {
-    const signer = await getTreasurySigner();
-    _treasuryAddressCache = signer.address;
-    return signer.address;
-  } catch {
-    return null;
-  }
-}
-
-// Eager hydrate for UI that reads getTreasuryAddress() sync
-if (isTreasuryConfigured()) {
-  getTreasuryAddressAsync().catch(() => {});
+  await ensureStatus();
+  return _status.address;
 }
 
 export async function getTreasuryBalance() {
-  const addr = await getTreasuryAddressAsync();
-  if (!addr) return null;
-  return getUsdcBalance(addr);
+  const st = await refreshTreasuryStatus();
+  return st.balance;
 }
 
 /**
- * Payout desde la recaudadora → usuario (USDC SPL en Solana).
+ * Payout desde la recaudadora → usuario (vía Function server-side).
+ * Requiere access token de Privy.
  */
-export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate, factura: facturaIn }) {
-  const signer = await getTreasurySigner();
-  const factura = facturaIn || nuevaFactura();
-  const memo = armarMemo({
-    inv: factura,
-    kind,
-    cur: "ARS",
-    amt: ars,
-    fx: Number(fxRate).toFixed(2),
-    usdc: Number(usdc).toFixed(6),
+export async function sendTreasuryPayout(token, { to, usdc, kind, ars, fxRate, factura }) {
+  if (!token) throw new Error("Sesión requerida para operar la recaudadora");
+  await ensureStatus();
+  if (!isTreasuryConfigured()) {
+    throw new Error("Treasury no configurada. Definí TREASURY_SECRET_KEY en el server (Netlify/.env).");
+  }
+  const { payout } = await api("/treasury", token, {
+    method: "POST",
+    body: JSON.stringify({ to, usdc, kind, ars, fxRate, factura }),
   });
-  const result = await sendUsdcWithKeypair(signer, { to, usdc, memo });
-  return { ...result, factura, from: signer.address, to, usdc, ars, fxRate, kind };
+  return payout;
 }
+
+// Hidrata address/configured al cargar el módulo (UI sync).
+ensureStatus();

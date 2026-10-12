@@ -17,9 +17,10 @@ const MIN_USDC = 0.01;
 
 /**
  * Convertir ARS → USDC:
- * Cotiza con Chainlink y la tesorería envía USDC SPL.
+ * Cotiza con Chainlink y la Function de tesorería envía USDC SPL.
  */
-export async function runConvertArsToUsdc({ userAddress, arsAmount, arsBalance }) {
+export async function runConvertArsToUsdc({ token, userAddress, arsAmount, arsBalance }) {
+  if (!token) throw new Error("Sesión requerida para convertir");
   if (!userAddress) throw new Error("Wallet de usuario no disponible");
   const ars = Number(arsAmount);
   if (!Number.isFinite(ars) || ars <= 0) throw new Error("Ingresá un monto en ARS válido");
@@ -35,7 +36,7 @@ export async function runConvertArsToUsdc({ userAddress, arsAmount, arsBalance }
     );
   }
 
-  const payout = await sendTreasuryPayout({
+  const payout = await sendTreasuryPayout(token, {
     to: userAddress,
     usdc,
     ars,
@@ -79,7 +80,7 @@ function buildConvertUsdcArsMemo({ usdc, ars, fxRate, factura }) {
 /** Estimación de fee para Convertir USDC→ARS (firma del usuario). */
 export async function estimateConvertUsdcToArs({ from, usdcAmount, fxRate }) {
   const treasury = await getTreasuryAddressAsync();
-  if (!treasury) throw new Error("Treasury no configurada. Definí VITE_TREASURY_SECRET_KEY en .env");
+  if (!treasury) throw new Error("Treasury no configurada. Definí TREASURY_SECRET_KEY en el server.");
   if (!from) throw new Error("Wallet no conectada");
 
   const usdc = Number(usdcAmount);
@@ -98,7 +99,7 @@ export async function estimateConvertUsdcToArs({ from, usdcAmount, fxRate }) {
  */
 export async function runConvertUsdcToArs({ wallet, signAndSendTransaction, usdcAmount, userUsdcBalance }) {
   const treasury = await getTreasuryAddressAsync();
-  if (!treasury) throw new Error("Treasury no configurada. Definí VITE_TREASURY_SECRET_KEY en .env");
+  if (!treasury) throw new Error("Treasury no configurada. Definí TREASURY_SECRET_KEY en el server.");
 
   const usdc = Number(usdcAmount);
   if (!Number.isFinite(usdc) || usdc <= 0) throw new Error("Ingresá un monto en USDC válido");

@@ -45,6 +45,20 @@
   status = 200
   force = true
 
+# Recaudadora: status público + payouts firmados server-side (TREASURY_SECRET_KEY).
+[[redirects]]
+  from = "/treasury"
+  to = "/.netlify/functions/treasury"
+  status = 200
+  force = true
+
+# Parser de voz vía Anthropic (ANTHROPIC_API_KEY server-side).
+[[redirects]]
+  from = "/parse-intent"
+  to = "/.netlify/functions/parse-intent"
+  status = 200
+  force = true
+
 # SPA: cualquier otra ruta sirve index.html (no hay react-router, pero
 # evita 404 si alguien entra directo a una URL que no sea la raíz).
 [[redirects]]
