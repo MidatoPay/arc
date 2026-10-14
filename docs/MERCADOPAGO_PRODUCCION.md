@@ -81,4 +81,8 @@ Abrir `http://localhost:8888` y habilitar ese origen en Privy. `dev:full` inicia
 
 En producción, cargar las variables en el contexto Netlify que realmente despliega la rama `mercadopago`. `VITE_SOLANA_CLUSTER` debe estar disponible tanto en **Builds** como en **Functions**; las credenciales privadas solo deben estar disponibles del lado del servidor. El commit no carga el `.env` local en Netlify ni ejecuta las migraciones remotas.
 
+Si `GET /charges` devuelve 503, consultar el JSON de respuesta y el registro `payments_failure` de la función `charges`. `payment_schema_missing` o `payment_schema_outdated` requiere aplicar ambas migraciones sobre la misma base usada por Netlify. `missing_aiven_pg_url` y `missing_aiven_pg_ca_cert` indican variables ausentes en Functions; `payment_database_tls_failed` indica un problema del certificado, y `payment_database_auth_failed` credenciales rechazadas. Los registros omiten mensajes SQL, URLs privadas y credenciales. No desactivar TLS para resolverlo.
+
+Un intento sin operación confirmada permite editar el importe conservando su clave de idempotencia. Si ya fue persistido, el servidor rechaza el cambio y la pantalla recupera la operación original mediante `GET /charges?attempt=<clave>`, limitado al usuario, ambiente y red actuales. Abrir la pantalla no inicia automáticamente un cobro.
+
 `npm test` verifica importes, firmas, conciliación, límites de ambiente, fallos de transmisión y persistencia con PostgreSQL embebido sin base remota. `npm run build` compila el frontend. La integración productiva permanece pendiente de credenciales, migración remota, despliegue, financiación y prueba real autorizada.

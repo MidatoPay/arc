@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
-import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt } from "./charges.js";
+import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt } from "./charges.js";
 
 const terminal = new Set(["delivered","expired","canceled","refunded"]);
 const labels = { creating:"Creando QR en Mercado Pago…", awaiting_payment:"Esperando pago",
@@ -37,16 +37,19 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     if (starting.current) return;
     starting.current = true; setBusy(true); setError("");
     try {
-      let saved = attempt.current;
-      if (!saved) {
-        saved = { key:crypto.randomUUID(), ars:String(value).replace(",","."),wallet:address };
-        saveChargeAttempt(userId,saved); attempt.current = saved;
-      }
+      const saved = prepareChargeAttempt(attempt.current,value,address);
+      saveChargeAttempt(userId,saved); attempt.current = saved;
       const { charge:current } = await request("/charges",{method:"POST",headers:{"Idempotency-Key":saved.key},
         body:JSON.stringify({ars:saved.ars,wallet:saved.wallet})});
       accept(current);
     } catch (e) {
-      if (e.status === 400) { clearChargeAttempt(userId); attempt.current=null; }
+      // Keep the key even after validation errors: a previous request may still be completing.
+      if (e.code === "idempotency_conflict" && attempt.current) {
+        try {
+          const result = await request(`/charges?attempt=${encodeURIComponent(attempt.current.key)}`);
+          if (result.charge) { accept(result.charge); return; }
+        } catch { /* Preserve the attempt until the server is reachable. */ }
+      }
       if (mounted.current) setError(chargeError(e.code));
     }
     finally { starting.current=false; if (mounted.current) setBusy(false); }
@@ -56,6 +59,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     mounted.current=true;
     let canceled=false;
     attempt.current=readChargeAttempt(userId);
+    if (attempt.current) setArs(attempt.current.ars);
     request("/charges").then(({charges,nextCursor:after}) => {
       if (canceled) return;
       setHistory(charges);
@@ -63,7 +67,12 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       const saved=attempt.current;
       const current=charges.find((c) => c.id === saved?.id) || charges.find((c) => !terminal.has(c.status));
       if (current) accept(current);
-      else if (saved && !saved.id) { setArs(saved.ars); start(saved.ars); }
+      else if (saved) {
+        // Opening the screen only recovers an existing operation; it never starts a payment.
+        request(`/charges?attempt=${encodeURIComponent(saved.key)}`).then((result)=>{
+          if (!canceled && result.charge) accept(result.charge);
+        }).catch((e)=>{ if (!canceled) setError(chargeError(e.code)); });
+      }
     }).catch((e) => { if (!canceled) setError(chargeError(e.code)); });
     return () => { canceled=true; mounted.current=false; };
   },[userId,request,accept,start]);
@@ -114,9 +123,10 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     {error && <div role="alert" style={{color:"#E4483D"}}>{error}</div>}
     {!charge ? <>
       <label style={{display:"flex",flexDirection:"column",gap:8}}>Importe en ARS
-        <input value={ars} disabled={busy || Boolean(attempt.current)} inputMode="decimal" placeholder="0,00" onChange={(e)=>setArs(e.target.value)} style={{font:"inherit",padding:16,border:"1px solid #ECECF0",borderRadius:14}} />
+        <input value={ars} disabled={busy} inputMode="decimal" placeholder="0,00" onChange={(e)=>setArs(e.target.value)} style={{font:"inherit",padding:16,border:"1px solid #ECECF0",borderRadius:14}} />
       </label>
-      <button disabled={busy || !ars} onClick={()=>start(ars)} style={{...button,background:"#FF5A00",color:"white",opacity:busy?0.5:1}}>{busy ? "Iniciando cobro…" : attempt.current ? "Reintentar el mismo cobro" : "Iniciar cobro"}</button>
+      <button disabled={busy || !ars} onClick={()=>start(ars)} style={{...button,background:"#FF5A00",color:"white",opacity:busy?0.5:1}}>{busy ? "Iniciando cobro…" : attempt.current ? "Iniciar o recuperar cobro" : "Iniciar cobro"}</button>
+      {attempt.current && <small>Podés editar el importe si el cobro todavía no fue creado. Si ya existe, recuperaremos la operación original.</small>}
     </> : <div style={{padding:20,borderRadius:20,background:"white",display:"flex",flexDirection:"column",gap:12}}>
       <strong aria-live="polite">{labels[charge.status] || "Actualizando cobro"}</strong>
       <div>Importe: $ {charge.ars} ARS</div>

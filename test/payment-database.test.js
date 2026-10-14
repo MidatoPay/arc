@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
-import { createCharge, ensureOrder, incident, releaseReservation } from "../netlify/functions/lib/paymentService.js";
+import { createCharge, getChargeAttempt, ensureOrder, incident, releaseReservation } from "../netlify/functions/lib/paymentService.js";
 import { finalizeDelivery } from "../netlify/functions/lib/paymentWorker.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
 
@@ -60,6 +60,14 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     const before=verificationCalls;
     await assert.rejects(()=>createCharge("wrong",input,randomUUID(),adapters),/wallet_not_owned/);
     assert.equal(verificationCalls,before);
+  });
+  await t.test("attempt recovery is read-only and isolates merchant, environment and network",async()=>{
+    assert.equal((await getChargeAttempt(c.idempotency_key,"u1",settings,pool)).id,c.id);
+    assert.equal(await getChargeAttempt(c.idempotency_key,"u2",settings,pool),null);
+    assert.equal(await getChargeAttempt(c.idempotency_key,"u1",{...settings,environment:"test"},pool),null);
+    assert.equal(await getChargeAttempt(c.idempotency_key,"u1",{...settings,network:"devnet"},pool),null);
+    assert.equal(await getChargeAttempt(randomUUID(),"u1",settings,pool),null);
+    await assert.rejects(()=>getChargeAttempt("bad-key","u1",settings,pool),/invalid_idempotency_key/);
   });
   await t.test("pending reservations prevent spending the same USDC twice",async()=>{
     liquidityRaw="6030303";

@@ -19,7 +19,7 @@ export async function createCharge(userId, input, key, adapters = {}) {
   if (existing.rows[0]) {
     const c = existing.rows[0];
     const amount = quoteCharge(input.ars, c.fx_rate).amountCents;
-    if (c.user_id !== userId || c.environment !== settings.environment || c.wallet_address !== input.wallet || c.amount_cents !== amount) throw new PaymentError("idempotency_conflict", 409);
+    if (c.user_id !== userId || c.environment !== settings.environment || c.network !== settings.network || c.wallet_address !== input.wallet || c.amount_cents !== amount) throw new PaymentError("idempotency_conflict", 409);
     return c;
   }
   await (adapters.verifySeller || verifySeller)(settings);
@@ -38,7 +38,7 @@ export async function createCharge(userId, input, key, adapters = {}) {
     const duplicate = await db.query("SELECT * FROM charges WHERE idempotency_key=$1", [key]);
     if (duplicate.rows[0]) {
       const c = duplicate.rows[0];
-      if (c.user_id !== userId || c.environment !== settings.environment || c.wallet_address !== input.wallet || c.amount_cents !== quote.amountCents) throw new PaymentError("idempotency_conflict", 409);
+      if (c.user_id !== userId || c.environment !== settings.environment || c.network !== settings.network || c.wallet_address !== input.wallet || c.amount_cents !== quote.amountCents) throw new PaymentError("idempotency_conflict", 409);
       return c;
     }
     const blocked = await db.query("SELECT 1 FROM payment_user_blocks WHERE user_id=$1 AND environment=$2", [userId, settings.environment]);
@@ -66,6 +66,12 @@ export async function getCharge(id, userId, settings = paymentSettings()) {
     [id,userId,settings.environment,settings.network]);
   if (!rows[0]) throw new PaymentError("charge_not_found", 404);
   return rows[0];
+}
+export async function getChargeAttempt(key,userId,settings=paymentSettings(),db=getPaymentDb()) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key || "")) throw new PaymentError("invalid_idempotency_key",400);
+  const {rows}=await db.query("SELECT * FROM charges WHERE idempotency_key=$1 AND user_id=$2 AND environment=$3 AND network=$4",
+    [key,userId,settings.environment,settings.network]);
+  return rows[0] || null;
 }
 export async function withChargeLock(id, fn) {
   const db = await getPaymentDb().connect();
