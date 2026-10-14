@@ -1,4 +1,4 @@
-import { paymentSettings, getPaymentDb } from "../netlify/functions/lib/paymentRuntime.js";
+import { paymentSettings, paymentQuoteSettings, getPaymentDb } from "../netlify/functions/lib/paymentRuntime.js";
 import { verifySeller } from "../netlify/functions/lib/mercadopago.js";
 import { treasuryLiquidity } from "../netlify/functions/lib/treasuryPayout.js";
 import { fetchArsQuote } from "../src/priceFeed.js";
@@ -12,7 +12,8 @@ try {
   if(missing.length) { console.error(JSON.stringify({missingVariables:missing}));throw new Error("missing_configuration"); }
   const settings=paymentSettings();
   await verifySeller(settings);
-  const quote=await fetchArsQuote(process.env.ETH_RPC_URL,Number(process.env.CHAINLINK_MAX_AGE_SECONDS));
+  const quoteConfig=paymentQuoteSettings();
+  const quote=await fetchArsQuote(quoteConfig.rpc,quoteConfig.maxAge);
   const liquidity=await treasuryLiquidity();
   db=getPaymentDb();
   await db.query("SELECT id FROM charges LIMIT 0");

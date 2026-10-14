@@ -51,6 +51,17 @@ export function assertPaymentsEnabled() {
   if (process.env.PAYMENTS_ENABLED !== "true") throw new PaymentError("payments_disabled");
   if (process.env.CONVERSION_FEE_BPS && process.env.CONVERSION_FEE_BPS !== "50") throw new PaymentError("invalid_conversion_fee");
 }
+export function paymentQuoteSettings() {
+  const rpc=process.env.ETH_RPC_URL?.trim();
+  if (!rpc) throw new PaymentError("missing_eth_rpc_url");
+  try {if(!["http:","https:"].includes(new URL(rpc).protocol))throw new Error();}
+  catch {throw new PaymentError("invalid_eth_rpc_url");}
+  const age=process.env.CHAINLINK_MAX_AGE_SECONDS?.trim();
+  if (!age) throw new PaymentError("missing_chainlink_max_age_seconds");
+  const maxAge=Number(age);
+  if (!/^\d+$/.test(age) || !Number.isSafeInteger(maxAge) || maxAge<=0) throw new PaymentError("invalid_chainlink_max_age_seconds");
+  return {rpc,maxAge};
+}
 export function internalAuthorized(event) {
   const actual = event.headers?.["x-worker-secret"] || event.headers?.["X-Worker-Secret"] || "";
   const secret = process.env.INTERNAL_WORKER_SECRET || "";
@@ -73,6 +84,7 @@ export function errorResponse(error) {
     console.error("payments_failure", { code, causeCode: codes[error?.code] ? error.code : "unclassified" });
     return json(503, { error: code });
   }
+  if (error.status>=500) console.error("payments_failure",{code:error.code});
   return json(error instanceof PaymentError ? error.status : 503,
     { error: error instanceof PaymentError ? error.code : "payment_service_unavailable" });
 }
