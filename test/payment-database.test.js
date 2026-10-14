@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createCharge, getChargeAttempt, ensureOrder, incident, releaseReservation } from "../netlify/functions/lib/paymentService.js";
+import { inspectPaymentDatabase } from "../netlify/functions/lib/paymentDatabase.js";
 import { finalizeDelivery } from "../netlify/functions/lib/paymentWorker.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
 
@@ -18,6 +19,8 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await engine.exec(migration);await engine.exec(migration);
   const commissionMigration=await readFile(new URL("../db/migrations/20261013_commission_history.sql",import.meta.url),"utf8");
   await engine.exec(commissionMigration);await engine.exec(commissionMigration);
+  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql"])
+    await engine.exec(await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8"));
   const query=async(sql,params=[])=>{
     const result=await engine.query(sql,params);
     const rows=result.rows.map((row)=>Object.fromEntries(Object.entries(row).map(([k,v])=>
@@ -42,6 +45,14 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     verifySeller:async()=>verificationCalls++,fetchQuote:async()=>({rate:"1650",roundId:"1",updatedAt:Math.floor(Date.now()/1000)}),
     getTreasuryAddress:async()=>wallet,treasuryLiquidity:async()=>({owner:wallet,raw:liquidityRaw,solLamports:"1000000000"})};
   const input={ars:"10000.00",wallet};let c;
+  await t.test("database preflight checks migrated tables and detects a missing migration without reading operations",async()=>{
+    const healthy=await inspectPaymentDatabase(pool);assert.equal(healthy.ready,true);
+    await query("ALTER TABLE merchant_pos_assignments RENAME TO temporarily_unavailable");
+    const missing=await inspectPaymentDatabase(pool);assert.equal(missing.ready,false);
+    assert.equal(missing.tables.find(row=>row.table==="merchant_pos_assignments").missingTable,true);
+    await query("ALTER TABLE temporarily_unavailable RENAME TO merchant_pos_assignments");
+    assert.equal((await inspectPaymentDatabase(pool)).ready,true);
+  });
   await t.test("migration retains devnet data and permits the same signature on mainnet",async()=>{
     const legacy=await query("SELECT network FROM transactions WHERE user_id='legacy'");assert.equal(legacy.rows[0].network,"devnet");
     await query("INSERT INTO transactions(user_id,network,hash,kind,direction,who,amt,fx_rate,ars) VALUES('legacy','mainnet-beta','same-hash','pay','out','contact',1,1650,1650)");

@@ -12,6 +12,7 @@
     "payments:env": "node scripts/prepare-payments-env.js",
     "payments:env:production": "node scripts/prepare-payments-env.js .env.production",
     "payments:check": "node --env-file=.env scripts/check-payments-config.js",
+    "db:check:payments": "node --env-file=.env scripts/check-payments-database.js",
     "db:migrate:payments": "node --env-file=.env scripts/migrate-payments.js"
   },
   "dependencies": {
