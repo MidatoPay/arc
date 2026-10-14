@@ -6,7 +6,7 @@ La implementación está preparada para producción, pero no configura credencia
 
 ## Configurar Netlify
 
-El escaneo de secretos de Netlify omite únicamente `PAYMENTS_BASE_URL`, `MP_ENVIRONMENT`, `PAYMENTS_ENABLED` y `VITE_SOLANA_CLUSTER`, que son configuración. El resto permanece bajo control, incluido `MP_EXTERNAL_POS_ID`. El ID de caja real se reemplazó por un marcador en los documentos; los tokens, secretos y claves siguen protegidos.
+El escaneo de secretos de Netlify omite únicamente `PAYMENTS_BASE_URL`, `MP_ENVIRONMENT`, `PAYMENTS_ENABLED`, `VITE_SOLANA_CLUSTER` y `ETH_RPC_URL` (configurada con un RPC público). El resto permanece bajo control, incluido `MP_EXTERNAL_POS_ID`. El ID de caja real se reemplazó por un marcador en los documentos; los tokens, secretos y claves siguen protegidos.
 
 Para preparar el archivo privado productivo sin modificar las credenciales ya cargadas: `npm run payments:env:production`. Agrega los faltantes y genera `INTERNAL_WORKER_SECRET`; no imprime secretos. Los RPC públicos sirven para una primera validación, pero el umbral de antigüedad Chainlink, la tesorería, Privy y PostgreSQL deben completarse con la configuración real. El archivo `.env.production` está ignorado por Git y no se carga automáticamente en Netlify.
 
@@ -86,7 +86,10 @@ Para probar el circuito local, ejecutar en orden:
 ```powershell
 npm run payments:env
 # Completar el .env privado. No habilitar cobros hasta terminar el chequeo.
+npm run db:check:payments
+# Aplicar las migraciones si faltan tablas, columnas o índices:
 npm run db:migrate:payments
+npm run db:check:payments
 npm run payments:check
 npm run dev:full
 ```
@@ -102,3 +105,5 @@ Los errores `missing_*` identifican ahora la variable faltante en la pantalla y 
 Un intento sin operación confirmada permite editar el importe conservando su clave de idempotencia. Si ya fue persistido, el servidor rechaza el cambio y la pantalla recupera la operación original mediante `GET /charges?attempt=<clave>`, limitado al usuario, ambiente y red actuales. Abrir la pantalla no inicia automáticamente un cobro.
 
 `npm test` verifica importes, firmas, conciliación, límites de ambiente, fallos de transmisión y persistencia con PostgreSQL embebido sin base remota. `npm run build` compila el frontend. La integración productiva permanece pendiente de credenciales, migración remota, despliegue, financiación y prueba real autorizada.
+
+`npm run db:check:payments` verifica tablas, columnas, índices y permisos con una transacción de solo lectura; no consulta operaciones ni modifica el esquema. Para preparar infraestructura local de prueba, `node --env-file=.env scripts/provision-mercadopago-test.js "Nombre caja de prueba"` crea o recupera una sucursal y caja del vendedor de prueba, reutiliza una ubicación ya registrada y actualiza sus IDs en `.env`. El script rechaza cuentas reales o una red distinta de devnet y no genera cobros ni transferencias.
