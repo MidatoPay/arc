@@ -34,6 +34,8 @@ export const CHARGE_ERRORS = {
   insufficient_treasury:"No hay suficiente liquidez USDC para iniciar este cobro.",
   insufficient_treasury_sol:"La tesorería necesita SOL para completar las entregas.",
   mercadopago_pos_not_found:"La caja Mercado Pago no está configurada para esta cuenta.",
+  mercadopago_pos_not_pdv:"La caja existe, pero debe configurarse con config.qr.operating_mode=pdv para cobrar con este QR.",
+  mercadopago_invalid_pos_response:"Mercado Pago devolvió un formato de cajas inesperado. No se inició el cobro.",
   seller_account_mismatch:"La cuenta Mercado Pago no coincide con el vendedor configurado.",
   seller_is_test_account:"La cuenta Mercado Pago configurada es de prueba; se necesita un vendedor real para producción.",
   seller_is_not_test_account:"Para el ambiente de prueba se necesita un vendedor de prueba de Mercado Pago.",
