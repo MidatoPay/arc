@@ -2,6 +2,17 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Only non-credential configuration values; all other secret scanning stays enabled.
+  SECRETS_SCAN_OMIT_KEYS = "PAYMENTS_BASE_URL,MP_ENVIRONMENT,PAYMENTS_ENABLED,VITE_SOLANA_CLUSTER"
+
+[dev]
+  command = "npm run dev -- --host 127.0.0.1 --port 5173"
+  targetPort = 5173
+  port = 8888
+  functionsPort = 9999
+  autoLaunch = false
+
 [functions]
   directory = "netlify/functions"
   # Default zip-it-and-ship-it tracer mis-packages @privy-io/server-auth's
@@ -16,6 +27,33 @@
 # docs/superpowers/specs/2026-08-08-background-reconciliation-design.md.
 [functions."reconcile-wallets"]
   schedule = "*/15 * * * *"
+
+[functions."payments-dispatch"]
+  schedule = "* * * * *"
+
+[[redirects]]
+  from = "/payment-reports/*"
+  to = "/.netlify/functions/payment-reports/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/charges"
+  to = "/.netlify/functions/charges"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/charges/*"
+  to = "/.netlify/functions/charges/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/webhooks/mercadopago"
+  to = "/.netlify/functions/mercadopago-webhook"
+  status = 200
+  force = true
 
 # Reemplaza al proxy /rpc de Vite (solo existe en dev) por una function
 # que hace de puente al RPC real, igual que vite.config.js.

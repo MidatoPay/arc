@@ -1,0 +1,48 @@
+import { PaymentError, publicCharge } from "./lib/paymentCore.js";
+import { authenticatePayment, paymentSettings, getPaymentDb, json, errorResponse, kickWorker } from "./lib/paymentRuntime.js";
+import { createCharge, getCharge, withChargeLock, ensureOrder, assertChargeConfig } from "./lib/paymentService.js";
+import { listOwnCharges } from "./lib/paymentReporting.js";
+
+export const handler = async (event) => {
+  try {
+    const userId = await authenticatePayment(event), settings = paymentSettings();
+    const path = event.path.replace(/^\/\.netlify\/functions\/charges/, "/charges");
+    const match = path.match(/^\/charges(?:\/([0-9a-f-]{36})(\/cancel)?)?\/?$/i);
+    if (!match) return json(404, { error: "not_found" });
+    if (event.httpMethod === "GET") {
+      if (match[1]) {
+        if (match[2]) return json(405, { error: "method_not_allowed" });
+        const charge = await getCharge(match[1], userId, settings);
+        return json(200, { charge: publicCharge(charge) });
+      }
+      return json(200,await listOwnCharges(getPaymentDb(),userId,settings,event.queryStringParameters || {}));
+    }
+    if (event.httpMethod !== "POST") return json(405, { error: "method_not_allowed" });
+    if (match[1] && match[2]) {
+      const charge = await getCharge(match[1], userId, settings);
+      if (!["creating","awaiting_payment","cancel_pending"].includes(charge.status)) throw new PaymentError("charge_not_cancelable", 409);
+      await getPaymentDb().query("UPDATE charges SET cancel_requested=true,next_attempt_at=now() WHERE id=$1", [charge.id]);
+      await kickWorker();
+      return json(202, { charge: publicCharge({ ...charge, status: "cancel_pending" }) });
+    }
+    if (match[1]) return json(405, { error: "method_not_allowed" });
+    let input;
+    try { input = JSON.parse(event.body || "{}"); } catch { throw new PaymentError("invalid_json", 400); }
+    const key = event.headers?.["idempotency-key"] || event.headers?.["Idempotency-Key"];
+    let charge = await createCharge(userId, input, key);
+    if (!charge.order_id) {
+      try {
+        charge = await withChargeLock(charge.id, async (db,c) => {
+          assertChargeConfig(c, settings);
+          return ensureOrder(db,c,settings);
+        }) || charge;
+      } catch (error) {
+        await getPaymentDb().query("UPDATE charges SET last_error=$2,next_attempt_at=now() WHERE id=$1",
+          [charge.id, error instanceof PaymentError ? error.code : "payment_service_unavailable"]);
+        charge = await getCharge(charge.id,userId,settings);
+      }
+    }
+    await kickWorker();
+    return json(charge.qr_data ? 201 : 202, { charge: publicCharge(charge) });
+  } catch (error) { return errorResponse(error); }
+};

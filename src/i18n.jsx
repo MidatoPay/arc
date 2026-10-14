@@ -1,3 +1,4 @@
+import { SOLANA } from "./chain.js";
 import { createContext, useContext, useMemo, useState } from "react";
 
 const STORAGE_KEY = "mp_lang";
@@ -7,30 +8,30 @@ export function localeFor(lang) {
 }
 
 export const STACK_EN = [
-  { on: true, name: "Solana Devnet", role: "Settlement chain for this demo. SPL USDC transfers on Solana Devnet.", by: "Solana" },
+  { on: true, name: SOLANA.cluster === "devnet" ? "Solana Devnet" : "Solana Mainnet", role: "USDC settlement on the configured Solana network.", by: "Solana" },
   { on: true, name: "USDC (SPL)", role: "Payment asset via Token Program. Fees (gas) are paid in SOL.", by: "Circle" },
-  { on: true, name: "On-chain memo", role: "Every charge carries its invoice in an SPL Memo. Reconciliation without an external database.", by: "Solana" },
+  { on: true, name: "On-chain memo", role: "Every charge carries its invoice in an SPL Memo. Reconciliation with Mercado Pago orders and PostgreSQL.", by: "Solana" },
   { on: true, name: "Privy", role: "This app's login: email or phone → embedded Solana wallet. No recovery phrases.", by: "Privy" },
-  { on: true, name: "Solana Explorer", role: "Every payment is verifiable at explorer.solana.com (devnet), with its memo included.", by: "Solana" },
-  { on: true, name: "Circle faucet", role: "Test USDC funding from faucet.circle.com → Solana Devnet.", by: "Circle" },
+  { on: true, name: "Solana Explorer", role: "Every payment is verifiable at explorer.solana.com, with its memo included.", by: "Solana" },
+  { on: SOLANA.cluster === "devnet", name: "Circle faucet", role: "Test USDC funding from faucet.circle.com → Solana Devnet.", by: "Circle" },
   { on: true, name: "@solana/kit", role: "TypeScript client for RPC, transactions and token transfers.", by: "Anza" },
   { on: false, name: "Fee sponsorship", role: "App pays SOL fees so the user never sees “you need SOL”.", by: "Privy / Kora" },
-  { on: true, name: "FX oracle", role: "ARS/USD from Chainlink Price Feed on Ethereum Mainnet (latestAnswer).", by: "Chainlink" },
+  { on: true, name: "FX oracle", role: "ARS/USD from Chainlink Price Feed on Ethereum Mainnet (latestRoundData for collections).", by: "Chainlink" },
   { on: false, name: "Solana Pay", role: "Standard payment request URLs/QR for broader wallet interoperability.", by: "Solana" },
   { on: false, name: "Pyth", role: "On-chain ARS/USD on Solana instead of reading Ethereum.", by: "Pyth" },
   { on: false, name: "Squads", role: "Multisig for treasury and program upgrade authority.", by: "Squads" },
 ];
 
 export const STACK_ES = [
-  { on: true, name: "Solana Devnet", role: "Cadena de liquidación de esta demo. Transferencias SPL USDC en Solana Devnet.", by: "Solana" },
+  { on: true, name: SOLANA.cluster === "devnet" ? "Solana Devnet" : "Solana Mainnet", role: "Liquidación USDC en la red Solana configurada.", by: "Solana" },
   { on: true, name: "USDC (SPL)", role: "Activo de pago vía Token Program. El gas se paga en SOL.", by: "Circle" },
-  { on: true, name: "Memo on-chain", role: "Cada cobro lleva su factura en un SPL Memo. Conciliación sin base de datos externa.", by: "Solana" },
+  { on: true, name: "Memo on-chain", role: "Cada cobro lleva su factura en un SPL Memo. Conciliación con órdenes Mercado Pago y PostgreSQL.", by: "Solana" },
   { on: true, name: "Privy", role: "El login de esta app: email o teléfono → wallet Solana embebida. Sin frases de recuperación.", by: "Privy" },
-  { on: true, name: "Solana Explorer", role: "Cada pago es verificable en explorer.solana.com (devnet), con su memo incluido.", by: "Solana" },
-  { on: true, name: "Faucet Circle", role: "Fondeo de USDC de prueba desde faucet.circle.com → Solana Devnet.", by: "Circle" },
+  { on: true, name: "Solana Explorer", role: "Cada pago es verificable en explorer.solana.com, con su memo incluido.", by: "Solana" },
+  { on: SOLANA.cluster === "devnet", name: "Faucet Circle", role: "Fondeo de USDC de prueba desde faucet.circle.com → Solana Devnet.", by: "Circle" },
   { on: true, name: "@solana/kit", role: "Cliente TypeScript para RPC, transacciones y transfers de tokens.", by: "Anza" },
   { on: false, name: "Fee sponsorship", role: "La app paga el gas en SOL para que el usuario nunca vea “necesitás SOL”.", by: "Privy / Kora" },
-  { on: true, name: "Oráculo FX", role: "ARS/USD desde el Price Feed de Chainlink en Ethereum Mainnet (latestAnswer).", by: "Chainlink" },
+  { on: true, name: "Oráculo FX", role: "ARS/USD desde el Price Feed de Chainlink en Ethereum Mainnet (latestRoundData para cobros).", by: "Chainlink" },
   { on: false, name: "Solana Pay", role: "URLs/QR estándar de pedido de pago para más interoperabilidad con wallets.", by: "Solana" },
   { on: false, name: "Pyth", role: "ARS/USD on-chain en Solana en lugar de leer Ethereum.", by: "Pyth" },
   { on: false, name: "Squads", role: "Multisig para tesorería y autoridad de upgrade de programas.", by: "Squads" },
@@ -246,7 +247,7 @@ const translations = {
       sendingHint: "Signing and waiting for confirmation on Solana",
       retry: "Retry",
       rpcLimited: "The Solana RPC is rate-limiting requests. Wait a few seconds and try again.",
-      insufficientFundsOnchain: "Insufficient funds on-chain. Fund USDC at faucet.circle.com → Solana Devnet (and a little SOL for fees).",
+      insufficientFundsOnchain: "Insufficient funds on-chain. Fund your wallet with USDC and SOL on the configured Solana network.",
       signatureCancelled: "You canceled the signature.",
       txFailed: (m) => `The transaction failed: ${m}`,
     },
@@ -600,7 +601,7 @@ const translations = {
       sendingHint: "Firmando y esperando confirmación en Solana",
       retry: "Reintentar",
       rpcLimited: "El RPC de Solana está limitando las consultas. Esperá unos segundos y reintentá.",
-      insufficientFundsOnchain: "Fondos insuficientes on-chain. Fondeá USDC en faucet.circle.com → Solana Devnet (y un poco de SOL para fees).",
+      insufficientFundsOnchain: "Fondos insuficientes on-chain. Fondeá tu wallet con USDC y SOL en la red Solana configurada.",
       signatureCancelled: "Cancelaste la firma.",
       txFailed: (m) => `La transacción falló: ${m}`,
     },

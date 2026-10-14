@@ -24,21 +24,19 @@ import {
 } from "@solana-program/token";
 import { getAddMemoInstruction } from "@solana-program/memo";
 import bs58 from "bs58";
+import { NETWORK } from "../../../src/network.js";
 
-const USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const USDC_MINT = NETWORK.mint;
 const USDC_DECIMALS = 6;
 
 const RPC_URL =
-  process.env.VITE_SOLANA_RPC || process.env.SOLANA_RPC || "https://api.devnet.solana.com";
+  process.env.SOLANA_RPC || process.env.VITE_SOLANA_RPC || NETWORK.rpc;
 
 function treasurySecret() {
-  // Preferir nombre sin VITE_. El fallback VITE_* solo ayuda en migraciones
-  // locales: en el server no se embebe en el bundle del browser.
+  // Only private server environment names are accepted.
   return (
     process.env.TREASURY_SECRET_KEY ||
     process.env.TREASURY_PRIVATE_KEY ||
-    process.env.VITE_TREASURY_SECRET_KEY ||
-    process.env.VITE_TREASURY_PRIVATE_KEY ||
     ""
   ).trim();
 }
@@ -186,11 +184,11 @@ async function waitForSignature(rpc, sig, timeoutMs) {
   return null;
 }
 
-export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate, factura: facturaIn }) {
+export async function prepareTreasuryPayout({ to, usdc, rawAmount, kind, ars, fxRate, factura: facturaIn }) {
   assertIsAddress(to);
   const signer = await getTreasurySigner();
   const from = signer.address;
-  const amount = usdcToRaw(usdc);
+  const amount = rawAmount ? BigInt(rawAmount) : usdcToRaw(usdc);
   const mint = address(USDC_MINT);
   const owner = address(from);
   const destinationOwner = address(to);
@@ -252,6 +250,17 @@ export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate, factura:
   const wire = getBase64EncodedWireTransaction(signed);
   const hash = getSignatureFromTransaction(signed);
 
+  return { wire, hash: String(hash), lastValidBlockHeight: String(latestBlockhash.lastValidBlockHeight), memo, factura,
+    from: String(from), to: String(to), usdc: rawToUsdc(amount), ars: Number(ars), fxRate: Number(fxRate), kind };
+}
+
+// Only used by the devnet demo. Production jobs persist the prepared wire first.
+export async function sendTreasuryPayout(options) {
+  if (NETWORK.cluster !== "devnet") throw new Error("direct_treasury_payout_disabled");
+  const prepared = await prepareTreasuryPayout(options);
+  const { wire, hash, memo, factura, from, to, usdc, ars, fxRate, kind } = prepared;
+  const rpc = getRpc();
+
   await withRetry(() =>
     rpc
       .sendTransaction(wire, {
@@ -285,4 +294,26 @@ export async function sendTreasuryPayout({ to, usdc, kind, ars, fxRate, factura:
     fxRate: Number(fxRate),
     kind,
   };
+}
+
+export async function treasuryRpc(method, params) {
+  const response = await fetch(RPC_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
+  const body = await response.json();
+  if (!response.ok || body.error) throw new Error("solana_rpc_unavailable");
+  return body.result;
+}
+export async function treasuryLiquidity() {
+  const owner = await getTreasuryAddress();
+  if (!owner) throw new Error("treasury_not_configured");
+  const [tokens, sol, genesis] = await Promise.all([
+    treasuryRpc("getTokenAccountsByOwner", [owner, { mint: USDC_MINT }, { encoding: "jsonParsed", commitment: "finalized" }]),
+    treasuryRpc("getBalance", [owner, { commitment: "finalized" }]),
+    treasuryRpc("getGenesisHash", []),
+  ]);
+  const expected = NETWORK.cluster === "mainnet-beta" ? "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+  if (genesis !== expected) throw new Error("solana_rpc_network_mismatch");
+  const [ata] = await findAssociatedTokenPda({ mint: address(USDC_MINT), owner: address(owner), tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const account = tokens.value?.find((t) => t.pubkey === String(ata));
+  return { owner, raw: account?.account?.data?.parsed?.info?.tokenAmount?.amount || "0", solLamports: String(sol.value) };
 }

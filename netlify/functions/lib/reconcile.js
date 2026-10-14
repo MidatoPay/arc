@@ -1,14 +1,15 @@
+import { NETWORK } from "../../../src/network.js";
 // Reconciliación compartida: trae transferencias USDC (SPL) entrantes vía RPC
 // de Solana para una address y las inserta en `transactions` si faltan.
 // Usado por reconcile-wallets.js (job) y transactions.js (GET).
 
-const USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const USDC_MINT = NETWORK.mint;
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const ASSOCIATED_TOKEN_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const MAX_SIGS_FIRST_SYNC = 40;
 
 function rpcUrl() {
-  return process.env.VITE_SOLANA_RPC || process.env.VITE_ARC_RPC || "https://api.devnet.solana.com";
+  return process.env.SOLANA_RPC || process.env.VITE_SOLANA_RPC || NETWORK.rpc;
 }
 
 async function rpcCall(method, params) {
@@ -67,15 +68,15 @@ function extractMemo(tx) {
   return null;
 }
 
-function usdcReceivedByOwner(tx, owner) {
+function usdcDeltaByOwner(tx, owner) {
   const pre = tx?.meta?.preTokenBalances || [];
   const post = tx?.meta?.postTokenBalances || [];
   const preHit = pre.find((b) => b.mint === USDC_MINT && b.owner === owner);
   const postHit = post.find((b) => b.mint === USDC_MINT && b.owner === owner);
-  if (!postHit) return 0;
-  const postAmt = Number(postHit.uiTokenAmount?.uiAmount ?? 0);
+  if (!postHit && !preHit) return 0;
+  const postAmt = Number(postHit?.uiTokenAmount?.uiAmount ?? 0);
   const preAmt = Number(preHit?.uiTokenAmount?.uiAmount ?? 0);
-  return Math.max(0, postAmt - preAmt);
+  return postAmt - preAmt;
 }
 
 function counterparty(tx, owner) {
@@ -110,13 +111,17 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
     try {
       const tx = await rpcCall("getTransaction", [
         s.signature,
-        { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" },
+        { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "finalized" },
       ]);
       if (!tx) continue;
 
-      const usdc = usdcReceivedByOwner(tx, address);
+      const delta = usdcDeltaByOwner(tx, address);
+      const usdc = Math.abs(delta);
+      const direction = delta > 0 ? "in" : "out";
       if (!(usdc > 0)) continue;
 
+      const paymentJob = await db.query("SELECT id FROM charges WHERE signature=$1 AND user_id=$2 AND network=$3", [s.signature,userId,NETWORK.cluster]);
+      if (paymentJob.rowCount) continue; // payment worker writes its authoritative conversion metadata
       const memoText = extractMemo(tx);
       const decoded = decodeMemo(memoText);
       const fields = decoded?.fields ?? null;
@@ -127,7 +132,7 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
       let fxRate;
 
       if (fields && fields.kind) {
-        kind = String(fields.kind).slice(0, 32);
+        kind = ["voice","pay","charge_p2p"].includes(fields.kind) ? fields.kind : "received";
         factura = fields.inv ? String(fields.inv).slice(0, 64) : null;
         if (fields.cur === "ARS" && fields.amt) {
           const parsedArs = Number(fields.amt);
@@ -155,10 +160,10 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
       const createdAt = s.blockTime ? new Date(s.blockTime * 1000).toISOString() : null;
 
       await db.query(
-        `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at)
-         VALUES ($1, $2, $3, 'in', $4, $5, $6, $7, $8, $9, NULL, $10, COALESCE($11::timestamptz, now()))
-         ON CONFLICT (user_id, hash) DO NOTHING`,
-        [userId, s.signature, kind, who, usdc, fxRate, ars, factura, s.slot, memoText, createdAt]
+        `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at, network)
+         VALUES ($1, $2, $3, $13, $4, $5, $6, $7, $8, $9, NULL, $10, COALESCE($11::timestamptz, now()), $12)
+         ON CONFLICT (user_id, network, hash) DO NOTHING`,
+        [userId, s.signature, kind, who, usdc, fxRate, ars, factura, s.slot, memoText, createdAt, NETWORK.cluster, direction]
       );
 
       if (maxSlotSeen == null || s.slot > maxSlotSeen) maxSlotSeen = s.slot;

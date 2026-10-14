@@ -5,8 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "netlify dev --offline",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js",
+    "payments:env": "node scripts/prepare-payments-env.js",
+    "payments:env:production": "node scripts/prepare-payments-env.js .env.production",
+    "payments:check": "node --env-file=.env scripts/check-payments-config.js",
+    "db:migrate:payments": "node --env-file=.env scripts/migrate-payments.js"
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.36.1",
@@ -26,6 +32,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.9",
     "@vitejs/plugin-react": "^6.0.5",
     "netlify-cli": "^27.1.0",
     "vite": "^8.2.0"

@@ -1,3 +1,4 @@
+import { NETWORK } from "../../src/network.js";
 // API del historial de transacciones — puente entre el browser y Postgres
 // (Aiven). Mismo patrón que netlify/functions/contacts.js: el browser nunca
 // ve la connection string ni el secret de Privy. Ver
@@ -95,12 +96,12 @@ export const handler = async (event) => {
 
         if (owned) {
           await db.query(
-            `INSERT INTO wallets (user_id, address, updated_at) VALUES ($1, $2, now())
-             ON CONFLICT (user_id) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
-            [userId, address]
+            `INSERT INTO wallets (user_id, address, network, updated_at) VALUES ($1, $2, $3, now())
+             ON CONFLICT (user_id, network) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
+            [userId, address, NETWORK.cluster]
           );
           try {
-            const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1", [userId]);
+            const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1 AND network = $2", [userId, NETWORK.cluster]);
             const newCheckpoint = await reconcileWallet(db, {
               userId,
               address,
@@ -108,7 +109,7 @@ export const handler = async (event) => {
               getFxRate,
             });
             if (newCheckpoint != null) {
-              await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2", [newCheckpoint, userId]);
+              await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2 AND network = $3", [newCheckpoint, userId, NETWORK.cluster]);
             }
           } catch {
             // Si el RPC de Solana falla acá, no bloquea la carga del historial existente
@@ -119,21 +120,22 @@ export const handler = async (event) => {
 
       const { rows } = await db.query(
         `SELECT id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at
-         FROM transactions WHERE user_id = $1 ORDER BY created_at DESC`,
-        [userId]
+         FROM transactions WHERE user_id = $1 AND network = $2 ORDER BY created_at DESC`,
+        [userId, NETWORK.cluster]
       );
       return json(200, { transactions: rows });
     }
 
     if (event.httpMethod === "POST") {
+      if (NETWORK.cluster !== "devnet") return json(403, { error: "client_history_writes_disabled" });
       const body = JSON.parse(event.body || "{}");
       const missing = REQUIRED_FIELDS.filter((f) => body[f] === undefined || body[f] === null || body[f] === "");
       if (missing.length > 0) return json(400, { error: "missing_fields" });
 
       const { rows } = await db.query(
-        `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         ON CONFLICT (user_id, hash) DO NOTHING
+        `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, network)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT (user_id, network, hash) DO NOTHING
          RETURNING id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at`,
         [
           userId,
@@ -148,6 +150,7 @@ export const handler = async (event) => {
           body.block ?? null,
           body.fee ?? null,
           body.memo ?? null,
+          NETWORK.cluster,
         ]
       );
 
@@ -158,8 +161,8 @@ export const handler = async (event) => {
       // la fila existente de ESTE usuario en vez de tratarlo como error.
       const existing = await db.query(
         `SELECT id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at
-         FROM transactions WHERE hash = $1 AND user_id = $2`,
-        [body.hash, userId]
+         FROM transactions WHERE hash = $1 AND user_id = $2 AND network = $3`,
+        [body.hash, userId, NETWORK.cluster]
       );
       if (existing.rows.length === 0) return json(409, { error: "hash_conflict" });
       return json(200, { transaction: existing.rows[0] });

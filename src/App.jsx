@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePrivy, useWallets as useEvmWallets } from "@privy-io/react-auth";
 import { useWallets, useCreateWallet, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { isAddress } from "@solana/kit";
-import QRCode from "qrcode";
+import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
+import PaymentReports from "./PaymentReports.jsx";
+import { reportsApi } from "./paymentReports.js";
 import jsQR from "jsqr";
 import { SOLANA, explorerAddressUrl, explorerTxUrl } from "./chain.js";
 import {
   armarMemo,
   estimateUsdcTransfer,
-  findIncomingTransfer,
   getUsdcBalance,
   nuevaFactura,
   sendUsdc,
@@ -37,7 +38,7 @@ import {
   validateContact,
 } from "./contacts.js";
 import { loadTransactions, addTransaction, mergeByHash } from "./transactions.js";
-import { buildPayUrl, parsePayUrl, slugifyAlias } from "./payQr.js";
+import { parsePayUrl, slugifyAlias } from "./payQr.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Solana — Pagos por voz
@@ -48,7 +49,7 @@ import { buildPayUrl, parsePayUrl, slugifyAlias } from "./payQr.js";
 const arsStorageKey = (address) => `mp_ars_balance_${address || ""}`;
 
 function loadArsBalance(address) {
-  if (!address) return 0;
+  if (!address || SOLANA.cluster !== "devnet") return 0;
   try {
     const raw = localStorage.getItem(arsStorageKey(address));
     const n = Number(raw);
@@ -1191,7 +1192,7 @@ function Home({
         />
       </div>
 
-      {balance !== null && balance < 0.5 && (
+      {SOLANA.cluster === "devnet" && balance !== null && balance < 0.5 && (
         <Card style={{ background: "#16161A", color: "#fff" }}>
           <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.35 }}>{t("home.faucetCardTitle")}</div>
           <div style={{ fontSize: 13.5, opacity: 0.75, marginTop: 8, lineHeight: 1.5 }}>{t("home.faucetCardBody")}</div>
@@ -1327,209 +1328,6 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
   }, [enabled, from, to, usdc, memo, estimateFn, tick]);
 
   return { estimate, loading, error, retry };
-}
-
-// ————— Cobrar (QR P2P: espera y detecta el pago on-chain) —————
-function Charge({ address, fxRate, onDetected, merchantName, chargeRequest, onChargeRequestConsumed }) {
-  const { t, locale } = useLanguage();
-  const [arsInput, setArsInput] = useState("");
-  const [phase, setPhase] = useState("form"); // form | waiting | error
-  const [errMsg, setErrMsg] = useState("");
-  const [request, setRequest] = useState(null); // { ars, factura, url }
-  const [qrDataUrl, setQrDataUrl] = useState("");
-  const [copied, setCopied] = useState(false);
-  const baselineRef = useRef(null);
-
-  const ars = Number(arsInput);
-  const quote = Number.isFinite(ars) && ars > 0 ? quoteArsToUsdc(ars, fxRate) : null;
-  const whoForQr = (merchantName || "").trim() || t("charge.merchantSelf");
-
-  const startWaitingFor = async (arsValue) => {
-    const factura = nuevaFactura();
-    const url = buildPayUrl({ addr: address, who: whoForQr, ars: arsValue, factura });
-    setRequest({ ars: arsValue, factura, url });
-    setPhase("waiting");
-    try {
-      setQrDataUrl(await QRCode.toDataURL(url, { margin: 1, width: 260 }));
-    } catch {
-      setQrDataUrl("");
-    }
-    baselineRef.current = await getUsdcBalance(address).catch(() => null);
-  };
-
-  useEffect(() => {
-    if (!chargeRequest) return;
-    if (phase !== "form") {
-      onChargeRequestConsumed();
-      return;
-    }
-    setArsInput(String(chargeRequest.ars));
-    startWaitingFor(chargeRequest.ars);
-    onChargeRequestConsumed();
-  }, [chargeRequest, phase, onChargeRequestConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (phase !== "waiting" || !request) return undefined;
-    let cancelled = false;
-
-    const poll = async () => {
-      const current = await getUsdcBalance(address).catch(() => null);
-      if (cancelled || current == null || baselineRef.current == null) return;
-      if (current <= baselineRef.current) return;
-
-      const found = await findIncomingTransfer({ address, factura: request.factura }).catch(() => null);
-      if (cancelled) return;
-      if (!found) {
-        setErrMsg(t("charge.detectError"));
-        setPhase("error");
-        return;
-      }
-      const rate = await getArsPerUsdc().catch(() => fxRate);
-      const usdc = current - baselineRef.current;
-      onDetected({
-        hash: found.hash,
-        who: whoForQr,
-        amt: usdc,
-        fxRate: rate,
-        ars: request.ars,
-        factura: request.factura,
-        block: found.block,
-        fee: found.fee,
-        memo: null,
-        kind: "charge_p2p",
-        direction: "in",
-        usdc,
-      });
-    };
-
-    const id = setInterval(poll, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [phase, request, address, fxRate, onDetected, t]);
-
-  const copyLink = async () => {
-    if (!request) return;
-    try {
-      await navigator.clipboard.writeText(request.url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard puede no estar disponible (http no seguro, permisos) */
-    }
-  };
-
-  const cancel = () => {
-    setPhase("form");
-    setRequest(null);
-    setQrDataUrl("");
-    baselineRef.current = null;
-  };
-
-  if (phase === "waiting" || phase === "error") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
-
-        <Card style={{ textAlign: "center", padding: 24 }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: C.ink }}>${fmtArs(request.ars)}</div>
-          {qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR" width={220} height={220} style={{ marginTop: 16, borderRadius: 12 }} />
-          ) : (
-            <div style={{ marginTop: 16, height: 220, display: "grid", placeItems: "center", color: C.mut }}>
-              <IconQrCode size={64} />
-            </div>
-          )}
-
-          <div style={{ marginTop: 18, fontSize: 15, fontWeight: 700, color: C.ink }}>{t("charge.waitingTitle")}</div>
-          <div style={{ fontSize: 13, color: C.mut, marginTop: 6, lineHeight: 1.45 }}>{t("charge.waitingHint")}</div>
-
-          <div style={{ marginTop: 18, textAlign: "left" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.mut, marginBottom: 6 }}>{t("charge.linkLabel")}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px" }}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.ink, fontFamily: "ui-monospace, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {request.url}
-              </span>
-              <button
-                onClick={copyLink}
-                aria-label={t("charge.copyLink")}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#fe6c1c", display: "grid", placeItems: "center", padding: 4, flexShrink: 0 }}
-              >
-                <IconCopy />
-              </button>
-            </div>
-            {copied && <div style={{ fontSize: 12, color: C.green, marginTop: 6 }}>{t("charge.linkCopied")}</div>}
-          </div>
-
-          {phase === "error" && (
-            <div style={{ marginTop: 16, padding: "12px 14px", background: "#FDECEA", color: C.red, borderRadius: 12, fontSize: 13.5, lineHeight: 1.5 }}>
-              {errMsg}
-            </div>
-          )}
-        </Card>
-
-        <button onClick={cancel} style={btnOutline}>{t("charge.cancel")}</button>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("charge.title")}</h2>
-      <div style={{ fontSize: 14, color: C.mut, lineHeight: 1.5 }}>{t("charge.subtitle")}</div>
-
-      <Card style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        <AmountField
-          label={t("charge.arsLabel")}
-          value={arsInput}
-          onChange={setArsInput}
-          placeholder="5000"
-          suffix="ARS"
-          logo="/monedas/ars.png"
-        />
-
-        <div style={{ display: "grid", gap: 12, fontSize: 14.5 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ color: C.mut }}>{t("voice.exchangeRate")}</span>
-            <span style={{ fontWeight: 600, color: C.ink }}>1 USDC = ${fmtArs(fxRate)}</span>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              background: C.card,
-              borderRadius: 14,
-              padding: "14px 16px",
-              border: `1px solid ${C.line}`,
-            }}
-          >
-            <span style={{ color: C.mut }}>{t("charge.youReceive")}</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <img src="/monedas/usdc.png" alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
-              <span style={{ fontWeight: 700, color: C.ink, fontSize: 16 }}>
-                {quote ? `${fmt(quote.usdc, 2, locale)} USDC` : "—"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <button
-        onClick={() => startWaitingFor(ars)}
-        disabled={!quote}
-        style={{
-          ...btnOrange,
-          opacity: !quote ? 0.5 : 1,
-          background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
-          boxShadow: "0 10px 22px rgba(254,108,28,.28)",
-        }}
-      >
-        {t("charge.cta")}
-      </button>
-    </div>
-  );
 }
 
 /** Escaneo de QR por cámara (getUserMedia + jsQR sobre frames de <video>). */
@@ -3118,7 +2916,7 @@ function Success({ receipt, onClose, hideFx = false }) {
     return () => clearTimeout(timer);
   }, []);
 
-  const isChargeIn = kind === "charge" || (kind === "charge_p2p" && receipt.direction === "in");
+  const isChargeIn = kind === "charge" || kind === "charge_mercadopago" || (kind === "charge_p2p" && receipt.direction === "in");
 
   const splashTitle =
     hideFx ? t("guest.successSplash")
@@ -3187,6 +2985,9 @@ function Success({ receipt, onClose, hideFx = false }) {
 
       <Card>
         <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.35 }}>{summary()}</div>
+        {kind === "charge_mercadopago" && <div style={{marginTop:12,fontSize:13,overflowWrap:"anywhere"}}>
+          Orden Mercado Pago: {receipt.orderId}<br/>Comisión de conversión: $ {receipt.feeArs} ARS (0,5%)
+        </div>}
         {kind === "convert_usdc_ars" && (
           <div style={{ marginTop: 12, padding: "12px 14px", background: C.orangeSoft, borderRadius: 12, fontSize: 14, color: "#fe6c1c", lineHeight: 1.45, display: "flex", alignItems: "center", gap: 8 }}>
             <img src="/monedas/ars.png" alt="" width={20} height={20} style={{ width: 20, height: 20, borderRadius: "50%" }} />
@@ -3244,7 +3045,7 @@ function TxCard({ tx, compact = false }) {
     ? tx.kind === "convert_ars_usdc"
       ? "ARS → USDC"
       : "USDC → ARS"
-    : tx.kind === "charge" || (tx.kind === "charge_p2p" && inbound)
+    : tx.kind === "charge" || tx.kind === "charge_mercadopago" || (tx.kind === "charge_p2p" && inbound)
       ? t("movs.charge")
       : tx.who;
 
@@ -3375,7 +3176,7 @@ function Movimientos({ txs, address }) {
 }
 
 // ————— Más (menú) —————
-function Mas({ email, address, nombre, onLogout, goStack }) {
+function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId }) {
   const { t, lang, setLang } = useLanguage();
   const [confirmar, setConfirmar] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -3455,9 +3256,10 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
       </Card>
 
       <Card style={{ padding: "4px 20px" }}>
+        {goReports && <Fila icon={<IconSearch />} titulo="Operaciones y comisiones" sub="Historial de todos los comercios" onClick={goReports} />}
         <Fila icon={<IconStack size={20} />} titulo={t("mas.stackTitle")} sub={t("mas.stackSub")} onClick={goStack} />
         <div style={{ height: 1, background: C.line }} />
-        <Fila icon={<IconFaucet />} titulo={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={SOLANA.faucet} />
+        {SOLANA.cluster === "devnet" && <Fila icon={<IconFaucet />} titulo={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={SOLANA.faucet} />}
         <div style={{ height: 1, background: C.line }} />
         <Fila icon={<IconSearch />} titulo={t("mas.explorerTitle")} sub={t("mas.explorerSub")} href={explorerAddressUrl(address)} />
       </Card>
@@ -3479,6 +3281,7 @@ function Mas({ email, address, nombre, onLogout, goStack }) {
         <Fila icon={<IconLogout />} titulo={t("mas.logoutTitle")} danger onClick={() => setConfirmar(true)} />
       </Card>
 
+      {privyId && <div style={{fontSize:12,color:C.mut,overflowWrap:"anywhere"}}>ID de usuario: {privyId}</div>}
       <p style={{ fontSize: 11.5, color: C.mut, textAlign: "center", lineHeight: 1.6 }}>
         {t("mas.footerLine1")}
         <br />
@@ -3772,12 +3575,19 @@ function AppInner() {
   const [guestMode, setGuestMode] = useState(false);
   const [guestInitialScan, setGuestInitialScan] = useState(null);
   const [pendingCharge, setPendingCharge] = useState(null);
+  const [paymentAdmin,setPaymentAdmin]=useState(false);
+  useEffect(()=>{
+    let canceled=false;setPaymentAdmin(false);
+    if(authenticated && user?.id) reportsApi("/payment-reports/access",getAccessToken)
+      .then((result)=>{if(!canceled)setPaymentAdmin(result.authorized);}).catch(()=>{});
+    return()=>{canceled=true;};
+  },[authenticated,user?.id,getAccessToken]);
   const [payFullscreen, setPayFullscreen] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
     const wantsGuest = url.searchParams.get("guest") === "1" || url.searchParams.get("cliente") === "1";
-    if (wantsGuest) {
+    if (wantsGuest && SOLANA.cluster === "devnet") {
       setGuestMode(true);
       url.searchParams.delete("guest");
       url.searchParams.delete("cliente");
@@ -4116,29 +3926,20 @@ function AppInner() {
     [wallet, address, signAndSendTransaction, refreshBalances, pushTx, locale, fxRate, t, walletDebugSignature]
   );
 
-  const handleChargeDetected = useCallback(
-    (entry) => {
-      pushTx(entry);
-      refreshBalances();
-      setReceipt({
-        kind: "charge_p2p",
-        direction: "in",
-        hash: entry.hash,
-        block: entry.block,
-        fee: entry.fee,
-        memo: entry.memo,
-        factura: entry.factura,
-        usdc: entry.usdc,
-        ars: entry.ars,
-        fxRate: entry.fxRate,
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
-      });
-    },
-    [pushTx, refreshBalances, locale]
-  );
+  const handleChargeDelivered = useCallback(async (charge) => {
+    const token = await getAccessToken();
+    const fresh = await loadTransactions(user.id, token, address);
+    setTxs(fresh);
+    await refreshBalances();
+    setReceipt({ kind: "charge_mercadopago", direction: "in", hash: charge.signature,
+      factura: charge.reference, usdc: Number(charge.usdc), ars: Number(charge.ars),
+      feeArs: charge.feeArs, orderId: charge.orderId, fxRate: Number(charge.fxRate),
+      ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) });
+  }, [getAccessToken, user?.id, address, refreshBalances, locale]);
 
   const handleConvertArsUsdc = useCallback(
     async (arsAmount) => {
+      if (SOLANA.cluster !== "devnet") throw new Error("Conversión de prueba deshabilitada");
       const token = await getAccessToken();
       const result = await runConvertArsToUsdc({
         token,
@@ -4168,6 +3969,7 @@ function AppInner() {
 
   const handleConvertUsdcArs = useCallback(
     async (usdcAmount) => {
+      if (SOLANA.cluster !== "devnet") throw new Error("Conversión de prueba deshabilitada");
       if (!wallet || wallet.address !== address) {
         console.error("[MidatoPay wallet] Conversión bloqueada: falta wallet conectada con la dirección vinculada", walletDebug);
         throw new Error(t("home.walletUnavailable"));
@@ -4307,7 +4109,7 @@ function AppInner() {
     </div>
   );
 
-  if (guestMode && !authenticated) {
+  if (guestMode && !authenticated && SOLANA.cluster === "devnet") {
     return (
       <GuestApp
         onExit={() => {
@@ -4395,16 +4197,18 @@ function AppInner() {
         />
       )}
       {tab === "charge" && (
-        <Charge
+        <MercadoPagoCharge
+          key={`${user.id}:${address}`}
           address={address}
-          fxRate={fxRate}
-          onDetected={handleChargeDetected}
-          merchantName={nombre}
+          userId={user.id}
+          getAccessToken={getAccessToken}
+          onDelivered={handleChargeDelivered}
           chargeRequest={pendingCharge}
           onChargeRequestConsumed={() => setPendingCharge(null)}
         />
       )}
-      {tab === "convert" && (
+      {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>Las conversiones independientes todavía no están disponibles. Cobrá con Mercado Pago para recibir USDC.</Card>}
+      {tab === "convert" && SOLANA.cluster === "devnet" && (
         <Convert
           address={address}
           balance={balance}
@@ -4416,6 +4220,7 @@ function AppInner() {
         />
       )}
       {tab === "movs" && <Movimientos txs={txs} address={address} />}
+      {tab === "reports" && paymentAdmin && <PaymentReports getAccessToken={getAccessToken} onBack={()=>setTab("mas")} />}
       {tab === "stack" && <Stack />}
       {tab === "agenda" && (
         <ContactsScreen
@@ -4432,6 +4237,8 @@ function AppInner() {
           nombre={nombre}
           onLogout={async () => { await logout(); setTab("home"); setTxs([]); setBalance(null); setTreasuryBalance(null); }}
           goStack={() => setTab("stack")}
+          goReports={paymentAdmin?()=>setTab("reports"):undefined}
+          privyId={user.id}
         />
       )}
     </>,

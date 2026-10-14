@@ -11,7 +11,7 @@ import ReactDOM from "react-dom/client";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 import App from "./App.jsx";
-import { RPC_PROXY, WSS_URL } from "./chain.js";
+import { RPC_PROXY, WSS_URL, SOLANA } from "./chain.js";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID || "";
 
@@ -97,7 +97,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           },
           solana: {
             rpcs: {
-              "solana:devnet": {
+              [SOLANA.chain]: {
                 rpc: solanaRpc,
                 rpcSubscriptions: solanaRpcSubscriptions,
               },
