@@ -1,0 +1,72 @@
+import pg from "pg";
+import { PrivyClient } from "@privy-io/server-auth";
+import { timingSafeEqual } from "node:crypto";
+import { NETWORK } from "../../../src/network.js";
+import { PaymentError } from "./paymentCore.js";
+
+let pool, privy;
+export function getPaymentDb() {
+  if (!pool) {
+    const connectionString = (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, "");
+    pool = new pg.Pool({ connectionString, max: 4, connectionTimeoutMillis: 5000,
+      ssl: { ca: (process.env.AIVEN_PG_CA_CERT || "").replace(/\\n/g, "\n"), rejectUnauthorized: true,
+        servername: new URL(connectionString).hostname } });
+  }
+  return pool;
+}
+export function getPaymentPrivy() {
+  return privy ??= new PrivyClient(process.env.VITE_PRIVY_APP_ID, process.env.PRIVY_APP_SECRET);
+}
+export async function authenticatePayment(event) {
+  const token = (event.headers?.authorization || event.headers?.Authorization || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) throw new PaymentError("unauthorized", 401);
+  try { return (await getPaymentPrivy().verifyAuthToken(token)).userId; }
+  catch { throw new PaymentError("unauthorized", 401); }
+}
+export async function assertWalletOwned(userId, wallet) {
+  const user = await getPaymentPrivy().getUser(userId);
+  if (!(user.linkedAccounts || []).some((a) => a.type === "wallet" && a.address === wallet &&
+    (a.chainType === "solana" || a.chain_type === "solana"))) throw new PaymentError("wallet_not_owned", 403);
+}
+export function paymentSettings() {
+  const environment = process.env.MP_ENVIRONMENT || "test";
+  if (!["test", "production"].includes(environment)) throw new PaymentError("invalid_mp_environment");
+  if ((environment === "production") !== (NETWORK.cluster === "mainnet-beta")) throw new PaymentError("payment_network_mismatch");
+  for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_EXTERNAL_POS_ID", "MP_WEBHOOK_SECRET", "SOLANA_RPC", "INTERNAL_WORKER_SECRET"]) {
+    if (!process.env[key]?.trim()) throw new PaymentError(`missing_${key.toLowerCase()}`);
+  }
+  if (process.env.INTERNAL_WORKER_SECRET.length < 32) throw new PaymentError("invalid_worker_secret");
+  return { environment, network: NETWORK.cluster, seller: process.env.MP_USER_ID.trim(),
+    pos: process.env.MP_EXTERNAL_POS_ID.trim(), token: process.env.MP_ACCESS_TOKEN.trim() };
+}
+export function assertPaymentsEnabled() {
+  if (process.env.PAYMENTS_ENABLED !== "true") throw new PaymentError("payments_disabled");
+  if (process.env.CONVERSION_FEE_BPS && process.env.CONVERSION_FEE_BPS !== "50") throw new PaymentError("invalid_conversion_fee");
+}
+export function internalAuthorized(event) {
+  const actual = event.headers?.["x-worker-secret"] || event.headers?.["X-Worker-Secret"] || "";
+  const secret = process.env.INTERNAL_WORKER_SECRET || "";
+  return secret.length >= 32 && Buffer.byteLength(actual) === Buffer.byteLength(secret) &&
+    timingSafeEqual(Buffer.from(actual), Buffer.from(secret));
+}
+export function json(statusCode, body) {
+  return { statusCode, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) };
+}
+export function errorResponse(error) {
+  return json(error instanceof PaymentError ? error.status : 503,
+    { error: error instanceof PaymentError ? error.code : "payment_service_unavailable" });
+}
+export async function transaction(fn, poolOverride) {
+  const db = await (poolOverride || getPaymentDb()).connect();
+  try { await db.query("BEGIN"); const result = await fn(db); await db.query("COMMIT"); return result; }
+  catch (error) { await db.query("ROLLBACK"); throw error; }
+  finally { db.release(); }
+}
+export async function kickWorker() {
+  const origin = process.env.PAYMENTS_BASE_URL || process.env.URL;
+  if (!origin || !process.env.INTERNAL_WORKER_SECRET) return;
+  try {
+    await fetch(new URL("/.netlify/functions/payments-worker-background", origin), {
+      method: "POST", headers: { "x-worker-secret": process.env.INTERNAL_WORKER_SECRET }, signal: AbortSignal.timeout(4000) });
+  } catch { /* durable records will be picked up by the scheduled dispatcher */ }
+}

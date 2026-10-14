@@ -1,9 +1,10 @@
+import { SOLANA } from "./chain.js";
 // Cliente HTTP del historial de transacciones, con cache stale-while-revalidate
 // en localStorage. Mismo patrón que src/contacts.js. Ver
 // docs/superpowers/specs/2026-08-07-transactions-history-design.md § 1.4.
 
 const CACHE_PREFIX = "mp_tx_cache_";
-const cacheKey = (userId) => `${CACHE_PREFIX}${userId}`;
+const cacheKey = (userId) => `${CACHE_PREFIX}${SOLANA.cluster}_${userId}`;
 
 function readCache(userId) {
   if (!userId) return [];

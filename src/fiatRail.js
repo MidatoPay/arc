@@ -22,7 +22,9 @@
  * @param {number} arsAmount
  * @returns {Promise<FiatPaymentResult>}
  */
+import { SOLANA } from "./chain.js";
 export async function payoutArsToUser(arsAmount) {
+  if (SOLANA.cluster !== "devnet") throw new Error("demo_conversion_disabled");
   const ars = Number(arsAmount);
   if (!Number.isFinite(ars) || ars <= 0) {
     throw new Error("Monto ARS inválido para payout fiat");

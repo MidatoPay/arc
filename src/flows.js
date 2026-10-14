@@ -7,6 +7,7 @@ import {
 } from "./solana.js";
 import { arsToUsdc, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
 import { payoutArsToUser } from "./fiatRail.js";
+import { SOLANA } from "./chain.js";
 import {
   getTreasuryAddressAsync,
   getTreasuryBalance,
@@ -20,6 +21,7 @@ const MIN_USDC = 0.01;
  * Cotiza con Chainlink y la Function de tesorería envía USDC SPL.
  */
 export async function runConvertArsToUsdc({ token, userAddress, arsAmount, arsBalance }) {
+  if (SOLANA.cluster !== "devnet") throw new Error("demo_conversion_disabled");
   if (!token) throw new Error("Sesión requerida para convertir");
   if (!userAddress) throw new Error("Wallet de usuario no disponible");
   const ars = Number(arsAmount);

@@ -230,7 +230,7 @@ export async function sendUsdc(wallet, signAndSendTransaction, { to, usdc, memo 
     signAndSendTransaction({
       transaction,
       wallet,
-      chain: "solana:devnet",
+      chain: SOLANA.chain,
     })
   );
 

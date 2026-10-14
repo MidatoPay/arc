@@ -3,6 +3,14 @@
 Login con email o teléfono (Privy) → wallet embebida Solana → pagos por voz en USDC
 (SPL) que se liquidan de verdad en Solana Devnet, verificables en Solana Explorer.
 
+## Cobros Mercado Pago y producción
+
+La acción **Cobrar** usa QR dinámicos de Mercado Pago y entrega USDC desde tesorería, con comisión de conversión del 0,5%. Configuración, migración, webhook y activación: [guía de producción](docs/MERCADOPAGO_PRODUCCION.md).
+
+El administrador configurado en `PAYMENTS_ADMIN_USER_IDS` accede desde **Más → Operaciones y comisiones** al historial de todos los comercios, filtros, totales y exportación CSV. Para probar frontend y backend juntos en local: `npm run dev:full` y abrir `http://localhost:8888`.
+
+El circuito de demo descrito más abajo corresponde a devnet. En mainnet, los desembolsos directos de `/treasury`, las conversiones fiat simuladas y el modo guest de prueba están deshabilitados.
+
 ## Setup
 
 ```bash

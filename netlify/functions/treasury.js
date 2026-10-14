@@ -3,6 +3,7 @@
 
 import { PrivyClient } from "@privy-io/server-auth";
 import { isAddress } from "@solana/kit";
+import { NETWORK } from "../../src/network.js";
 import {
   getTreasuryAddress,
   getTreasuryBalance,
@@ -58,6 +59,7 @@ export const handler = async (event) => {
   }
 
   if (method === "POST") {
+    if (NETWORK.cluster !== "devnet") return json(403, { error: "direct_treasury_payout_disabled" });
     const userId = await authenticate(event);
     if (!userId) return json(401, { error: "unauthorized" });
     if (!isTreasuryConfigured()) {

@@ -1,20 +1,22 @@
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
+import { NETWORK } from "./network.js";
 
 // Lecturas van por el proxy local de Vite/Netlify (ver vite.config.js) para
 // evitar CORS del navegador contra el RPC de Solana.
 export const RPC_PROXY =
-  typeof window !== "undefined" ? `${window.location.origin}/rpc` : "https://api.devnet.solana.com";
+  typeof window !== "undefined" ? `${window.location.origin}/rpc` : NETWORK.rpc;
 
 export const WSS_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SOLANA_WSS) ||
-  "wss://api.devnet.solana.com";
+  NETWORK.wss;
 
 /** Circle USDC en Solana Devnet (mint + Token Program clásico). Nunca por símbolo. */
-export const USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+export const USDC_MINT = NETWORK.mint;
 export const USDC_DECIMALS = 6;
 
 export const SOLANA = {
-  cluster: "devnet",
+  cluster: NETWORK.cluster,
+  chain: NETWORK.chain,
   explorer: "https://explorer.solana.com",
   faucet: "https://faucet.circle.com",
   usdcMint: USDC_MINT,

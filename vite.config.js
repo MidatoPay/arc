@@ -1,11 +1,12 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { networkConfig } from "./src/network.js";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // RPC de Solana Devnet. Poné VITE_SOLANA_RPC en .env (Triton/Helius) para
   // no depender del RPC público (que limita las consultas).
-  const target = env.VITE_SOLANA_RPC || env.VITE_ARC_RPC || "https://api.devnet.solana.com";
+  const target = env.SOLANA_RPC || env.VITE_SOLANA_RPC || networkConfig(env.VITE_SOLANA_CLUSTER || "devnet").rpc;
   // RPC de Ethereum Mainnet para el Price Feed Chainlink USD/ARS.
   const ethTarget = env.VITE_ETH_RPC || "https://ethereum.publicnode.com";
 
@@ -19,6 +20,18 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        "/payment-reports": {
+          target:"http://127.0.0.1:9999",changeOrigin:true,
+          rewrite:(path)=>path.replace(/^\/payment-reports/,"/.netlify/functions/payment-reports"),
+        },
+        "/charges": {
+          target: "http://127.0.0.1:9999", changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/charges/, "/.netlify/functions/charges"),
+        },
+        "/webhooks/mercadopago": {
+          target: "http://127.0.0.1:9999", changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/webhooks\/mercadopago/, "/.netlify/functions/mercadopago-webhook"),
+        },
         "/rpc": {
           target,
           changeOrigin: true,
