@@ -27,6 +27,8 @@ test("durable per-merchant creation handles concurrency, timeouts and changed pr
   const engine=new PGlite();await engine.waitReady;t.after(()=>engine.close());
   const sql=await readFile(new URL("../db/migrations/20261014_merchant_pos.sql",import.meta.url),"utf8");
   await engine.exec(sql);await engine.exec(sql);
+  const assignmentSql=await readFile(new URL("../db/migrations/20261014_merchant_pos_assignments.sql",import.meta.url),"utf8");
+  await engine.exec(assignmentSql);await engine.exec(assignmentSql);
   const query=async(sql,params=[])=>{const r=await engine.query(sql,params);return {...r,rowCount:r.affectedRows || r.rows.length};};
   let tail=Promise.resolve();
   const pool={query,connect:async()=>{const prior=tail;let release;tail=new Promise(r=>release=r);await prior;return {query,release};}};
@@ -78,5 +80,27 @@ test("durable per-merchant creation handles concurrency, timeouts and changed pr
     }};
     await assert.rejects(()=>ensureMerchantPos("u7",settings,bad),{code:"merchant_pos_mismatch"});
     assert.equal((await query("SELECT status FROM merchant_payment_pos WHERE user_id='u7'")).rows[0].status,"creating");
+  });
+  await t.test("a legacy POS reserved by email binds to the server-verified Privy user and never creates a new POS",async()=>{
+    email="reserved@example.com";
+    await query(`INSERT INTO merchant_pos_assignments(environment,seller_id,merchant_email,external_id,pos_id,store_id,pos_name)
+      VALUES('production','123','reserved@example.com','LEGACYPOS','999','456','Legacy')`);
+    const count=posts;
+    const mapped=await ensureMerchantPos("legacy-user",settings,adapters);
+    assert.equal(mapped.external_id,"LEGACYPOS");assert.equal(mapped.status,"ready");assert.equal(posts,count);
+    const saved=(await query("SELECT * FROM merchant_pos_assignments WHERE external_id='LEGACYPOS'")).rows[0];
+    assert.equal(saved.claimed_user_id,"legacy-user");assert.ok(saved.claimed_at);
+    await ensureMerchantPos("legacy-user",settings,adapters);assert.equal(posts,count);
+    await assert.rejects(()=>ensureMerchantPos("other-user",settings,adapters),{code:"merchant_pos_already_assigned"});
+    assert.equal((await query("SELECT * FROM merchant_payment_pos WHERE user_id='other-user'")).rowCount,0);
+  });
+  await t.test("an assignment can replace a merchant default without changing historical orders",async()=>{
+    email="user@example.com";
+    await query(`INSERT INTO merchant_pos_assignments(environment,seller_id,merchant_email,external_id,pos_id,store_id,pos_name)
+      VALUES('production','123','user@example.com','REUSEPOS','1000','456','Existing')`);
+    const count=posts;
+    const mapped=await ensureMerchantPos("u1",settings,adapters);
+    assert.equal(mapped.external_id,"REUSEPOS");assert.equal(mapped.order_body,undefined);
+    assert.equal(mapped.creation_body.external_id,"REUSEPOS");assert.equal(posts,count);
   });
 });
