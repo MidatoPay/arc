@@ -4,6 +4,8 @@ Fecha: 2026-10-13. País de esta integración: Argentina; moneda: ARS.
 Proyecto de referencia: `C:\midatopay\code\mercadopagoTest`.
 Destino: otro proyecto del usuario que ya muestra QR para cobros y funciona como prueba de una billetera virtual.
 
+> El identificador real de caja productiva se sustituyó por `ID_EXTERNO_CAJA_PRODUCTIVA`. Para operar, usar el valor privado de `MP_EXTERNAL_POS_ID` del backend.
+
 ## 1. Pedido que debe ejecutar Codex en el proyecto destino
 
 Adaptar la acción existente **Iniciar cobro / Cobrar** para que cree una orden QR dinámica en la cuenta productiva de Mercado Pago y muestre el QR devuelto por esa API. Vincular la orden a la operación interna y actualizarla cuando el proveedor confirme el pago.
@@ -32,7 +34,7 @@ Se implementaron órdenes, consulta de estado, firma del Webhook, historial loca
 | Recurso | Prueba | Producción |
 |---|---|---|
 | ID interno de sucursal | `82057713` | `88627668` |
-| ID externo de caja | `PRUEBAPOS001` | `PRODPOS001` |
+| ID externo de caja | `PRUEBAPOS001` | `ID_EXTERNO_CAJA_PRODUCTIVA` |
 | ID interno de caja | `139423599` | No se documentó en esta sesión |
 | Archivo de sucursal | `scripts/store.json` | `scripts/store.production.json` |
 | Archivo de caja | `scripts/pos.json` | `scripts/pos.production.json` |
@@ -41,7 +43,7 @@ Estos IDs no son contraseñas, pero pertenecen a cuentas concretas. Solo reutili
 
 Al inspeccionar el laboratorio al cierre:
 
-- `MP_EXTERNAL_POS_ID` estaba configurado como `PRODPOS001`.
+- `MP_EXTERNAL_POS_ID` estaba configurado como `ID_EXTERNO_CAJA_PRODUCTIVA`.
 - El User ID configurado coincidía con el vendedor de la última orden registrada.
 - Había un valor configurado para el secreto del Webhook; no se validó su correspondencia con la aplicación.
 - Se habían creado órdenes con la caja productiva y se había recibido `type_response.qr_data`.
@@ -75,11 +77,11 @@ Si los usuarios de la billetera cobrarán en cuentas Mercado Pago distintas, se 
 ```dotenv
 MP_ACCESS_TOKEN=COMPLETAR_EN_EL_SERVIDOR
 MP_USER_ID=USER_ID_DEL_VENDEDOR_REAL
-MP_EXTERNAL_POS_ID=PRODPOS001
+MP_EXTERNAL_POS_ID=ID_EXTERNO_CAJA_PRODUCTIVA
 MP_WEBHOOK_SECRET=SECRETO_DEL_WEBHOOK_DE_LA_APP_PRODUCTIVA
 ```
 
-Los valores son marcadores, no credenciales válidas. `PRODPOS001` solo corresponde si se utiliza la cuenta del laboratorio.
+Los valores son marcadores, no credenciales válidas. `ID_EXTERNO_CAJA_PRODUCTIVA` solo corresponde si se utiliza la cuenta del laboratorio.
 
 Separar las configuraciones y los registros de prueba/producción en el destino. El laboratorio separa archivos de setup, pero utiliza un solo `.env` activo y un historial compartido: no copiar esa limitación a la billetera.
 
@@ -90,7 +92,7 @@ La cuenta vendedora necesita una sucursal y una caja atendida. Para prepararlas 
 ```text
 POST https://api.mercadopago.com/users/{MP_USER_ID}/stores
 POST https://api.mercadopago.com/v2/pos
-GET  https://api.mercadopago.com/v2/pos?external_id=PRODPOS001&limit=30
+GET  https://api.mercadopago.com/v2/pos?external_id=ID_EXTERNO_CAJA_PRODUCTIVA&limit=30
 ```
 
 La sucursal incluye nombre, identificador externo y ubicación real. Latitud/longitud son números JSON. La caja debe vincularse a la sucursal del mismo vendedor:
@@ -99,7 +101,7 @@ La sucursal incluye nombre, identificador externo y ubicación real. Latitud/lon
 {
   "name": "Caja principal",
   "store_id": "ID_DE_SUCURSAL_REAL",
-  "external_id": "PRODPOS001",
+  "external_id": "ID_EXTERNO_CAJA_PRODUCTIVA",
   "config": {
     "qr": {
       "operating_mode": "pdv"
@@ -167,7 +169,7 @@ Ejemplo construido para el proyecto:
   "expiration_time": "PT15M",
   "config": {
     "qr": {
-      "external_pos_id": "PRODPOS001",
+      "external_pos_id": "ID_EXTERNO_CAJA_PRODUCTIVA",
       "mode": "dynamic"
     }
   },
@@ -352,7 +354,7 @@ La documentación de migración aclara que los intentos rechazados pueden no exp
 | Error o síntoma | Evidencia y respuesta de esta sesión |
 |---|---|
 | `409 pos_already_exists` | La caja ya había sido creada. Se agregó búsqueda y reutilización; recuperar también la carrera GET/POST |
-| `pos_not_found` para `PRUEBAPOS001` | Apareció al cambiar al token productivo manteniendo la caja de prueba. Se prepararon recursos separados con `PRODPOS001` |
+| `pos_not_found` para `PRUEBAPOS001` | Apareció al cambiar al token productivo manteniendo la caja de prueba. Se prepararon recursos separados con `ID_EXTERNO_CAJA_PRODUCTIVA` |
 | `403 forbidden` al crear sucursal | Se comprobó que MP_USER_ID seguía siendo el vendedor de prueba. Se agregó account:sync; otros problemas de permisos pueden requerir revisión de cuenta |
 | “Algo salió mal” al escanear en la app | La orden se creó, el CRC de la trama era correcto y no estaba vencida durante la consulta. Se explicó el uso del comprador de prueba. No se estableció una causa definitiva de ese mensaje |
 | Falta de notificaciones | Inicialmente faltaba MP_WEBHOOK_SECRET. Después apareció configurado, pero el historial inspeccionado no registró Webhooks |

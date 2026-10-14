@@ -2,6 +2,10 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Only non-credential configuration values; all other secret scanning stays enabled.
+  SECRETS_SCAN_OMIT_KEYS = "PAYMENTS_BASE_URL,MP_ENVIRONMENT,PAYMENTS_ENABLED,VITE_SOLANA_CLUSTER"
+
 [dev]
   command = "npm run dev -- --host 127.0.0.1 --port 5173"
   targetPort = 5173
