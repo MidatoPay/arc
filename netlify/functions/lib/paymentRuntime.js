@@ -7,10 +7,18 @@ import { PaymentError } from "./paymentCore.js";
 let pool, privy;
 export function getPaymentDb() {
   if (!pool) {
+    if (!process.env.AIVEN_PG_URL?.trim()) throw new PaymentError("missing_aiven_pg_url");
+    if (!process.env.AIVEN_PG_CA_CERT?.trim()) throw new PaymentError("missing_aiven_pg_ca_cert");
     const connectionString = (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, "");
+    let hostname;
+    try {
+      const url = new URL(connectionString);
+      if (!["postgres:", "postgresql:"].includes(url.protocol)) throw new Error();
+      hostname = url.hostname;
+    } catch { throw new PaymentError("invalid_database_url"); }
     pool = new pg.Pool({ connectionString, max: 4, connectionTimeoutMillis: 5000,
       ssl: { ca: (process.env.AIVEN_PG_CA_CERT || "").replace(/\\n/g, "\n"), rejectUnauthorized: true,
-        servername: new URL(connectionString).hostname } });
+        servername: hostname } });
   }
   return pool;
 }
@@ -53,6 +61,18 @@ export function json(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) };
 }
 export function errorResponse(error) {
+  if (!(error instanceof PaymentError)) {
+    const codes = { "42P01":"payment_schema_missing", "42703":"payment_schema_outdated",
+      "28P01":"payment_database_auth_failed", "42501":"payment_database_permission_denied",
+      CERT_HAS_EXPIRED:"payment_database_tls_failed", SELF_SIGNED_CERT_IN_CHAIN:"payment_database_tls_failed",
+      DEPTH_ZERO_SELF_SIGNED_CERT:"payment_database_tls_failed", UNABLE_TO_VERIFY_LEAF_SIGNATURE:"payment_database_tls_failed",
+      ERR_TLS_CERT_ALTNAME_INVALID:"payment_database_tls_failed", ECONNREFUSED:"payment_database_unavailable",
+      ETIMEDOUT:"payment_database_unavailable", ENOTFOUND:"payment_database_unavailable", ECONNRESET:"payment_database_unavailable" };
+    const code = codes[error?.code] || "payment_service_unavailable";
+    // Never log SQL, connection strings, request headers or arbitrary error messages.
+    console.error("payments_failure", { code, causeCode: codes[error?.code] ? error.code : "unclassified" });
+    return json(503, { error: code });
+  }
   return json(error instanceof PaymentError ? error.status : 503,
     { error: error instanceof PaymentError ? error.code : "payment_service_unavailable" });
 }

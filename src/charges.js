@@ -7,6 +7,10 @@ export function saveChargeAttempt(userId, attempt) {
   localStorage.setItem(storageKey(userId), JSON.stringify(attempt));
 }
 export function clearChargeAttempt(userId) { localStorage.removeItem(storageKey(userId)); }
+export function prepareChargeAttempt(previous, value, wallet) {
+  if (previous?.id) return previous;
+  return { key:previous?.key || crypto.randomUUID(), ars:String(value).replace(",","."), wallet:previous?.wallet || wallet };
+}
 export async function chargeApi(path, token, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type":"application/json",
     Authorization:`Bearer ${token}`, ...options.headers }, signal:AbortSignal.timeout(25000) });
@@ -15,6 +19,16 @@ export async function chargeApi(path, token, options = {}) {
   return body;
 }
 export const CHARGE_ERRORS = {
+  payment_schema_missing:"Faltan las tablas de cobros en PostgreSQL. Aplicá las migraciones de Mercado Pago.",
+  payment_schema_outdated:"El esquema de PostgreSQL está desactualizado. Aplicá las migraciones de Mercado Pago.",
+  payment_database_auth_failed:"PostgreSQL rechazó las credenciales del servidor.",
+  payment_database_permission_denied:"El usuario de PostgreSQL no tiene permisos para consultar los cobros.",
+  payment_database_tls_failed:"No se pudo validar el certificado TLS de PostgreSQL. Revisá AIVEN_PG_CA_CERT.",
+  payment_database_unavailable:"El servidor no puede conectarse a PostgreSQL. Revisá la conexión de la base.",
+  invalid_database_url:"AIVEN_PG_URL no contiene una URL PostgreSQL válida.",
+  missing_aiven_pg_url:"Falta AIVEN_PG_URL en las variables de Functions de Netlify.",
+  missing_aiven_pg_ca_cert:"Falta AIVEN_PG_CA_CERT en las variables de Functions de Netlify.",
+  idempotency_conflict:"Este intento ya tiene un cobro con otro importe. Recuperá esa operación antes de iniciar otra.",
   payments_disabled:"Los cobros están deshabilitados hasta completar la configuración productiva.",
   quote_unavailable:"No hay una cotización Chainlink vigente. Intentá nuevamente más tarde.",
   insufficient_treasury:"No hay suficiente liquidez USDC para iniciar este cobro.",

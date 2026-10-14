@@ -1,6 +1,6 @@
 import { PaymentError, publicCharge } from "./lib/paymentCore.js";
 import { authenticatePayment, paymentSettings, getPaymentDb, json, errorResponse, kickWorker } from "./lib/paymentRuntime.js";
-import { createCharge, getCharge, withChargeLock, ensureOrder, assertChargeConfig } from "./lib/paymentService.js";
+import { createCharge, getCharge, getChargeAttempt, withChargeLock, ensureOrder, assertChargeConfig } from "./lib/paymentService.js";
 import { listOwnCharges } from "./lib/paymentReporting.js";
 
 export const handler = async (event) => {
@@ -10,6 +10,11 @@ export const handler = async (event) => {
     const match = path.match(/^\/charges(?:\/([0-9a-f-]{36})(\/cancel)?)?\/?$/i);
     if (!match) return json(404, { error: "not_found" });
     if (event.httpMethod === "GET") {
+      const key = event.queryStringParameters?.attempt;
+      if (!match[1] && key) {
+        const charge = await getChargeAttempt(key,userId,settings);
+        return json(200,{ charge: charge ? publicCharge(charge) : null });
+      }
       if (match[1]) {
         if (match[2]) return json(405, { error: "method_not_allowed" });
         const charge = await getCharge(match[1], userId, settings);
