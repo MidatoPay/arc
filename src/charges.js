@@ -19,6 +19,13 @@ export async function chargeApi(path, token, options = {}) {
   return body;
 }
 export const CHARGE_ERRORS = {
+  missing_mp_store_id:"Falta MP_STORE_ID en Netlify: el ID de la sucursal Mercado Pago donde se crearán las cajas de los comercios.",
+  merchant_email_required:"Vinculá un email a tu usuario Privy para crear la caja del comercio.",
+  merchant_pos_pending:"La caja de tu comercio se está creando. Intentá nuevamente en unos segundos.",
+  merchant_pos_mismatch:"La caja del comercio no coincide con la cuenta o sucursal registrada. Requiere revisión.",
+  merchant_pos_already_assigned:"La caja ya está asociada a otro usuario Privy. Requiere revisión del administrador.",
+  mercadopago_store_not_found:"La sucursal Mercado Pago no existe o no pertenece a la cuenta configurada. Revisá MP_STORE_ID.",
+  mercadopago_pos_inactive:"La caja Mercado Pago del comercio está inactiva.",
   payment_schema_missing:"Faltan las tablas de cobros en PostgreSQL. Aplicá las migraciones de Mercado Pago.",
   payment_schema_outdated:"El esquema de PostgreSQL está desactualizado. Aplicá las migraciones de Mercado Pago.",
   payment_database_auth_failed:"PostgreSQL rechazó las credenciales del servidor.",
@@ -34,6 +41,8 @@ export const CHARGE_ERRORS = {
   insufficient_treasury:"No hay suficiente liquidez USDC para iniciar este cobro.",
   insufficient_treasury_sol:"La tesorería necesita SOL para completar las entregas.",
   mercadopago_pos_not_found:"La caja Mercado Pago no está configurada para esta cuenta.",
+  mercadopago_pos_not_pdv:"La caja existe, pero debe configurarse con config.qr.operating_mode=pdv para cobrar con este QR.",
+  mercadopago_invalid_pos_response:"Mercado Pago devolvió un formato de cajas inesperado. No se inició el cobro.",
   seller_account_mismatch:"La cuenta Mercado Pago no coincide con el vendedor configurado.",
   seller_is_test_account:"La cuenta Mercado Pago configurada es de prueba; se necesita un vendedor real para producción.",
   seller_is_not_test_account:"Para el ambiente de prueba se necesita un vendedor de prueba de Mercado Pago.",

@@ -37,6 +37,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   const settings={environment:"production",network:"mainnet-beta",seller:"123",pos:"POS1"};
   let liquidityRaw="100000000",verificationCalls=0;
   const adapters={db:pool,settings,assertWalletOwned:async(user)=>{if(user==="wrong")throw new Error("wallet_not_owned");},
+    ensureMerchantPos:async(user)=>({external_id:`POS${user}`}),
     verifySeller:async()=>verificationCalls++,fetchQuote:async()=>({rate:"1650",roundId:"1",updatedAt:Math.floor(Date.now()/1000)}),
     getTreasuryAddress:async()=>wallet,treasuryLiquidity:async()=>({owner:wallet,raw:liquidityRaw,solLamports:"1000000000"})};
   const input={ars:"10000.00",wallet};let c;
@@ -48,6 +49,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await t.test("same intent across concurrent retries persists only one reservation",async()=>{
     const key=randomUUID();const result=await Promise.all([createCharge("u1",input,key,adapters),createCharge("u1",input,key,adapters)]);
     assert.equal(result[0].id,result[1].id);c=result[0];assert.equal(c.usdc_raw,"6030303");
+    assert.equal(c.pos_id,"POSu1");assert.equal(c.order_body.config.qr.external_pos_id,c.pos_id);
     assert.equal((await query("SELECT * FROM charges WHERE user_id='u1'")).rowCount,1);
   });
   await t.test("retry after restart preserves key/body and rejects another user or changed amount",async()=>{
@@ -87,7 +89,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await t.test("creation saves exact QR and binds the verified provider order",async()=>{
     const received=[];
     const provider={id:"ORD01ABCDE",user_id:"123",type:"qr",currency:"ARS",external_reference:c.external_reference,total_amount:"10000.00",
-      status:"created",status_detail:"created",config:{qr:{external_pos_id:"POS1"}},transactions:{payments:[{id:"PAY1",amount:"10000.00"}]}};
+      status:"created",status_detail:"created",config:{qr:{external_pos_id:c.pos_id}},transactions:{payments:[{id:"PAY1",amount:"10000.00"}]}};
     const result=await ensureOrder({query},c,settings,{verifySeller:async()=>{},request:async(path,_settings,options)=>{
       received.push({path,options});return options?.method==="POST" ? {...provider,type_response:{qr_data:"EXACT-QR"}}:provider;
     }});

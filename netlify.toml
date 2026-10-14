@@ -38,6 +38,12 @@
   force = true
 
 [[redirects]]
+  from = "/merchant-pos"
+  to = "/.netlify/functions/merchant-pos"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/charges"
   to = "/.netlify/functions/charges"
   status = 200

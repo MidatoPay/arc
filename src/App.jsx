@@ -5,6 +5,7 @@ import { isAddress } from "@solana/kit";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
 import { reportsApi } from "./paymentReports.js";
+import { chargeApi } from "./charges.js";
 import jsQR from "jsqr";
 import { SOLANA, explorerAddressUrl, explorerTxUrl } from "./chain.js";
 import {
@@ -3576,6 +3577,11 @@ function AppInner() {
   const [guestInitialScan, setGuestInitialScan] = useState(null);
   const [pendingCharge, setPendingCharge] = useState(null);
   const [paymentAdmin,setPaymentAdmin]=useState(false);
+  useEffect(()=>{
+    if (!ready || !authenticated || !user?.id) return;
+    getAccessToken().then(token=>chargeApi("/merchant-pos",token,{method:"POST"}))
+      .catch(error=>console.warn("[MidatoPay] Alta de caja pendiente",error.code || "service_unavailable"));
+  },[ready,authenticated,user?.id,getAccessToken]);
   useEffect(()=>{
     let canceled=false;setPaymentAdmin(false);
     if(authenticated && user?.id) reportsApi("/payment-reports/access",getAccessToken)

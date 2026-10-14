@@ -3,7 +3,7 @@ import { getPaymentDb } from "../netlify/functions/lib/paymentRuntime.js";
 
 const db = getPaymentDb();
 try {
-  for(const file of ["20261013_mercadopago.sql","20261013_commission_history.sql"]) {
+  for(const file of ["20261013_mercadopago.sql","20261013_commission_history.sql","20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql"]) {
     const sql = await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8");
     await db.query(sql);
   }
