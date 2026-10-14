@@ -4,6 +4,7 @@ import { fetchArsQuote } from "../../../src/priceFeed.js";
 import { PaymentError, quoteCharge, orderBody, unitsDecimal, validateOrder, decimalUnits } from "./paymentCore.js";
 import { getPaymentDb, transaction, paymentSettings, assertPaymentsEnabled, assertWalletOwned } from "./paymentRuntime.js";
 import { verifySeller, mpRequest } from "./mercadopago.js";
+import { ensureMerchantPos } from "./merchantPos.js";
 import { treasuryLiquidity, getTreasuryAddress } from "./treasuryPayout.js";
 
 export async function createCharge(userId, input, key, adapters = {}) {
@@ -22,7 +23,9 @@ export async function createCharge(userId, input, key, adapters = {}) {
     if (c.user_id !== userId || c.environment !== settings.environment || c.network !== settings.network || c.wallet_address !== input.wallet || c.amount_cents !== amount) throw new PaymentError("idempotency_conflict", 409);
     return c;
   }
-  await (adapters.verifySeller || verifySeller)(settings);
+  const merchant = await (adapters.ensureMerchantPos || ensureMerchantPos)(userId,settings);
+  const chargeSettings={...settings,pos:merchant.external_id};
+  await (adapters.verifySeller || verifySeller)(chargeSettings);
   const rpc = process.env.ETH_RPC_URL;
   if (!rpc) throw new PaymentError("missing_eth_rpc_url");
   let feed;
@@ -49,12 +52,12 @@ export async function createCharge(userId, input, key, adapters = {}) {
     // Conservative allowance for ATA rent and transfer fees for every reserved intention.
     if (BigInt(liquidity.solLamports) < (BigInt(reserves.rows[0].count) + 1n) * 3000000n + 10000000n) throw new PaymentError("insufficient_treasury_sol");
     const id = randomUUID();
-    const charge = { external_reference: `mp_${id.replaceAll("-", "")}`, amount_cents: quote.amountCents, pos_id: settings.pos };
+    const charge = { external_reference: `mp_${id.replaceAll("-", "")}`, amount_cents: quote.amountCents, pos_id: chargeSettings.pos };
     const body = orderBody(charge);
     const { rows } = await db.query(`INSERT INTO charges(id,user_id,wallet_address,environment,network,seller_id,pos_id,treasury_address,
       amount_cents,fee_cents,fee_bps,usdc_raw,fx_rate,quote_round,quote_updated_at,external_reference,idempotency_key,order_body,expires_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,50,$11,$12,$13,$14,$15,$16,$17,now()+interval '15 minutes') RETURNING *`,
-      [id,userId,input.wallet,settings.environment,settings.network,settings.seller,settings.pos,liquidity.owner,
+      [id,userId,input.wallet,settings.environment,settings.network,settings.seller,chargeSettings.pos,liquidity.owner,
         quote.amountCents,quote.feeCents,quote.usdcRaw,quote.rate,feed.roundId,new Date(feed.updatedAt*1000),charge.external_reference,key,body]);
     return rows[0];
   }, pool);
@@ -99,7 +102,7 @@ export async function updateCharge(db, id, fields) {
 export async function ensureOrder(db, charge, settings, adapters = {}) {
   if (charge.order_id) return charge;
   assertPaymentsEnabled();
-  await (adapters.verifySeller || verifySeller)(settings);
+  await (adapters.verifySeller || verifySeller)({...settings,pos:charge.pos_id});
   const request = adapters.request || mpRequest;
   const response = await request("/v1/orders", settings, { method: "POST", body: JSON.stringify(charge.order_body),
     headers: { "X-Idempotency-Key": charge.idempotency_key } });
@@ -122,7 +125,8 @@ export async function ensureOrder(db, charge, settings, adapters = {}) {
 
 export function assertChargeConfig(charge, settings, treasury) {
   if (charge.environment !== settings.environment || charge.network !== settings.network || charge.seller_id !== settings.seller ||
-      charge.pos_id !== settings.pos || (treasury && charge.treasury_address !== treasury)) throw new PaymentError("charge_configuration_changed");
+      (charge.order_body && charge.order_body.config?.qr?.external_pos_id !== charge.pos_id) ||
+      (treasury && charge.treasury_address !== treasury)) throw new PaymentError("charge_configuration_changed");
 }
 
 export async function releaseReservation(db, charge, fields) {

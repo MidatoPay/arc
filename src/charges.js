@@ -19,6 +19,12 @@ export async function chargeApi(path, token, options = {}) {
   return body;
 }
 export const CHARGE_ERRORS = {
+  missing_mp_store_id:"Falta MP_STORE_ID en Netlify: el ID de la sucursal Mercado Pago donde se crearán las cajas de los comercios.",
+  merchant_email_required:"Vinculá un email a tu usuario Privy para crear la caja del comercio.",
+  merchant_pos_pending:"La caja de tu comercio se está creando. Intentá nuevamente en unos segundos.",
+  merchant_pos_mismatch:"La caja del comercio no coincide con la cuenta o sucursal registrada. Requiere revisión.",
+  mercadopago_store_not_found:"La sucursal Mercado Pago no existe o no pertenece a la cuenta configurada. Revisá MP_STORE_ID.",
+  mercadopago_pos_inactive:"La caja Mercado Pago del comercio está inactiva.",
   payment_schema_missing:"Faltan las tablas de cobros en PostgreSQL. Aplicá las migraciones de Mercado Pago.",
   payment_schema_outdated:"El esquema de PostgreSQL está desactualizado. Aplicá las migraciones de Mercado Pago.",
   payment_database_auth_failed:"PostgreSQL rechazó las credenciales del servidor.",

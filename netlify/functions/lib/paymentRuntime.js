@@ -40,12 +40,12 @@ export function paymentSettings() {
   const environment = process.env.MP_ENVIRONMENT || "test";
   if (!["test", "production"].includes(environment)) throw new PaymentError("invalid_mp_environment");
   if ((environment === "production") !== (NETWORK.cluster === "mainnet-beta")) throw new PaymentError("payment_network_mismatch");
-  for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_EXTERNAL_POS_ID", "MP_WEBHOOK_SECRET", "SOLANA_RPC", "INTERNAL_WORKER_SECRET"]) {
+  for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_WEBHOOK_SECRET", "SOLANA_RPC", "INTERNAL_WORKER_SECRET"]) {
     if (!process.env[key]?.trim()) throw new PaymentError(`missing_${key.toLowerCase()}`);
   }
   if (process.env.INTERNAL_WORKER_SECRET.length < 32) throw new PaymentError("invalid_worker_secret");
   return { environment, network: NETWORK.cluster, seller: process.env.MP_USER_ID.trim(),
-    pos: process.env.MP_EXTERNAL_POS_ID.trim(), token: process.env.MP_ACCESS_TOKEN.trim() };
+    store: process.env.MP_STORE_ID?.trim(), token: process.env.MP_ACCESS_TOKEN.trim() };
 }
 export function assertPaymentsEnabled() {
   if (process.env.PAYMENTS_ENABLED !== "true") throw new PaymentError("payments_disabled");
