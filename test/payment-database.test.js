@@ -29,9 +29,10 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     const previous=tail;let release;tail=new Promise((r)=>{release=r;});await previous;
     return {query,release};
   }};
-  const oldEnabled=process.env.PAYMENTS_ENABLED,oldRpc=process.env.ETH_RPC_URL;
-  process.env.PAYMENTS_ENABLED="true";process.env.ETH_RPC_URL="https://example.invalid";
+  const oldEnabled=process.env.PAYMENTS_ENABLED,oldRpc=process.env.ETH_RPC_URL,oldAge=process.env.CHAINLINK_MAX_AGE_SECONDS;
+  process.env.PAYMENTS_ENABLED="true";process.env.ETH_RPC_URL="https://example.invalid";process.env.CHAINLINK_MAX_AGE_SECONDS="60";
   t.after(()=>{if(oldEnabled===undefined)delete process.env.PAYMENTS_ENABLED;else process.env.PAYMENTS_ENABLED=oldEnabled;
+    if(oldAge===undefined)delete process.env.CHAINLINK_MAX_AGE_SECONDS;else process.env.CHAINLINK_MAX_AGE_SECONDS=oldAge;
     if(oldRpc===undefined)delete process.env.ETH_RPC_URL;else process.env.ETH_RPC_URL=oldRpc;});
   const wallet="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const settings={environment:"production",network:"mainnet-beta",seller:"123",pos:"POS1"};

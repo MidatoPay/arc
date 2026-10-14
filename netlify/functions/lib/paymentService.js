@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isAddress } from "@solana/kit";
 import { fetchArsQuote } from "../../../src/priceFeed.js";
 import { PaymentError, quoteCharge, orderBody, unitsDecimal, validateOrder, decimalUnits } from "./paymentCore.js";
-import { getPaymentDb, transaction, paymentSettings, assertPaymentsEnabled, assertWalletOwned } from "./paymentRuntime.js";
+import { getPaymentDb, transaction, paymentSettings, paymentQuoteSettings, assertPaymentsEnabled, assertWalletOwned } from "./paymentRuntime.js";
 import { verifySeller, mpRequest } from "./mercadopago.js";
 import { ensureMerchantPos } from "./merchantPos.js";
 import { treasuryLiquidity, getTreasuryAddress } from "./treasuryPayout.js";
@@ -23,14 +23,13 @@ export async function createCharge(userId, input, key, adapters = {}) {
     if (c.user_id !== userId || c.environment !== settings.environment || c.network !== settings.network || c.wallet_address !== input.wallet || c.amount_cents !== amount) throw new PaymentError("idempotency_conflict", 409);
     return c;
   }
+  const {rpc,maxAge}=paymentQuoteSettings();
   const merchant = await (adapters.ensureMerchantPos || ensureMerchantPos)(userId,settings);
   const chargeSettings={...settings,pos:merchant.external_id};
   await (adapters.verifySeller || verifySeller)(chargeSettings);
-  const rpc = process.env.ETH_RPC_URL;
-  if (!rpc) throw new PaymentError("missing_eth_rpc_url");
   let feed;
-  try { feed = await (adapters.fetchQuote || fetchArsQuote)(rpc, Number(process.env.CHAINLINK_MAX_AGE_SECONDS)); }
-  catch { throw new PaymentError("quote_unavailable"); }
+  try { feed = await (adapters.fetchQuote || fetchArsQuote)(rpc,maxAge); }
+  catch (error) { throw new PaymentError(error.message==="chainlink_invalid_or_stale" ? "quote_invalid_or_stale" : "quote_unavailable"); }
   const quote = quoteCharge(input.ars, feed.rate);
   return transaction(async (db) => {
     const owner = await (adapters.getTreasuryAddress || getTreasuryAddress)();

@@ -38,6 +38,14 @@ export const CHARGE_ERRORS = {
   idempotency_conflict:"Este intento ya tiene un cobro con otro importe. Recuperá esa operación antes de iniciar otra.",
   payments_disabled:"Los cobros están deshabilitados hasta completar la configuración productiva.",
   quote_unavailable:"No hay una cotización Chainlink vigente. Intentá nuevamente más tarde.",
+  quote_invalid_or_stale:"La cotización Chainlink no es válida o está vencida. El cobro queda detenido hasta tener una ronda vigente.",
+  missing_eth_rpc_url:"Falta ETH_RPC_URL en las variables de Functions de Netlify. Configurá un RPC de Ethereum mainnet para la cotización.",
+  missing_chainlink_max_age_seconds:"Falta CHAINLINK_MAX_AGE_SECONDS en Netlify: la antigüedad máxima permitida de la cotización, en segundos.",
+  invalid_eth_rpc_url:"ETH_RPC_URL debe ser una URL HTTP o HTTPS válida de un RPC de Ethereum mainnet.",
+  invalid_chainlink_max_age_seconds:"CHAINLINK_MAX_AGE_SECONDS debe ser un número entero positivo de segundos, según la política de vigencia del feed.",
+  invalid_worker_secret:"INTERNAL_WORKER_SECRET debe tener al menos 32 caracteres.",
+  invalid_conversion_fee:"CONVERSION_FEE_BPS debe ser 50 para la comisión de conversión del 0,5%.",
+  treasury_not_configured:"Falta configurar la tesorería del servidor con TREASURY_SECRET_KEY.",
   insufficient_treasury:"No hay suficiente liquidez USDC para iniciar este cobro.",
   insufficient_treasury_sol:"La tesorería necesita SOL para completar las entregas.",
   mercadopago_pos_not_found:"La caja Mercado Pago no está configurada para esta cuenta.",
@@ -60,5 +68,7 @@ export const CHARGE_ERRORS = {
   payment_network_mismatch:"La red de la billetera y el ambiente Mercado Pago no coinciden.",
 };
 export function chargeError(code) {
-  return CHARGE_ERRORS[code] || (code?.startsWith("missing_") ? "Falta completar la configuración del servidor." : "El cobro no pudo actualizarse. Conservamos la operación para reintentar.");
+  return CHARGE_ERRORS[code] || (/^missing_[a-z][a-z0-9_]{1,63}$/.test(code || "")
+    ? `Falta ${code.slice(8).toUpperCase()} en las variables de Functions de Netlify para este despliegue.`
+    : "El cobro no pudo actualizarse. Conservamos la operación para reintentar.");
 }

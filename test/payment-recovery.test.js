@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareChargeAttempt, chargeError } from "../src/charges.js";
-import { errorResponse } from "../netlify/functions/lib/paymentRuntime.js";
+import { errorResponse, paymentQuoteSettings } from "../netlify/functions/lib/paymentRuntime.js";
 
 test("editing an unconfirmed amount retains the idempotency key and original wallet",()=>{
   const previous={key:"same-key",ars:"100",wallet:"original"};
@@ -26,4 +26,25 @@ test("database diagnostics expose safe codes and never raw credentials or SQL",(
     }
     assert.ok(!JSON.stringify(logs).includes("private"));
   } finally { console.error=original; }
+});
+test("missing configuration identifies the variable without exposing values",()=>{
+  for(const key of ["mp_access_token","mp_user_id","mp_webhook_secret","solana_rpc","internal_worker_secret","eth_rpc_url","chainlink_max_age_seconds"])
+    assert.ok(chargeError(`missing_${key}`).includes(key.toUpperCase()));
+  assert.ok(!chargeError("missing_untrusted-value/password").includes("password"));
+});
+test("quote configuration distinguishes absent RPC, invalid URL and absent or invalid freshness policy",()=>{
+  const rpc=process.env.ETH_RPC_URL,age=process.env.CHAINLINK_MAX_AGE_SECONDS;
+  try {
+    delete process.env.ETH_RPC_URL;assert.throws(()=>paymentQuoteSettings(),{code:"missing_eth_rpc_url"});
+    process.env.ETH_RPC_URL="invalid";assert.throws(()=>paymentQuoteSettings(),{code:"invalid_eth_rpc_url"});
+    process.env.ETH_RPC_URL="https://example.invalid";delete process.env.CHAINLINK_MAX_AGE_SECONDS;
+    assert.throws(()=>paymentQuoteSettings(),{code:"missing_chainlink_max_age_seconds"});
+    for(const value of ["0","-1","1.5","1e3","Infinity","9007199254740992"]){
+      process.env.CHAINLINK_MAX_AGE_SECONDS=value;assert.throws(()=>paymentQuoteSettings(),{code:"invalid_chainlink_max_age_seconds"});
+    }
+    process.env.CHAINLINK_MAX_AGE_SECONDS="60";assert.deepEqual(paymentQuoteSettings(),{rpc:"https://example.invalid",maxAge:60});
+  } finally {
+    if(rpc===undefined)delete process.env.ETH_RPC_URL;else process.env.ETH_RPC_URL=rpc;
+    if(age===undefined)delete process.env.CHAINLINK_MAX_AGE_SECONDS;else process.env.CHAINLINK_MAX_AGE_SECONDS=age;
+  }
 });
