@@ -73,8 +73,7 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
     try {await (adapters.getSigner || getTreasurySigner)();}catch{throw new PaymentError("invalid_treasury_secret_key");}
     const liquidity=await (adapters.liquidity || treasuryLiquidity)();
     if(BigInt(liquidity.raw)<10000n)throw new PaymentError("insufficient_treasury");
-    if(BigInt(liquidity.solLamports)<13000000n)throw new PaymentError("insufficient_treasury_sol");
-    return {minimumUsdcAvailable:true,minimumSolAvailable:true};
+    return {minimumUsdcAvailable:true};
   });
   add("database",["AIVEN_PG_URL","AIVEN_PG_CA_CERT"],async()=>{
     paymentDatabaseConfig(env);

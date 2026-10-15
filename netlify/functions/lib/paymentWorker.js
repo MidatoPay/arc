@@ -108,7 +108,7 @@ export async function reconcileCharge(db, charge, settings, adapters = {}) {
   if (!owner || owner !== charge.treasury_address) throw new PaymentError("treasury_account_mismatch");
   if (!charge.signature) {
     const liquidity = await (adapters.liquidity || treasuryLiquidity)();
-    if (BigInt(liquidity.raw) < BigInt(charge.usdc_raw) || BigInt(liquidity.solLamports) < 3000000n) throw new PaymentError("insufficient_treasury");
+    if (BigInt(liquidity.raw) < BigInt(charge.usdc_raw)) throw new PaymentError("insufficient_treasury");
   }
   const settlement = await (adapters.settlePayout || settlePayout)(db,charge,{allowBroadcast:process.env.PAYMENTS_ENABLED==="true"});
   if (settlement.review) await incident(db,charge,settlement.review);
