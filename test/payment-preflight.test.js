@@ -11,7 +11,7 @@ function fixture() {
  const env=Object.fromEntries(["MP_ACCESS_TOKEN","MP_USER_ID","MP_STORE_ID","MP_WEBHOOK_SECRET","SOLANA_RPC","ETH_RPC_URL",
  "AIVEN_PG_CA_CERT","VITE_PRIVY_APP_ID","PRIVY_APP_SECRET","TREASURY_SECRET_KEY"].map(key=>[key,"private-sentinel"]));
  Object.assign(env,{MP_ENVIRONMENT:"production",INTERNAL_WORKER_SECRET:"x".repeat(32),PAYMENTS_ENABLED:"false",CONVERSION_FEE_BPS:"50",
- CHAINLINK_MAX_AGE_SECONDS:"120",ETH_RPC_URL:"https://example.invalid",PAYMENTS_BASE_URL:"https://example.invalid",
+ ETH_RPC_URL:"https://example.invalid",PAYMENTS_BASE_URL:"https://example.invalid",
  AIVEN_PG_URL:"postgresql://user:password@example.invalid/db?sslmode=require&application_name=payments",PAYMENTS_CHECK_USER_ID:"did:privy:merchant"});
  const adapters={verifyAccount:async()=>{},verifyStore:async()=>{},fetchQuote:async()=>({updatedAt:Math.floor(Date.now()/1000)}),
  rpc:async()=>network.genesis,getSigner:async()=>({}),liquidity:async()=>({raw:"10000",solLamports:"13000000"}),
@@ -28,11 +28,11 @@ test("preflight checks all dependencies read-only and does not require enabling 
 test("preflight collects independent failures, reports missing names and bounds slow dependencies",async()=>{
  const input=fixture();delete input.env.PRIVY_APP_SECRET;input.env.VITE_TREASURY_SECRET_KEY="private-sentinel";
  input.adapters.verifyAccount=async()=>{throw new PaymentError("seller_account_mismatch");};
- input.adapters.fetchQuote=async()=>{throw new Error("chainlink_invalid_or_stale");};
+ input.adapters.fetchQuote=async()=>{throw new Error("chainlink_invalid_round");};
  input.adapters.rpc=()=>new Promise(()=>{});input.timeoutMs=20;
  const report=await runPaymentPreflight(input),checks=Object.fromEntries(report.checks.map(row=>[row.name,row]));
  assert.equal(report.ready,false);assert.equal(checks.database.status,"pass");
- assert.equal(checks.mercadopago_account.code,"seller_account_mismatch");assert.equal(checks.quote.code,"chainlink_invalid_or_stale");
+ assert.equal(checks.mercadopago_account.code,"seller_account_mismatch");assert.equal(checks.quote.code,"chainlink_invalid_round");
  assert.equal(checks.solana_network.code,"dependency_check_timeout");
  assert.deepEqual(checks.private_variables.variables,["VITE_TREASURY_SECRET_KEY"]);
  assert.ok(checks.variables.missingVariables.includes("PRIVY_APP_SECRET"));
@@ -44,15 +44,15 @@ test("database preflight always rolls back and releases on a schema failure",asy
  assert.equal(report.checks.find(row=>row.name==="database").code,"payment_schema_or_permissions_incomplete");
  assert.deepEqual(input.events,["BEGIN READ ONLY","ROLLBACK","release"]);
 });
-test("stale quote diagnostics include only numeric age fields and the published heartbeat",async()=>{
+test("invalid quote diagnostics retain numeric age information without enforcing a limit",async()=>{
  const input=fixture();
  input.adapters.fetchQuote=async()=>{
-  const error=new Error("chainlink_invalid_or_stale");
+  const error=new Error("chainlink_invalid_round");
   error.quoteAge={updatedAt:1000,ageSeconds:10800,maxAgeSeconds:120,token:"private-sentinel"};throw error;
  };
  const report=await runPaymentPreflight(input),quote=report.checks.find(row=>row.name==="quote");
- assert.equal(quote.code,"chainlink_invalid_or_stale");
- assert.deepEqual(quote.details,{updatedAt:1000,ageSeconds:10800,maxAgeSeconds:120,publishedHeartbeatSeconds:86400});
+ assert.equal(quote.code,"chainlink_invalid_round");
+ assert.deepEqual(quote.details,{updatedAt:1000,ageSeconds:10800,ageLimitEnforced:false,publishedHeartbeatSeconds:86400});
  assert.ok(!JSON.stringify(report).includes("private-sentinel"));
 });
 test("database TLS configuration preserves unrelated URL options without disabling verification",()=>{

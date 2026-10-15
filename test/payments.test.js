@@ -91,11 +91,11 @@ test("a tagged Mercado Pago test seller cannot authorize production charges",asy
   finally {globalThis.fetch=before;}
 });
 
-test("Chainlink round must be positive, correct pair, fresh and complete",()=>{
+test("Chainlink round must be positive, correct pair, complete and have a valid timestamp",()=>{
   const round={answer:165000000000n,decimals:8,updatedAt:1000n,roundId:20n,answeredInRound:20n,description:"USD / ARS"};
-  assert.equal(validateRound(round,300,1100).rate,"1650.0");
-  for(const change of [{answer:0n},{updatedAt:0n},{updatedAt:1101n},{updatedAt:700n},{answeredInRound:19n},{description:"ARS / USD"}]) assert.throws(()=>validateRound({...round,...change},300,1100));
-  assert.throws(()=>validateRound(round,NaN,1100));
+  assert.equal(validateRound(round,1100).rate,"1650.0");
+  for(const change of [{answer:0n},{updatedAt:0n},{updatedAt:1101n},{answeredInRound:19n},{description:"ARS / USD"}])
+    assert.throws(()=>validateRound({...round,...change},1100),/chainlink_invalid_round/);
 });
 test("network mint and chain configuration distinguish mainnet from testnet",()=>{
   assert.equal(networkConfig("mainnet-beta").mint,"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -104,16 +104,15 @@ test("network mint and chain configuration distinguish mainnet from testnet",()=
   assert.throws(()=>networkConfig("unknown"));
 });
 
-test("daily-feed metadata does not override the configured quote age limit",()=>{
-  const now=200000,updatedAt=BigInt(now-10800),round={answer:165000000000n,decimals:8,updatedAt,
+test("old complete Chainlink rounds remain usable without an age limit",()=>{
+  const now=2000000,updatedAt=BigInt(now-10*CHAINLINK_USD_ARS_HEARTBEAT_SECONDS),round={answer:165000000000n,decimals:8,updatedAt,
     roundId:20n,answeredInRound:20n,description:"USD / ARS"};
-  assert.throws(()=>validateRound(round,120,now),error=>{
-    assert.equal(error.message,"chainlink_invalid_or_stale");
-    assert.deepEqual(error.quoteAge,{updatedAt:Number(updatedAt),ageSeconds:10800,maxAgeSeconds:120});return true;
+  assert.equal(validateRound(round,now).updatedAt,Number(updatedAt));
+  assert.equal(quoteCharge("10000",validateRound(round,now).rate).usdcRaw,"6030303");
+  assert.throws(()=>validateRound({...round,answer:0n},now),error=>{
+    assert.equal(error.message,"chainlink_invalid_round");
+    assert.deepEqual(error.quoteAge,{updatedAt:Number(updatedAt),ageSeconds:now-Number(updatedAt)});return true;
   });
-  assert.equal(validateRound(round,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS,now).updatedAt,Number(updatedAt));
-  assert.throws(()=>validateRound({...round,updatedAt:BigInt(now-86401)},86400,now),/chainlink_invalid_or_stale/);
-  assert.throws(()=>validateRound(round,undefined,now),/chainlink_max_age_not_configured/);
 });
 test("internal worker requests require a strong exact secret",()=>{
   const before=process.env.INTERNAL_WORKER_SECRET;process.env.INTERNAL_WORKER_SECRET="a".repeat(64);

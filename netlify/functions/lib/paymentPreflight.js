@@ -8,14 +8,14 @@ import { fetchArsQuote,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS } from "../../../src/
 import { publicSecretVariables } from "../../../scripts/public-env-policy.js";
 
 const required=["MP_ACCESS_TOKEN","MP_USER_ID","MP_STORE_ID","MP_WEBHOOK_SECRET","SOLANA_RPC","ETH_RPC_URL",
-  "CHAINLINK_MAX_AGE_SECONDS","INTERNAL_WORKER_SECRET","AIVEN_PG_URL","AIVEN_PG_CA_CERT","VITE_PRIVY_APP_ID","PRIVY_APP_SECRET"];
+  "INTERNAL_WORKER_SECRET","AIVEN_PG_URL","AIVEN_PG_CA_CERT","VITE_PRIVY_APP_ID","PRIVY_APP_SECRET"];
 function failureCode(error) {
   if(error instanceof PaymentError)return error.code;
   const known={"42P01":"payment_schema_missing","42703":"payment_schema_outdated","28P01":"payment_database_auth_failed",
     "42501":"payment_database_permission_denied",ENOTFOUND:"payment_database_unavailable",ECONNREFUSED:"payment_database_unavailable",
     CERT_HAS_EXPIRED:"payment_database_tls_failed",SELF_SIGNED_CERT_IN_CHAIN:"payment_database_tls_failed"};
   if(known[error?.code])return known[error.code];
-  if(["chainlink_invalid_or_stale","chainlink_max_age_not_configured","chainlink_rpc_timeout"].includes(error?.message))return error.message;
+  if(["chainlink_invalid_round","chainlink_rpc_timeout"].includes(error?.message))return error.message;
   return "dependency_check_failed";
 }
 async function deadline(fn,timeoutMs) {
@@ -48,8 +48,8 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
     jobs.push(deadline(fn,timeoutMs).then(details=>({name,status:"pass",...(details?{details}:{})}),error=>{
       const failure={name,status:"fail",code:failureCode(error)};
       if(name==="quote" && error?.quoteAge) {
-        const details=Object.fromEntries(["updatedAt","ageSeconds","maxAgeSeconds"].filter(key=>Number.isSafeInteger(error.quoteAge[key]) && error.quoteAge[key]>=0).map(key=>[key,error.quoteAge[key]]));
-        failure.details={...details,publishedHeartbeatSeconds:CHAINLINK_USD_ARS_HEARTBEAT_SECONDS};
+        const details=Object.fromEntries(["updatedAt","ageSeconds"].filter(key=>Number.isSafeInteger(error.quoteAge[key]) && error.quoteAge[key]>=0).map(key=>[key,error.quoteAge[key]]));
+        failure.details={...details,ageLimitEnforced:false,publishedHeartbeatSeconds:CHAINLINK_USD_ARS_HEARTBEAT_SECONDS};
       }
       return failure;
     }));
@@ -58,10 +58,10 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
     add("mercadopago_account",[],async()=>{await (adapters.verifyAccount || verifySellerAccount)(settings);});
     add("mercadopago_store",["MP_STORE_ID"],async()=>{await (adapters.verifyStore || verifyStore)(settings);});
   }else checks.push({name:"mercadopago_account",status:"blocked",code:"invalid_configuration"});
-  add("quote",["ETH_RPC_URL","CHAINLINK_MAX_AGE_SECONDS"],async()=>{
-    const {rpc,maxAge}=paymentQuoteSettings(env);
-    const quote=await (adapters.fetchQuote || fetchArsQuote)(rpc,maxAge);
-    return {updatedAt:quote.updatedAt,ageSeconds:Math.floor(Date.now()/1000)-quote.updatedAt,maxAgeSeconds:maxAge,
+  add("quote",["ETH_RPC_URL"],async()=>{
+    const {rpc}=paymentQuoteSettings(env);
+    const quote=await (adapters.fetchQuote || fetchArsQuote)(rpc);
+    return {updatedAt:quote.updatedAt,ageSeconds:Math.floor(Date.now()/1000)-quote.updatedAt,ageLimitEnforced:false,
       publishedHeartbeatSeconds:CHAINLINK_USD_ARS_HEARTBEAT_SECONDS};
   });
   add("solana_network",["SOLANA_RPC"],async()=>{

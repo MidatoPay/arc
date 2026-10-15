@@ -41,9 +41,9 @@ Se verificó mediante la API pública de GitHub que el commit `77439ba4b7f345759
 
 Se contrastó el directorio enlazado por la [documentación oficial de direcciones](https://docs.chain.link/data-feeds/price-feeds/addresses): [catálogo Ethereum mainnet](https://reference-data-directory.vercel.app/feeds-mainnet.json). Para el proxy `0xBb65fa58BDb7d33e4a3D1A40a7A9BD99E746367b`, el registro `USD / ARS` publica **heartbeat de 86400 segundos**, umbral de desviación **0,5%**, ocho decimales y horario `Forex_ARS`. Consulta: 14 de octubre de 2026. Son metadatos del proveedor, no una cotización ni una garantía de actualización exacta durante cierres del mercado.
 
-`CHAINLINK_MAX_AGE_SECONDS=120` puede rechazar rondas entre actualizaciones normales de este feed. Elegir `86400` permite usar rondas de hasta 24 horas; requiere aceptar expresamente esa antigüedad como política comercial. Una exigencia de cotización más reciente conserva un límite menor y puede detener los cobros. No se modifica silenciosamente esa política: el ejemplo continúa sin valor obligatorio y no se cambiaron variables de Netlify ni archivos productivos.
+Por solicitud del usuario del 15 de octubre de 2026, se eliminó el límite de antigüedad: se acepta la última ronda publicada aunque tenga más de 24 horas. `CHAINLINK_MAX_AGE_SECONDS` quedó obsoleta y se ignora. Se mantienen las verificaciones de red Ethereum, par `USD / ARS`, precio positivo, ronda completa y timestamp válido, sin fecha futura. No se cambiaron variables de Netlify ni archivos productivos.
 
-El diagnóstico administrativo incluye ahora la edad de una ronda rechazada, el máximo configurado y el heartbeat publicado. El dato de heartbeat es informativo; nunca reemplaza `CHAINLINK_MAX_AGE_SECONDS`, la comprobación on-chain o el bloqueo de rondas vencidas. La expiración de la orden sigue siendo de 15 minutos y es independiente de la antigüedad del feed.
+El diagnóstico administrativo incluye la edad de la ronda y el heartbeat publicado como datos informativos, e indica que no se aplica un límite de antigüedad. Los datos inválidos siguen bloqueando el cobro. La expiración de la orden sigue siendo de 15 minutos y es independiente de la antigüedad del feed.
 
 Advertencias existentes: chunks grandes de Privy/Vite y uso de `import.meta` al empaquetar como CJS. El servidor toma la red de `process.env`; el smoke check comprueba que el paquete carga y valida solicitudes. No se considera suficiente comprobar únicamente el frontend.
 
@@ -77,7 +77,6 @@ Usar el contexto de la rama desplegada. El `.env` local no se sube a Netlify. No
 | Functions | `MP_STORE_ID` | ID numérico de una sucursal perteneciente al vendedor. |
 | Functions | `MP_WEBHOOK_SECRET` | Secreto de firma del webhook Orders de esa aplicación. |
 | Functions | `ETH_RPC_URL` | RPC Ethereum mainnet para el feed, también al probar con Solana devnet. |
-| Functions | `CHAINLINK_MAX_AGE_SECONDS` | Entero positivo según la política verificada del feed; no aumentar arbitrariamente para aceptar rondas viejas. |
 | Functions | `CONVERSION_FEE_BPS` | `50`. |
 | Functions | `PAYMENTS_BASE_URL` | Origen HTTPS del despliegue que recibirá las llamadas al worker. |
 | Functions | `INTERNAL_WORKER_SECRET` | Secreto aleatorio de al menos 32 caracteres. |
@@ -98,7 +97,7 @@ Estas acciones no se ejecutan como parte de las pruebas locales:
 - Verificar el contexto y scopes de Netlify y retirar las variables privadas con prefijo público. Cambiar variables requiere un nuevo deploy.
 - En un despliegue de revisión autorizado, ingresar como administrador y abrir **Más → Operaciones y comisiones → Verificar configuración de cobros**. El endpoint `GET /payment-reports/readiness` comprueba el entorno de esa Function, sin crear órdenes, cajas ni transferencias.
 - Confirmar autorización Privy, asociación del comercio, liquidez USDC/SOL y red correctas. El chequeo de tesorería acredita solo el mínimo inicial; la reserva de cada cobro comprueba saldo para su importe y todas las reservas activas.
-- Resolver el rechazo `chainlink_invalid_or_stale` observado en la comprobación anterior. Se conserva el bloqueo: una ronda vencida no debe autorizar dinero real.
+- Confirmar que el despliegue incluye la eliminación del límite de antigüedad. La antigüedad ya no provoca rechazo; una ronda con datos inválidos sigue produciendo `quote_invalid_round`.
 - Configurar en Mercado Pago la URL HTTPS `/webhooks/mercadopago`, evento **Order**, y su secreto. La verificación local del HMAC no demuestra que Mercado Pago pueda entregar una notificación al dominio.
 - Confirmar que el plan Netlify permite Functions background y que el dispatcher programado y el worker funcionan en ese despliegue.
 - Cuando se autorice una prueba real: comprobar un cobro, aviso persistido, entrega `finalized`, historial y comisión únicos. No declarar el circuito productivo validado hasta contar con esa evidencia.
