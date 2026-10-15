@@ -4,6 +4,7 @@ import { useWallets, useCreateWallet, useSignAndSendTransaction } from "@privy-i
 import { isAddress } from "@solana/kit";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
+import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
 import { reportsApi } from "./paymentReports.js";
 import { chargeApi } from "./charges.js";
 import jsQR from "jsqr";
@@ -3177,7 +3178,7 @@ function Movimientos({ txs, address }) {
 }
 
 // ————— Más (menú) —————
-function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId }) {
+function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, treasuryAddress }) {
   const { t, lang, setLang } = useLanguage();
   const [confirmar, setConfirmar] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -3255,6 +3256,8 @@ function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId }) 
           </div>
         </div>
       </Card>
+
+      <TreasuryWalletExport key={privyId} treasuryAddress={treasuryAddress} />
 
       <Card style={{ padding: "4px 20px" }}>
         {goReports && <Fila icon={<IconSearch />} titulo="Operaciones y comisiones" sub="Historial de todos los comercios" onClick={goReports} />}
@@ -4245,6 +4248,7 @@ function AppInner() {
           goStack={() => setTab("stack")}
           goReports={paymentAdmin?()=>setTab("reports"):undefined}
           privyId={user.id}
+          treasuryAddress={treasuryAddress}
         />
       )}
     </>,
