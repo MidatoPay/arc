@@ -26,6 +26,7 @@ La comisión continúa fija en **50 puntos básicos, equivalente a 0,5%**. Una e
 npm test
 npm run build
 npm run functions:check
+npm run deps:check
 ```
 
 Las pruebas usan PostgreSQL embebido y adaptadores de servicios. El chequeo de Functions empaqueta las 13 funciones con esbuild, impide solicitudes de red y comprueba el rechazo de solicitudes sin autenticación o firma. El workflow `Mercado Pago review` ejecuta estos controles para devnet y mainnet en cada PR y push a las ramas configuradas. Cambiar `VITE_SOLANA_CLUSTER` en ese workflow solo cambia la configuración de las pruebas; no ejecuta operaciones en esas redes.
@@ -35,6 +36,16 @@ Se probaron migraciones repetibles, reservas concurrentes, persistencia previa a
 Resultado local final: **78 pruebas aprobadas** con cada configuración de red; build del frontend aprobado y **13 Functions empaquetadas** con verificación de acceso sin autenticación. La ejecución de GitHub Actions queda pendiente del push y su resultado debe revisarse en el PR.
 
 Advertencias existentes: chunks grandes de Privy/Vite y uso de `import.meta` al empaquetar como CJS. El servidor toma la red de `process.env`; el smoke check comprueba que el paquete carga y valida solicitudes. No se considera suficiente comprobar únicamente el frontend.
+
+## Dependencias y seguridad
+
+La auditoría posterior al primer push detectó avisos heredados del lockfile. Se fijaron versiones compatibles: Axios **1.20.0**, `proxy-addr` **2.0.8**, `@fastify/busboy` **3.2.2** e `image-size` **2.0.3**. Las dos últimas también pueden aparecer como dependencias opcionales al ejecutar `npm audit --omit=dev`. El control `npm run deps:check`, incorporado al workflow, impide aprobar dependencias de ejecución con alertas altas o críticas conocidas.
+
+Resultado del lockfile revisado: auditoría de ejecución con **0 críticas, 0 altas y 21 moderadas**; auditoría completa con **0 críticas, 26 altas y 23 moderadas**. Las altas restantes corresponden al árbol de herramientas de desarrollo. `deps:check` pasó. Se restauró la instalación con `npm ci` y se repitieron las 78 pruebas en ambas configuraciones y el build. Además, se revisaron los 196 archivos generados del frontend contra siete variables privadas configuradas localmente, sin encontrar sus valores. Este escaneo no demuestra qué contenían despliegues anteriores.
+
+Los avisos moderados transitivos de Privy/WalletConnect y las alertas de herramientas de desarrollo requieren seguimiento. No se usó `npm audit fix --force`: sus propuestas pueden cambiar o retroceder versiones del SDK de wallets. El SDK servidor `@privy-io/server-auth` está deprecado; su migración a `@privy-io/node` requiere una tarea de compatibilidad separada. Esta revisión no equivale a certificar que no existen vulnerabilidades.
+
+El chequeo de Functions elimina su directorio temporal al finalizar, incluso si falla, para evitar acumular copias de los paquetes durante revisiones locales.
 
 ## Variables que deben existir en Netlify
 
