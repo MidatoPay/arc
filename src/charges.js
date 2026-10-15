@@ -11,14 +11,48 @@ export function prepareChargeAttempt(previous, value, wallet) {
   if (previous?.id) return previous;
   return { key:previous?.key || crypto.randomUUID(), ars:String(value).replace(",","."), wallet:previous?.wallet || wallet };
 }
+function diagnosticEndpoint(path) {
+  try {
+    const pathname=new URL(path,"http://localhost").pathname;
+    if(/^\/charges(?:\/[0-9a-f-]{36}(?:\/cancel)?)?\/?$/i.test(pathname))
+      return pathname.replace(/[0-9a-f-]{36}/i,":id");
+    if(/^\/(?:merchant-pos|payment-reports\/[a-z-]+)\/?$/.test(pathname))return pathname;
+  } catch { /* Do not log an unknown URL that could contain credentials. */ }
+  return "payment_api";
+}
+function paymentApiError(path,options,{code,status=0,requestId=null,responseFormat="none"}) {
+  const diagnostic={method:["GET","POST"].includes(options.method?.toUpperCase())?options.method.toUpperCase():"GET",
+    endpoint:diagnosticEndpoint(path),status,code,message:chargeError(code),requestId,responseFormat};
+  // An explicit allowlist of fields excludes tokens, cookies, bodies, QR data and private URLs.
+  console.error("[MidatoPay pagos] Falló la solicitud",diagnostic);
+  const error=new Error(diagnostic.message);
+  Object.assign(error,{code,status,requestId,diagnostic});
+  return error;
+}
 export async function chargeApi(path, token, options = {}) {
-  const response = await fetch(path, { ...options, headers: { "Content-Type":"application/json",
-    Authorization:`Bearer ${token}`, ...options.headers }, signal:AbortSignal.timeout(25000) });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) { const error = new Error(body.error || "payment_service_unavailable"); error.code = body.error; error.status = response.status; throw error; }
+  let response;
+  try {
+    response = await fetch(path, { ...options, headers: { "Content-Type":"application/json",
+      Authorization:`Bearer ${token}`, ...options.headers }, signal:AbortSignal.timeout(25000) });
+  } catch(error) {
+    throw paymentApiError(path,options,{code:["TimeoutError","AbortError"].includes(error?.name)?"payment_request_timeout":"payment_network_error"});
+  }
+  const rawRequestId=response.headers.get("x-nf-request-id");
+  const requestId=/^[A-Za-z0-9:_-]{1,128}$/.test(rawRequestId || "")?rawRequestId:null;
+  let body,responseFormat;
+  try {body=await response.json();responseFormat=body && typeof body==="object" && !Array.isArray(body)?"json":"unexpected_json";}
+  catch {responseFormat="non_json";}
+  if (!response.ok) {
+    const code=typeof body?.error==="string" && /^[a-z][a-z0-9_]{0,95}$/.test(body.error)?body.error:"payment_service_unavailable";
+    throw paymentApiError(path,options,{code,status:response.status,requestId,responseFormat});
+  }
+  if(responseFormat!=="json")throw paymentApiError(path,options,{code:"invalid_payment_response",status:response.status,requestId,responseFormat});
   return body;
 }
 export const CHARGE_ERRORS = {
+  payment_request_timeout:"El servidor demoró demasiado en responder. Conservamos el mismo intento para reintentar.",
+  payment_network_error:"No se pudo conectar con el servidor de pagos. Conservamos el mismo intento para reintentar.",
+  invalid_payment_response:"El servidor de pagos devolvió una respuesta inesperada. Conservamos el mismo intento para reintentar.",
   missing_mp_store_id:"Falta MP_STORE_ID en Netlify: el ID de la sucursal Mercado Pago donde se crearán las cajas de los comercios.",
   merchant_email_required:"Vinculá un email a tu usuario Privy para crear la caja del comercio.",
   merchant_pos_pending:"La caja de tu comercio se está creando. Intentá nuevamente en unos segundos.",
