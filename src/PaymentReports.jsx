@@ -1,6 +1,7 @@
 import { useState,useEffect,useRef,useCallback } from "react";
 import { reportsApi,csvColumns,csvCell,csvOperation } from "./paymentReports.js";
 import { SOLANA } from "./chain.js";
+import { chargeError } from "./charges.js";
 const control={font:"inherit",padding:12,border:"1px solid #ECECF0",borderRadius:12};
 const button={...control,background:"white",cursor:"pointer"};
 const initial={from:"",to:"",merchant:"",status:"",source:"",environment:SOLANA.cluster==="devnet"?"test":"production"};
@@ -10,6 +11,7 @@ export default function PaymentReports({getAccessToken,onBack}) {
   const [draft,setDraft]=useState(initial),[filters,setFilters]=useState(initial),[summary,setSummary]=useState(null);
   const [rows,setRows]=useState([]),[next,setNext]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState("");
   const [exporting,setExporting]=useState(false),[count,setCount]=useState(0);
+  const [readiness,setReadiness]=useState(null),[checking,setChecking]=useState(false);
   const revision=useRef(0),mounted=useRef(true);
   const load=useCallback(async()=>{
     const version=++revision.current;setLoading(true);setError("");setRows([]);setNext(null);setSummary(null);
@@ -39,9 +41,28 @@ export default function PaymentReports({getAccessToken,onBack}) {
     finally{if(mounted.current)setExporting(false);}
   };
   const field=(key)=>({value:draft[key],disabled:exporting,onChange:(e)=>setDraft((f)=>({...f,[key]:e.target.value})),style:control});
+  const checkReadiness=async()=>{
+    setChecking(true);setError("");
+    try {const result=await reportsApi("/payment-reports/readiness",getAccessToken);if(mounted.current)setReadiness(result);}
+    catch(error){if(mounted.current)setError(chargeError(error.code));}
+    finally {if(mounted.current)setChecking(false);}
+  };
   return <section style={{display:"flex",flexDirection:"column",gap:16}}>
     <button style={button} onClick={onBack}>← Volver</button><h2 style={{margin:0}}>Operaciones y comisiones</h2>
     <p style={{margin:0,color:"#7A7A85"}}>Todos los comercios, identificados por su usuario de Privy.</p>
+    <button type="button" style={button} disabled={checking} onClick={checkReadiness}>{checking?"Verificando servicios…":"Verificar configuración de cobros"}</button>
+    {readiness && <div role="status" style={{padding:16,background:"white",borderRadius:16}}>
+      <strong>{readiness.ready?"Servicios verificados":"Hay verificaciones pendientes"} · {readiness.environment} / {readiness.network}</strong>
+      <div>Cobros {readiness.paymentsEnabled?"habilitados":"deshabilitados"}. Verificación de solo lectura.</div>
+      {readiness.checks.map(check=><div key={check.name} style={{marginTop:8,color:check.status==="pass"?"#257A45":"#B54708"}}>
+        {check.status==="pass"?"✓":"!"} {check.name}: {check.status}
+        {check.code && <div>{check.code}</div>}
+        {check.missingVariables?.length>0 && <div>Faltan: {check.missingVariables.join(", ")}</div>}
+        {check.variables?.length>0 && <div>Revisar: {check.variables.join(", ")}</div>}
+        {check.details?.ageSeconds!=null && <div>Antigüedad de cotización: {check.details.ageSeconds} segundos · sin límite de antigüedad.</div>}
+        {check.details?.publishedHeartbeatSeconds && <div>Heartbeat publicado del feed: {check.details.publishedHeartbeatSeconds} segundos.</div>}
+      </div>)}
+    </div>}
     <form onSubmit={(e)=>{e.preventDefault();if(!exporting)setFilters({...draft});}} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
       <label>Desde<input type="date" {...field("from")} /></label><label>Hasta<input type="date" {...field("to")} /></label>
       <label>Comercio<input placeholder="did:privy:…" {...field("merchant")} /></label>

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createCharge, getChargeAttempt, ensureOrder, incident, releaseReservation } from "../netlify/functions/lib/paymentService.js";
 import { inspectPaymentDatabase } from "../netlify/functions/lib/paymentDatabase.js";
-import { finalizeDelivery } from "../netlify/functions/lib/paymentWorker.js";
+import { finalizeDelivery, reconcileCharge } from "../netlify/functions/lib/paymentWorker.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
 
 test("PostgreSQL migration, charge creation, reservations and single ledger effect", async (t) => {
@@ -32,10 +32,9 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     const previous=tail;let release;tail=new Promise((r)=>{release=r;});await previous;
     return {query,release};
   }};
-  const oldEnabled=process.env.PAYMENTS_ENABLED,oldRpc=process.env.ETH_RPC_URL,oldAge=process.env.CHAINLINK_MAX_AGE_SECONDS;
-  process.env.PAYMENTS_ENABLED="true";process.env.ETH_RPC_URL="https://example.invalid";process.env.CHAINLINK_MAX_AGE_SECONDS="60";
+  const oldEnabled=process.env.PAYMENTS_ENABLED,oldRpc=process.env.ETH_RPC_URL;
+  process.env.PAYMENTS_ENABLED="true";process.env.ETH_RPC_URL="https://example.invalid";
   t.after(()=>{if(oldEnabled===undefined)delete process.env.PAYMENTS_ENABLED;else process.env.PAYMENTS_ENABLED=oldEnabled;
-    if(oldAge===undefined)delete process.env.CHAINLINK_MAX_AGE_SECONDS;else process.env.CHAINLINK_MAX_AGE_SECONDS=oldAge;
     if(oldRpc===undefined)delete process.env.ETH_RPC_URL;else process.env.ETH_RPC_URL=oldRpc;});
   const wallet="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const settings={environment:"production",network:"mainnet-beta",seller:"123",pos:"POS1"};
@@ -108,6 +107,24 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     assert.equal(result.qr_data,"EXACT-QR");assert.equal(result.status,"awaiting_payment");
     assert.equal(received[0].options.headers["X-Idempotency-Key"],c.idempotency_key);
     c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+  });
+  await t.test("lost canonical GET recovers the saved QR without creating another provider order",async()=>{
+    await query("UPDATE charges SET status='creating' WHERE id=$1",[c.id]);
+    c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+    const provider={id:c.order_id,user_id:c.seller_id,type:"qr",currency:"ARS",external_reference:c.external_reference,
+      total_amount:"10000.00",status:"created",status_detail:"created",config:{qr:{external_pos_id:c.pos_id}},
+      transactions:{payments:[{id:"PAY1",amount:"10000.00"}]}};
+    let gets=0;
+    await reconcileCharge({query},c,settings,{ensureOrder:async()=>assert.fail("must reuse saved order"),
+      request:async(path,_settings,options)=>{assert.equal(options,undefined);assert.equal(path,`/v1/orders/${c.order_id}`);gets++;return provider;}});
+    c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+    assert.equal(gets,1);assert.equal(c.status,"awaiting_payment");assert.equal(c.qr_data,"EXACT-QR");
+    // Missing QR is recoverable from the canonical order as well.
+    await query("UPDATE charges SET status='creating',qr_data=NULL WHERE id=$1",[c.id]);
+    c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+    await reconcileCharge({query},c,settings,{request:async()=>({...provider,type_response:{qr_data:"EXACT-QR"}})});
+    c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+    assert.equal(c.status,"awaiting_payment");assert.equal(c.qr_data,"EXACT-QR");
   });
   await t.test("finalization and duplicate finalization insert one authoritative ledger movement",async()=>{
     c.signature="signature";c.payout_memo="memo";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { quoteCharge, decimalUnits, unitsDecimal, verifyWebhook, validateOrder, orderBody, publicCharge } from "../netlify/functions/lib/paymentCore.js";
 import { settlePayout } from "../netlify/functions/lib/paymentWorker.js";
-import { validateRound } from "../src/priceFeed.js";
+import { validateRound,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS } from "../src/priceFeed.js";
 import { networkConfig } from "../src/network.js";
 import { internalAuthorized, paymentSettings } from "../netlify/functions/lib/paymentRuntime.js";
 import { verifySeller } from "../netlify/functions/lib/mercadopago.js";
@@ -91,17 +91,28 @@ test("a tagged Mercado Pago test seller cannot authorize production charges",asy
   finally {globalThis.fetch=before;}
 });
 
-test("Chainlink round must be positive, correct pair, fresh and complete",()=>{
+test("Chainlink round must be positive, correct pair, complete and have a valid timestamp",()=>{
   const round={answer:165000000000n,decimals:8,updatedAt:1000n,roundId:20n,answeredInRound:20n,description:"USD / ARS"};
-  assert.equal(validateRound(round,300,1100).rate,"1650.0");
-  for(const change of [{answer:0n},{updatedAt:0n},{updatedAt:1101n},{updatedAt:700n},{answeredInRound:19n},{description:"ARS / USD"}]) assert.throws(()=>validateRound({...round,...change},300,1100));
-  assert.throws(()=>validateRound(round,NaN,1100));
+  assert.equal(validateRound(round,1100).rate,"1650.0");
+  for(const change of [{answer:0n},{updatedAt:0n},{updatedAt:1101n},{answeredInRound:19n},{description:"ARS / USD"}])
+    assert.throws(()=>validateRound({...round,...change},1100),/chainlink_invalid_round/);
 });
 test("network mint and chain configuration distinguish mainnet from testnet",()=>{
   assert.equal(networkConfig("mainnet-beta").mint,"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
   assert.equal(networkConfig("mainnet-beta").chain,"solana:mainnet");
   assert.notEqual(networkConfig("mainnet-beta").mint,networkConfig("devnet").mint);
   assert.throws(()=>networkConfig("unknown"));
+});
+
+test("old complete Chainlink rounds remain usable without an age limit",()=>{
+  const now=2000000,updatedAt=BigInt(now-10*CHAINLINK_USD_ARS_HEARTBEAT_SECONDS),round={answer:165000000000n,decimals:8,updatedAt,
+    roundId:20n,answeredInRound:20n,description:"USD / ARS"};
+  assert.equal(validateRound(round,now).updatedAt,Number(updatedAt));
+  assert.equal(quoteCharge("10000",validateRound(round,now).rate).usdcRaw,"6030303");
+  assert.throws(()=>validateRound({...round,answer:0n},now),error=>{
+    assert.equal(error.message,"chainlink_invalid_round");
+    assert.deepEqual(error.quoteAge,{updatedAt:Number(updatedAt),ageSeconds:now-Number(updatedAt)});return true;
+  });
 });
 test("internal worker requests require a strong exact secret",()=>{
   const before=process.env.INTERNAL_WORKER_SECRET;process.env.INTERNAL_WORKER_SECRET="a".repeat(64);
@@ -110,7 +121,7 @@ test("internal worker requests require a strong exact secret",()=>{
 });
 test("production Mercado Pago cannot run on a devnet deployment",()=>{
   const before=process.env.MP_ENVIRONMENT;process.env.MP_ENVIRONMENT="production";
-  try {assert.throws(()=>paymentSettings(),/payment_network_mismatch/);}
+  try {assert.throws(()=>paymentSettings(process.env,networkConfig("devnet")),/payment_network_mismatch/);}
   finally {if(before===undefined)delete process.env.MP_ENVIRONMENT;else process.env.MP_ENVIRONMENT=before;}
 });
 
@@ -146,4 +157,14 @@ test("failed or expired ambiguous signatures require review instead of a second 
   for(const failed of [true,false]) {const {events,c,adapters}=payoutFixture();c.signature="signature";c.last_valid_block_height="80";
     const rpc=adapters.rpc;adapters.rpc=async(method,params)=>method==="getSignatureStatuses" && failed ? {value:[{err:{InstructionError:[1,"failed"]}}]} : rpc(method,params);
     const result=await settlePayout(null,c,adapters);assert.ok(result.review);assert.equal(events.some(([m])=>m==="sendTransaction"),false);}
+});
+
+test("paused payments still observe finalization but cannot sign or broadcast",async()=>{
+ const {events,c,adapters}=payoutFixture();adapters.allowBroadcast=false;
+ assert.deepEqual(await settlePayout(null,c,adapters),{pending:true});assert.equal(events.length,0);
+ Object.assign(c,{signature:"signature",signed_wire:"signed-wire",last_valid_block_height:"100"});
+ assert.deepEqual(await settlePayout(null,c,adapters),{pending:true});
+ assert.equal(events.some(([method])=>method==="sendTransaction"),false);
+ adapters.rpc=async()=>({value:[{confirmationStatus:"finalized",slot:42}]});
+ assert.deepEqual(await settlePayout(null,c,adapters),{finalized:true,block:42});
 });

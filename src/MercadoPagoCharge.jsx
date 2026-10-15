@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
-import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt } from "./charges.js";
+import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt, bindChargeAttempt } from "./charges.js";
 
 const terminal = new Set(["delivered","expired","canceled","refunded"]);
 const labels = { creating:"Creando QR en Mercado Pago…", awaiting_payment:"Esperando pago",
@@ -17,17 +17,17 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
   const attempt = useRef(null), notified = useRef(new Set()), mounted = useRef(true), starting = useRef(false);
   const deliveredCallback = useRef(onDelivered); deliveredCallback.current = onDelivered;
   const request = useCallback(async (path,options) => chargeApi(path,await getAccessToken(),options),[getAccessToken]);
-  const accept = useCallback((current) => {
+  const accept = useCallback((current,key) => {
     if (!mounted.current) return;
     setCharge(current);
     setHistory((list) => list.some((c)=>c.id===current.id)?list.map((c)=>c.id===current.id?current:c):[current,...list]);
-    if (attempt.current && !attempt.current.id) {
-      attempt.current = { ...attempt.current, id:current.id };
+    if (key && attempt.current?.key===key) {
+      attempt.current = bindChargeAttempt(attempt.current,current,key);
       saveChargeAttempt(userId,attempt.current);
     }
     if (current.status === "delivered" && !notified.current.has(current.id)) {
       notified.current.add(current.id);
-      clearChargeAttempt(userId);
+      if(attempt.current?.id===current.id)clearChargeAttempt(userId);
       Promise.resolve(deliveredCallback.current?.(current)).catch(() => {
         if (mounted.current) setError("Los USDC fueron entregados. Volvé a abrir el historial para actualizar el comprobante.");
       });
@@ -41,13 +41,13 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       saveChargeAttempt(userId,saved); attempt.current = saved;
       const { charge:current } = await request("/charges",{method:"POST",headers:{"Idempotency-Key":saved.key},
         body:JSON.stringify({ars:saved.ars,wallet:saved.wallet})});
-      accept(current);
+      accept(current,saved.key);
     } catch (e) {
       // Keep the key even after validation errors: a previous request may still be completing.
       if (e.code === "idempotency_conflict" && attempt.current) {
         try {
           const result = await request(`/charges?attempt=${encodeURIComponent(attempt.current.key)}`);
-          if (result.charge) { accept(result.charge); return; }
+          if (result.charge) { accept(result.charge,attempt.current.key); return; }
         } catch { /* Preserve the attempt until the server is reachable. */ }
       }
       if (mounted.current) setError(chargeError(e.code));
@@ -65,12 +65,12 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       setHistory(charges);
       setNextCursor(after);
       const saved=attempt.current;
-      const current=charges.find((c) => c.id === saved?.id) || charges.find((c) => !terminal.has(c.status));
+      const current=charges.find((c) => c.id === saved?.id) || (!saved && charges.find((c) => !terminal.has(c.status)));
       if (current) accept(current);
       else if (saved) {
         // Opening the screen only recovers an existing operation; it never starts a payment.
         request(`/charges?attempt=${encodeURIComponent(saved.key)}`).then((result)=>{
-          if (!canceled && result.charge) accept(result.charge);
+          if (!canceled && result.charge) accept(result.charge,saved.key);
         }).catch((e)=>{ if (!canceled) setError(chargeError(e.code)); });
       }
     }).catch((e) => { if (!canceled) setError(chargeError(e.code)); });
@@ -110,7 +110,10 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     try { const result=await request(`/charges/${charge.id}/cancel`,{method:"POST"});accept(result.charge); }
     catch(e) { setError(chargeError(e.code)); } finally { setBusy(false); }
   };
-  const reset=() => { clearChargeAttempt(userId);attempt.current=null;setCharge(null);setQr("");setArs("");setError(""); };
+  const reset=() => {
+    if(attempt.current?.id===charge?.id){clearChargeAttempt(userId);attempt.current=null;}
+    setCharge(null);setQr("");setArs(attempt.current?.ars || "");setError("");
+  };
   const moreHistory=async()=>{
     setLoadingHistory(true);
     try{const result=await request(`/charges?cursor=${encodeURIComponent(nextCursor)}`);

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { PaymentError } from "./paymentCore.js";
 import { getPaymentDb, getPaymentPrivy, paymentSettings, assertPaymentsEnabled } from "./paymentRuntime.js";
-import { verifySeller, mpRequest } from "./mercadopago.js";
+import { verifySeller, verifyStore, mpRequest } from "./mercadopago.js";
 
 export function merchantEmail(user) {
   const email=user.email?.address || (user.linkedAccounts || []).find(a=>a.type==="email")?.address ||
@@ -68,6 +68,7 @@ export async function ensureMerchantPos(userId,settings=paymentSettings(),adapte
       [userId,settings.environment,settings.seller])).rows[0];
     if (!mapping) {
       if (!/^\d+$/.test(settings.store || "")) throw new PaymentError("missing_mp_store_id");
+      await (adapters.verifyStore || verifyStore)(settings);
       const {externalId,name}=merchantPosIdentity(userId,settings,email);
       const body={name,store_id:settings.store,external_id:externalId,config:{qr:{operating_mode:"pdv"}}};
       mapping=(await db.query(`INSERT INTO merchant_payment_pos(user_id,environment,seller_id,merchant_email,pos_name,store_id,external_id,creation_key,creation_body)
@@ -75,7 +76,9 @@ export async function ensureMerchantPos(userId,settings=paymentSettings(),adapte
         [userId,settings.environment,settings.seller,email,name,settings.store,externalId,randomUUID(),body])).rows[0];
     }
     if (mapping.status==="ready") return mapping;
-    const found=await request(`/v2/pos?external_id=${encodeURIComponent(mapping.external_id)}&limit=30`,settings);
+    let found;
+    try {found=await request(`/v2/pos?external_id=${encodeURIComponent(mapping.external_id)}&limit=30`,settings);}
+    catch(error){if(error.code!=="mercadopago_pos_not_found")throw error;found={data:[]};}
     const list=Array.isArray(found.data)?found.data:Array.isArray(found.results)?found.results:null;
     if (!list) throw new PaymentError("mercadopago_invalid_pos_response");
     let pos=list.find(p=>p.external_id===mapping.external_id);

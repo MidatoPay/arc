@@ -11,14 +11,61 @@ export function prepareChargeAttempt(previous, value, wallet) {
   if (previous?.id) return previous;
   return { key:previous?.key || crypto.randomUUID(), ars:String(value).replace(",","."), wallet:previous?.wallet || wallet };
 }
+export function bindChargeAttempt(previous,charge,key) {
+  if(!previous || previous.key!==key || (previous.id && previous.id!==charge.id))return previous;
+  return {...previous,id:charge.id};
+}
+function diagnosticEndpoint(path) {
+  try {
+    const pathname=new URL(path,"http://localhost").pathname;
+    if(/^\/charges(?:\/[0-9a-f-]{36}(?:\/cancel)?)?\/?$/i.test(pathname))
+      return pathname.replace(/[0-9a-f-]{36}/i,":id");
+    if(/^\/(?:merchant-pos|payment-reports\/[a-z-]+)\/?$/.test(pathname))return pathname;
+  } catch { /* Do not log an unknown URL that could contain credentials. */ }
+  return "payment_api";
+}
+function paymentApiError(path,options,{code,status=0,requestId=null,responseFormat="none"}) {
+  const diagnostic={method:["GET","POST"].includes(options.method?.toUpperCase())?options.method.toUpperCase():"GET",
+    endpoint:diagnosticEndpoint(path),status,code,message:chargeError(code),requestId,responseFormat};
+  // An explicit allowlist of fields excludes tokens, cookies, bodies, QR data and private URLs.
+  console.error("[MidatoPay pagos] Falló la solicitud",diagnostic);
+  const error=new Error(diagnostic.message);
+  Object.assign(error,{code,status,requestId,diagnostic});
+  return error;
+}
 export async function chargeApi(path, token, options = {}) {
-  const response = await fetch(path, { ...options, headers: { "Content-Type":"application/json",
-    Authorization:`Bearer ${token}`, ...options.headers }, signal:AbortSignal.timeout(25000) });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) { const error = new Error(body.error || "payment_service_unavailable"); error.code = body.error; error.status = response.status; throw error; }
+  let response;
+  try {
+    response = await fetch(path, { ...options, headers: { "Content-Type":"application/json",
+      Authorization:`Bearer ${token}`, ...options.headers }, signal:AbortSignal.timeout(25000) });
+  } catch(error) {
+    throw paymentApiError(path,options,{code:["TimeoutError","AbortError"].includes(error?.name)?"payment_request_timeout":"payment_network_error"});
+  }
+  const rawRequestId=response.headers.get("x-nf-request-id");
+  const requestId=/^[A-Za-z0-9:_-]{1,128}$/.test(rawRequestId || "")?rawRequestId:null;
+  let body,responseFormat;
+  try {body=await response.json();responseFormat=body && typeof body==="object" && !Array.isArray(body)?"json":"unexpected_json";}
+  catch {responseFormat="non_json";}
+  if (!response.ok) {
+    const code=typeof body?.error==="string" && /^[a-z][a-z0-9_]{0,95}$/.test(body.error)?body.error:"payment_service_unavailable";
+    throw paymentApiError(path,options,{code,status:response.status,requestId,responseFormat});
+  }
+  if(responseFormat!=="json")throw paymentApiError(path,options,{code:"invalid_payment_response",status:response.status,requestId,responseFormat});
   return body;
 }
 export const CHARGE_ERRORS = {
+  invalid_treasury_secret_key:"TREASURY_SECRET_KEY no contiene una clave Solana válida. Revisá la variable privada de Functions.",
+  solana_rpc_network_mismatch:"SOLANA_RPC apunta a una red distinta de VITE_SOLANA_CLUSTER. Revisá la configuración de Functions.",
+  solana_rpc_unavailable:"El RPC de Solana no respondió correctamente. Conservamos el cobro para reintentar.",
+  solana_rpc_timeout:"El RPC de Solana demoró demasiado en responder. Conservamos el cobro para reintentar.",
+  mercadopago_invalid_response:"Mercado Pago devolvió una respuesta inesperada. Conservamos el intento para reintentar.",
+  mercadopago_account_unavailable:"No se pudo verificar la cuenta vendedora con Mercado Pago. Intentá nuevamente.",
+  invalid_mp_store_id:"MP_STORE_ID debe ser el ID numérico de la sucursal de la cuenta Mercado Pago configurada.",
+  mercadopago_store_owner_mismatch:"La sucursal configurada en MP_STORE_ID pertenece a otra cuenta Mercado Pago.",
+  mercadopago_store_inactive:"La sucursal Mercado Pago configurada está inactiva.",
+  payment_request_timeout:"El servidor demoró demasiado en responder. Conservamos el mismo intento para reintentar.",
+  payment_network_error:"No se pudo conectar con el servidor de pagos. Conservamos el mismo intento para reintentar.",
+  invalid_payment_response:"El servidor de pagos devolvió una respuesta inesperada. Conservamos el mismo intento para reintentar.",
   missing_mp_store_id:"Falta MP_STORE_ID en Netlify: el ID de la sucursal Mercado Pago donde se crearán las cajas de los comercios.",
   merchant_email_required:"Vinculá un email a tu usuario Privy para crear la caja del comercio.",
   merchant_pos_pending:"La caja de tu comercio se está creando. Intentá nuevamente en unos segundos.",
@@ -37,12 +84,11 @@ export const CHARGE_ERRORS = {
   missing_aiven_pg_ca_cert:"Falta AIVEN_PG_CA_CERT en las variables de Functions de Netlify.",
   idempotency_conflict:"Este intento ya tiene un cobro con otro importe. Recuperá esa operación antes de iniciar otra.",
   payments_disabled:"Los cobros están deshabilitados hasta completar la configuración productiva.",
-  quote_unavailable:"No hay una cotización Chainlink vigente. Intentá nuevamente más tarde.",
-  quote_invalid_or_stale:"La cotización Chainlink no es válida o está vencida. El cobro queda detenido hasta tener una ronda vigente.",
+  quote_unavailable:"No se pudo consultar la cotización Chainlink. Intentá nuevamente más tarde.",
+  quote_invalid_round:"La cotización Chainlink no contiene una ronda válida de USD/ARS.",
+  quote_invalid_or_stale:"La cotización Chainlink no contiene una ronda válida de USD/ARS.",
   missing_eth_rpc_url:"Falta ETH_RPC_URL en las variables de Functions de Netlify. Configurá un RPC de Ethereum mainnet para la cotización.",
-  missing_chainlink_max_age_seconds:"Falta CHAINLINK_MAX_AGE_SECONDS en Netlify: la antigüedad máxima permitida de la cotización, en segundos.",
   invalid_eth_rpc_url:"ETH_RPC_URL debe ser una URL HTTP o HTTPS válida de un RPC de Ethereum mainnet.",
-  invalid_chainlink_max_age_seconds:"CHAINLINK_MAX_AGE_SECONDS debe ser un número entero positivo de segundos, según la política de vigencia del feed.",
   invalid_worker_secret:"INTERNAL_WORKER_SECRET debe tener al menos 32 caracteres.",
   invalid_conversion_fee:"CONVERSION_FEE_BPS debe ser 50 para la comisión de conversión del 0,5%.",
   treasury_not_configured:"Falta configurar la tesorería del servidor con TREASURY_SECRET_KEY.",

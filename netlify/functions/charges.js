@@ -1,9 +1,12 @@
 import { PaymentError, publicCharge } from "./lib/paymentCore.js";
 import { authenticatePayment, paymentSettings, getPaymentDb, json, errorResponse, kickWorker } from "./lib/paymentRuntime.js";
-import { createCharge, getCharge, getChargeAttempt, withChargeLock, ensureOrder, assertChargeConfig } from "./lib/paymentService.js";
+import { createCharge, getCharge, getChargeAttempt } from "./lib/paymentService.js";
 import { listOwnCharges } from "./lib/paymentReporting.js";
 
-export const handler = async (event) => {
+export function createChargesHandler(overrides={}) {
+  const dependencies={authenticatePayment,paymentSettings,getPaymentDb,kickWorker,createCharge,getCharge,getChargeAttempt,listOwnCharges,...overrides};
+  return async (event) => {
+  const {authenticatePayment,paymentSettings,getPaymentDb,kickWorker,createCharge,getCharge,getChargeAttempt,listOwnCharges}=dependencies;
   try {
     const userId = await authenticatePayment(event), settings = paymentSettings();
     const path = event.path.replace(/^\/\.netlify\/functions\/charges/, "/charges");
@@ -34,20 +37,12 @@ export const handler = async (event) => {
     let input;
     try { input = JSON.parse(event.body || "{}"); } catch { throw new PaymentError("invalid_json", 400); }
     const key = event.headers?.["idempotency-key"] || event.headers?.["Idempotency-Key"];
-    let charge = await createCharge(userId, input, key);
-    if (!charge.order_id) {
-      try {
-        charge = await withChargeLock(charge.id, async (db,c) => {
-          assertChargeConfig(c, settings);
-          return ensureOrder(db,c,settings);
-        }) || charge;
-      } catch (error) {
-        await getPaymentDb().query("UPDATE charges SET last_error=$2,next_attempt_at=now() WHERE id=$1",
-          [charge.id, error instanceof PaymentError ? error.code : "payment_service_unavailable"]);
-        charge = await getCharge(charge.id,userId,settings);
-      }
-    }
+    // Commit the intent and return before external order creation. The protected worker
+    // uses this same saved key/body; polling recovers QR creation after slow responses.
+    const charge = await createCharge(userId, input, key);
     await kickWorker();
     return json(charge.qr_data ? 201 : 202, { charge: publicCharge(charge) });
   } catch (error) { return errorResponse(error); }
-};
+  };
+}
+export const handler=createChargesHandler();
