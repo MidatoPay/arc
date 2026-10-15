@@ -9,6 +9,7 @@ export async function settlePayout(db, charge, adapters = {}) {
   const prepare = adapters.prepare || prepareTreasuryPayout;
   const save = adapters.save || ((fields) => updateCharge(db, charge.id, fields));
   if (!charge.signature) {
+    if(adapters.allowBroadcast===false)return {pending:true};
     const prepared = await prepare({ to: charge.wallet_address, rawAmount: charge.usdc_raw,
       usdc: unitsDecimal(charge.usdc_raw,6), kind: "charge_mercadopago",
       ars: unitsDecimal(charge.amount_cents,2), fxRate: charge.fx_rate, factura: charge.external_reference });
@@ -28,6 +29,7 @@ export async function settlePayout(db, charge, adapters = {}) {
     // Absence from one RPC is not proof of non-execution. Never build a second transfer blindly.
     return { review: "solana_expired_requires_review" };
   }
+  if(adapters.allowBroadcast===false)return {pending:true};
   await rpc("sendTransaction", [charge.signed_wire, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 0 }]);
   await save({ status: "broadcasting" });
   return { pending: true };
@@ -52,18 +54,27 @@ export async function finalizeDelivery(db, charge, block) {
   } catch (error) { await db.query("ROLLBACK"); throw error; }
 }
 
-async function reconcileCharge(db, charge, settings) {
+export async function reconcileCharge(db, charge, settings, adapters = {}) {
+  const request=adapters.request || mpRequest;
   assertChargeConfig(charge,settings);
   const wasManual = charge.status === "manual_review";
-  if (!charge.order_id) charge = await ensureOrder(db,charge,settings);
-  let order = await mpRequest(`/v1/orders/${encodeURIComponent(charge.order_id)}`, settings);
+  if (!charge.order_id) charge = await (adapters.ensureOrder || ensureOrder)(db,charge,settings);
+  let order = await request(`/v1/orders/${encodeURIComponent(charge.order_id)}`, settings);
   let result = validateOrder(order,charge);
+  if(!charge.qr_data && typeof order.type_response?.qr_data==="string" && order.type_response.qr_data) {
+    charge={...charge,qr_data:order.type_response.qr_data};
+    await updateCharge(db,charge.id,{qr_data:charge.qr_data});
+  }
+  if(!result.paid && !result.terminal && !result.refunded && !charge.qr_data) {
+    charge={...charge,cancel_requested:true};
+    await updateCharge(db,charge.id,{cancel_requested:true,status:"cancel_pending",last_error:"mercadopago_missing_qr"});
+  }
   if ((charge.cancel_requested || new Date(charge.expires_at).getTime() <= Date.now()) && !result.paid && !result.terminal && !result.refunded) {
     try {
-      await mpRequest(`/v1/orders/${encodeURIComponent(charge.order_id)}/cancel`, settings, {
+      await request(`/v1/orders/${encodeURIComponent(charge.order_id)}/cancel`, settings, {
         method:"POST", body:"{}", headers:{"X-Idempotency-Key":charge.id} });
     } catch { /* Cancellation may race with payment: GET is authoritative. */ }
-    order = await mpRequest(`/v1/orders/${encodeURIComponent(charge.order_id)}`,settings);
+    order = await request(`/v1/orders/${encodeURIComponent(charge.order_id)}`,settings);
     result = validateOrder(order,charge);
   }
   await updateCharge(db,charge.id,{provider_status:order.status,provider_detail:order.status_detail,
@@ -83,19 +94,23 @@ async function reconcileCharge(db, charge, settings) {
     return;
   }
   if (wasManual || charge.status === "delivered") return;
-  if (!result.paid) return;
+  if (!result.paid) {
+    if(!wasManual && charge.status==="creating" && !charge.cancel_requested)
+      await updateCharge(db,charge.id,{status:"awaiting_payment",last_error:null});
+    return;
+  }
   await updateCharge(db,charge.id,{status:charge.signature ? charge.status : "paid",last_error:null});
-  assertPaymentsEnabled();
+  if(!charge.signature)assertPaymentsEnabled();
   const blocked = await db.query("SELECT 1 FROM payment_user_blocks WHERE user_id=$1 AND environment=$2",[charge.user_id,charge.environment]);
   if (blocked.rowCount) { await incident(db,charge,"user_payment_review"); return; }
-  const owner = await getTreasuryAddress();
+  const owner = await (adapters.getTreasuryAddress || getTreasuryAddress)();
   assertChargeConfig(charge,settings,owner);
   if (!owner || owner !== charge.treasury_address) throw new PaymentError("treasury_account_mismatch");
   if (!charge.signature) {
-    const liquidity = await treasuryLiquidity();
+    const liquidity = await (adapters.liquidity || treasuryLiquidity)();
     if (BigInt(liquidity.raw) < BigInt(charge.usdc_raw) || BigInt(liquidity.solLamports) < 3000000n) throw new PaymentError("insufficient_treasury");
   }
-  const settlement = await settlePayout(db,charge);
+  const settlement = await (adapters.settlePayout || settlePayout)(db,charge,{allowBroadcast:process.env.PAYMENTS_ENABLED==="true"});
   if (settlement.review) await incident(db,charge,settlement.review);
   else if (settlement.finalized) await finalizeDelivery(db,charge,settlement.block);
 }

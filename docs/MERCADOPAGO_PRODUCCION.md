@@ -1,5 +1,7 @@
 # Cobros Mercado Pago → USDC
 
+La revisión técnica y la matriz actual de variables están en [REVISION_MERCADOPAGO_PREMERGE.md](REVISION_MERCADOPAGO_PREMERGE.md). Distingue las verificaciones locales de la validación externa que aún requiere un despliegue y una prueba autorizados.
+
 El botón **Cobrar** y el comando de voz crean un QR dinámico de Mercado Pago. El vendedor recibe ARS; la tesorería prefinanciada envía USDC nativo de Solana a la wallet autenticada. La comisión de conversión es **0,5% del importe ARS**, descontada antes de convertir.
 
 La implementación está preparada para producción, pero no configura credenciales externas ni habilita dinero real automáticamente. `PAYMENTS_ENABLED=false` impide crear órdenes nuevas y enviar USDC; el webhook y la conciliación de órdenes existentes siguen funcionando.
@@ -52,6 +54,7 @@ Los reportes separan comisiones registradas, previstas y en revisión. Una devol
 API administrativa (Bearer Privy; validación de administrador en el servidor):
 
 - `GET /payment-reports/access`: autorización e ID de la sesión.
+- `GET /payment-reports/readiness`: diagnóstico de configuración y dependencias del entorno desplegado, solo lectura; requiere administrador. Disponible también desde el botón **Verificar configuración de cobros**.
 - `GET /payment-reports/operations`: historial paginado; devuelve `operations` y `nextCursor`.
 - `GET /payment-reports/summary`: totales generales y por comercio.
 

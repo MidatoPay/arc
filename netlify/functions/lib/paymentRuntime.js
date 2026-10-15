@@ -5,30 +5,32 @@ import { NETWORK } from "../../../src/network.js";
 import { PaymentError } from "./paymentCore.js";
 
 let pool, privy;
+export function paymentDatabaseConfig(env=process.env) {
+  if (!env.AIVEN_PG_URL?.trim()) throw new PaymentError("missing_aiven_pg_url");
+  if (!env.AIVEN_PG_CA_CERT?.trim()) throw new PaymentError("missing_aiven_pg_ca_cert");
+  let url;
+  try {url=new URL(env.AIVEN_PG_URL.trim());if(!["postgres:","postgresql:"].includes(url.protocol))throw new Error();}
+  catch {throw new PaymentError("invalid_database_url");}
+  for(const key of ["sslmode","sslcert","sslkey","sslrootcert"])url.searchParams.delete(key);
+  return {connectionString:url.toString(),max:4,connectionTimeoutMillis:5000,statement_timeout:12000,query_timeout:15000,
+    ssl:{ca:env.AIVEN_PG_CA_CERT.replace(/\\n/g,"\n"),rejectUnauthorized:true,servername:url.hostname}};
+}
 export function getPaymentDb() {
   if (!pool) {
-    if (!process.env.AIVEN_PG_URL?.trim()) throw new PaymentError("missing_aiven_pg_url");
-    if (!process.env.AIVEN_PG_CA_CERT?.trim()) throw new PaymentError("missing_aiven_pg_ca_cert");
-    const connectionString = (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, "");
-    let hostname;
-    try {
-      const url = new URL(connectionString);
-      if (!["postgres:", "postgresql:"].includes(url.protocol)) throw new Error();
-      hostname = url.hostname;
-    } catch { throw new PaymentError("invalid_database_url"); }
-    pool = new pg.Pool({ connectionString, max: 4, connectionTimeoutMillis: 5000,
-      ssl: { ca: (process.env.AIVEN_PG_CA_CERT || "").replace(/\\n/g, "\n"), rejectUnauthorized: true,
-        servername: hostname } });
+    pool = new pg.Pool(paymentDatabaseConfig());
   }
   return pool;
 }
 export function getPaymentPrivy() {
+  if(!process.env.VITE_PRIVY_APP_ID?.trim())throw new PaymentError("missing_vite_privy_app_id");
+  if(!process.env.PRIVY_APP_SECRET?.trim())throw new PaymentError("missing_privy_app_secret");
   return privy ??= new PrivyClient(process.env.VITE_PRIVY_APP_ID, process.env.PRIVY_APP_SECRET);
 }
 export async function authenticatePayment(event) {
   const token = (event.headers?.authorization || event.headers?.Authorization || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) throw new PaymentError("unauthorized", 401);
-  try { return (await getPaymentPrivy().verifyAuthToken(token)).userId; }
+  const client=getPaymentPrivy();
+  try { return (await client.verifyAuthToken(token)).userId; }
   catch { throw new PaymentError("unauthorized", 401); }
 }
 export async function assertWalletOwned(userId, wallet) {
@@ -36,27 +38,27 @@ export async function assertWalletOwned(userId, wallet) {
   if (!(user.linkedAccounts || []).some((a) => a.type === "wallet" && a.address === wallet &&
     (a.chainType === "solana" || a.chain_type === "solana"))) throw new PaymentError("wallet_not_owned", 403);
 }
-export function paymentSettings() {
-  const environment = process.env.MP_ENVIRONMENT || "test";
+export function paymentSettings(env=process.env,network=NETWORK) {
+  const environment = env.MP_ENVIRONMENT || "test";
   if (!["test", "production"].includes(environment)) throw new PaymentError("invalid_mp_environment");
-  if ((environment === "production") !== (NETWORK.cluster === "mainnet-beta")) throw new PaymentError("payment_network_mismatch");
+  if ((environment === "production") !== (network.cluster === "mainnet-beta")) throw new PaymentError("payment_network_mismatch");
   for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_WEBHOOK_SECRET", "SOLANA_RPC", "INTERNAL_WORKER_SECRET"]) {
-    if (!process.env[key]?.trim()) throw new PaymentError(`missing_${key.toLowerCase()}`);
+    if (!env[key]?.trim()) throw new PaymentError(`missing_${key.toLowerCase()}`);
   }
-  if (process.env.INTERNAL_WORKER_SECRET.length < 32) throw new PaymentError("invalid_worker_secret");
-  return { environment, network: NETWORK.cluster, seller: process.env.MP_USER_ID.trim(),
-    store: process.env.MP_STORE_ID?.trim(), token: process.env.MP_ACCESS_TOKEN.trim() };
+  if (env.INTERNAL_WORKER_SECRET.length < 32) throw new PaymentError("invalid_worker_secret");
+  return { environment, network: network.cluster, seller: env.MP_USER_ID.trim(),
+    store: env.MP_STORE_ID?.trim(), token: env.MP_ACCESS_TOKEN.trim() };
 }
 export function assertPaymentsEnabled() {
   if (process.env.PAYMENTS_ENABLED !== "true") throw new PaymentError("payments_disabled");
   if (process.env.CONVERSION_FEE_BPS && process.env.CONVERSION_FEE_BPS !== "50") throw new PaymentError("invalid_conversion_fee");
 }
-export function paymentQuoteSettings() {
-  const rpc=process.env.ETH_RPC_URL?.trim();
+export function paymentQuoteSettings(env=process.env) {
+  const rpc=env.ETH_RPC_URL?.trim();
   if (!rpc) throw new PaymentError("missing_eth_rpc_url");
   try {if(!["http:","https:"].includes(new URL(rpc).protocol))throw new Error();}
   catch {throw new PaymentError("invalid_eth_rpc_url");}
-  const age=process.env.CHAINLINK_MAX_AGE_SECONDS?.trim();
+  const age=env.CHAINLINK_MAX_AGE_SECONDS?.trim();
   if (!age) throw new PaymentError("missing_chainlink_max_age_seconds");
   const maxAge=Number(age);
   if (!/^\d+$/.test(age) || !Number.isSafeInteger(maxAge) || maxAge<=0) throw new PaymentError("invalid_chainlink_max_age_seconds");

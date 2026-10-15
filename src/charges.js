@@ -11,6 +11,10 @@ export function prepareChargeAttempt(previous, value, wallet) {
   if (previous?.id) return previous;
   return { key:previous?.key || crypto.randomUUID(), ars:String(value).replace(",","."), wallet:previous?.wallet || wallet };
 }
+export function bindChargeAttempt(previous,charge,key) {
+  if(!previous || previous.key!==key || (previous.id && previous.id!==charge.id))return previous;
+  return {...previous,id:charge.id};
+}
 function diagnosticEndpoint(path) {
   try {
     const pathname=new URL(path,"http://localhost").pathname;
@@ -50,6 +54,15 @@ export async function chargeApi(path, token, options = {}) {
   return body;
 }
 export const CHARGE_ERRORS = {
+  invalid_treasury_secret_key:"TREASURY_SECRET_KEY no contiene una clave Solana válida. Revisá la variable privada de Functions.",
+  solana_rpc_network_mismatch:"SOLANA_RPC apunta a una red distinta de VITE_SOLANA_CLUSTER. Revisá la configuración de Functions.",
+  solana_rpc_unavailable:"El RPC de Solana no respondió correctamente. Conservamos el cobro para reintentar.",
+  solana_rpc_timeout:"El RPC de Solana demoró demasiado en responder. Conservamos el cobro para reintentar.",
+  mercadopago_invalid_response:"Mercado Pago devolvió una respuesta inesperada. Conservamos el intento para reintentar.",
+  mercadopago_account_unavailable:"No se pudo verificar la cuenta vendedora con Mercado Pago. Intentá nuevamente.",
+  invalid_mp_store_id:"MP_STORE_ID debe ser el ID numérico de la sucursal de la cuenta Mercado Pago configurada.",
+  mercadopago_store_owner_mismatch:"La sucursal configurada en MP_STORE_ID pertenece a otra cuenta Mercado Pago.",
+  mercadopago_store_inactive:"La sucursal Mercado Pago configurada está inactiva.",
   payment_request_timeout:"El servidor demoró demasiado en responder. Conservamos el mismo intento para reintentar.",
   payment_network_error:"No se pudo conectar con el servidor de pagos. Conservamos el mismo intento para reintentar.",
   invalid_payment_response:"El servidor de pagos devolvió una respuesta inesperada. Conservamos el mismo intento para reintentar.",

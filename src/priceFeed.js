@@ -32,12 +32,16 @@ export async function fetchArsQuote(rpcUrl, maxAge) {
   const request = new ethers.FetchRequest(rpcUrl);
   request.timeout = 10000;
   const provider = new ethers.JsonRpcProvider(request, 1, { batchMaxCount: 1 });
+  let timer;
   try {
     const feed = new ethers.Contract(CHAINLINK_USD_ARS_FEED, AGGREGATOR_ABI, provider);
-    const [round, decimals, description] = await Promise.all([feed.latestRoundData(), feed.decimals(), feed.description()]);
+    const [round, decimals, description] = await Promise.race([
+      Promise.all([feed.latestRoundData(), feed.decimals(), feed.description()]),
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("chainlink_rpc_timeout")),12000);})
+    ]);
     return validateRound({ answer: round.answer, updatedAt: round.updatedAt, roundId: round.roundId,
       answeredInRound: round.answeredInRound, decimals, description }, maxAge);
-  } finally { provider.destroy(); }
+  } finally { clearTimeout(timer);provider.destroy(); }
 }
 
 /**

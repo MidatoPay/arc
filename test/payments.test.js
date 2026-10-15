@@ -110,7 +110,7 @@ test("internal worker requests require a strong exact secret",()=>{
 });
 test("production Mercado Pago cannot run on a devnet deployment",()=>{
   const before=process.env.MP_ENVIRONMENT;process.env.MP_ENVIRONMENT="production";
-  try {assert.throws(()=>paymentSettings(),/payment_network_mismatch/);}
+  try {assert.throws(()=>paymentSettings(process.env,networkConfig("devnet")),/payment_network_mismatch/);}
   finally {if(before===undefined)delete process.env.MP_ENVIRONMENT;else process.env.MP_ENVIRONMENT=before;}
 });
 
@@ -146,4 +146,14 @@ test("failed or expired ambiguous signatures require review instead of a second 
   for(const failed of [true,false]) {const {events,c,adapters}=payoutFixture();c.signature="signature";c.last_valid_block_height="80";
     const rpc=adapters.rpc;adapters.rpc=async(method,params)=>method==="getSignatureStatuses" && failed ? {value:[{err:{InstructionError:[1,"failed"]}}]} : rpc(method,params);
     const result=await settlePayout(null,c,adapters);assert.ok(result.review);assert.equal(events.some(([m])=>m==="sendTransaction"),false);}
+});
+
+test("paused payments still observe finalization but cannot sign or broadcast",async()=>{
+ const {events,c,adapters}=payoutFixture();adapters.allowBroadcast=false;
+ assert.deepEqual(await settlePayout(null,c,adapters),{pending:true});assert.equal(events.length,0);
+ Object.assign(c,{signature:"signature",signed_wire:"signed-wire",last_valid_block_height:"100"});
+ assert.deepEqual(await settlePayout(null,c,adapters),{pending:true});
+ assert.equal(events.some(([method])=>method==="sendTransaction"),false);
+ adapters.rpc=async()=>({value:[{confirmationStatus:"finalized",slot:42}]});
+ assert.deepEqual(await settlePayout(null,c,adapters),{finalized:true,block:42});
 });

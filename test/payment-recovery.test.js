@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareChargeAttempt, chargeError } from "../src/charges.js";
+import { prepareChargeAttempt, bindChargeAttempt, chargeError } from "../src/charges.js";
 import { errorResponse, paymentQuoteSettings } from "../netlify/functions/lib/paymentRuntime.js";
+
+test("history cannot bind an unrelated operation to an unresolved payment attempt",()=>{
+ const pending={key:"attempt",ars:"100",wallet:"original"};
+ assert.equal(bindChargeAttempt(pending,{id:"other"}),pending);
+ assert.equal(bindChargeAttempt(pending,{id:"other"},"different-key"),pending);
+ assert.equal(bindChargeAttempt({...pending,id:"saved"},{id:"other"},"attempt").id,"saved");
+ assert.equal(bindChargeAttempt(pending,{id:"saved"},"attempt").id,"saved");
+});
 
 test("editing an unconfirmed amount retains the idempotency key and original wallet",()=>{
   const previous={key:"same-key",ars:"100",wallet:"original"};

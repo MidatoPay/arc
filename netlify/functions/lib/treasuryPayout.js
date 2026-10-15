@@ -25,6 +25,7 @@ import {
 import { getAddMemoInstruction } from "@solana-program/memo";
 import bs58 from "bs58";
 import { NETWORK } from "../../../src/network.js";
+import { PaymentError } from "./paymentCore.js";
 
 const USDC_MINT = NETWORK.mint;
 const USDC_DECIMALS = 6;
@@ -68,10 +69,13 @@ let cachedSignerPromise = null;
 
 export async function getTreasurySigner() {
   if (!isTreasuryConfigured()) {
-    throw new Error("Treasury no configurada. Definí TREASURY_SECRET_KEY en el entorno del server.");
+    throw new PaymentError("treasury_not_configured");
   }
   if (!cachedSignerPromise) {
-    cachedSignerPromise = keypairSignerFromSecret(treasurySecret());
+    cachedSignerPromise = keypairSignerFromSecret(treasurySecret()).catch(()=>{
+      cachedSignerPromise=null;
+      throw new PaymentError("invalid_treasury_secret_key");
+    });
   }
   return cachedSignerPromise;
 }
@@ -297,23 +301,28 @@ export async function sendTreasuryPayout(options) {
 }
 
 export async function treasuryRpc(method, params) {
-  const response = await fetch(RPC_URL, { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
-  const body = await response.json();
-  if (!response.ok || body.error) throw new Error("solana_rpc_unavailable");
-  return body.result;
+  try {
+    const response = await fetch(RPC_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
+    const body = await response.json();
+    if (!response.ok || body.error || body.result==null) throw new PaymentError("solana_rpc_unavailable");
+    return body.result;
+  } catch(error) {
+    if(error instanceof PaymentError)throw error;
+    throw new PaymentError(["TimeoutError","AbortError"].includes(error.name)?"solana_rpc_timeout":"solana_rpc_unavailable");
+  }
 }
-export async function treasuryLiquidity() {
-  const owner = await getTreasuryAddress();
-  if (!owner) throw new Error("treasury_not_configured");
+export async function treasuryLiquidity(adapters = {}) {
+  const owner = await (adapters.getTreasuryAddress || getTreasuryAddress)();
+  if (!owner) throw new PaymentError("treasury_not_configured");
+  const rpc=adapters.rpc || treasuryRpc,network=adapters.network || NETWORK;
   const [tokens, sol, genesis] = await Promise.all([
-    treasuryRpc("getTokenAccountsByOwner", [owner, { mint: USDC_MINT }, { encoding: "jsonParsed", commitment: "finalized" }]),
-    treasuryRpc("getBalance", [owner, { commitment: "finalized" }]),
-    treasuryRpc("getGenesisHash", []),
+    rpc("getTokenAccountsByOwner", [owner, { mint: network.mint }, { encoding: "jsonParsed", commitment: "finalized" }]),
+    rpc("getBalance", [owner, { commitment: "finalized" }]),
+    rpc("getGenesisHash", []),
   ]);
-  const expected = NETWORK.cluster === "mainnet-beta" ? "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
-  if (genesis !== expected) throw new Error("solana_rpc_network_mismatch");
-  const [ata] = await findAssociatedTokenPda({ mint: address(USDC_MINT), owner: address(owner), tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  if (genesis !== network.genesis) throw new PaymentError("solana_rpc_network_mismatch");
+  const [ata] = await findAssociatedTokenPda({ mint: address(network.mint), owner: address(owner), tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const account = tokens.value?.find((t) => t.pubkey === String(ata));
   return { owner, raw: account?.account?.data?.parsed?.info?.tokenAmount?.amount || "0", solLamports: String(sol.value) };
 }

@@ -35,7 +35,7 @@ test("durable per-merchant creation handles concurrency, timeouts and changed pr
   const before=process.env.PAYMENTS_ENABLED;process.env.PAYMENTS_ENABLED="true";
   t.after(()=>{if(before===undefined)delete process.env.PAYMENTS_ENABLED;else process.env.PAYMENTS_ENABLED=before;});
   let posts=0,timeout=false,email="user@example.com";const remote=new Map(),bodies=[];
-  const adapters={db:pool,verifySeller:async()=>{},getUser:async()=>({email:{address:email}}),request:async(path,s,options={})=>{
+  const adapters={db:pool,verifySeller:async()=>{},verifyStore:async()=>{},getUser:async()=>({email:{address:email}}),request:async(path,s,options={})=>{
     if(!options.method){const ext=new URL("https://example.invalid"+path).searchParams.get("external_id");return {data:remote.has(ext)?[remote.get(ext)]:[]};}
     posts++;const body=JSON.parse(options.body);bodies.push({body,key:options.headers["X-Idempotency-Key"]});
     const intent=(await query("SELECT * FROM merchant_payment_pos WHERE external_id=$1",[body.external_id])).rows[0];

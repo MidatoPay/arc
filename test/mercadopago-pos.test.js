@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { verifySeller } from "../netlify/functions/lib/mercadopago.js";
+import { verifySeller, verifySellerAccount, verifyStore, mpRequest } from "../netlify/functions/lib/mercadopago.js";
 
 test("seller validation accepts current and legacy POS responses without masking configuration errors",async()=>{
   const original=globalThis.fetch;
@@ -31,4 +31,24 @@ test("seller validation accepts current and legacy POS responses without masking
     await assert.rejects(()=>verifySeller({...settings,token:"test-only-cache",environment:"test"}),{code:"seller_is_not_test_account"});
     assert.ok(calls>before);
   } finally {globalThis.fetch=original;}
+});
+
+test("provider diagnostics distinguish credentials, malformed responses and store ownership",async()=>{
+ const original=globalThis.fetch,settings={token:"offline",seller:"123",store:"456",environment:"production"};
+ try {
+  for(const [status,code] of [[401,"mercadopago_http_401"],[403,"mercadopago_forbidden"],[500,"mercadopago_account_unavailable"]]) {
+   globalThis.fetch=async()=>({ok:false,status,json:async()=>({message:"private-provider-message"})});
+   await assert.rejects(()=>verifySellerAccount(settings),{code});
+  }
+  for(const body of [null,[],"private-provider-message"]) {
+   globalThis.fetch=async()=>({ok:true,json:async()=>body});
+   await assert.rejects(()=>mpRequest("/v1/orders/example",settings),{code:"mercadopago_invalid_response"});
+  }
+  globalThis.fetch=async()=>({ok:true,json:async()=>({id:456,user_id:123})});
+  assert.equal((await verifyStore(settings)).id,456);
+  globalThis.fetch=async()=>({ok:true,json:async()=>({id:456,user_id:999})});
+  await assert.rejects(()=>verifyStore(settings),{code:"mercadopago_store_owner_mismatch"});
+  globalThis.fetch=async()=>{throw new Error("private-network-details");};
+  await assert.rejects(()=>verifySellerAccount(settings),{code:"mercadopago_timeout"});
+ } finally {globalThis.fetch=original;}
 });
