@@ -45,11 +45,9 @@ export async function createCharge(userId, input, key, adapters = {}) {
     }
     const blocked = await db.query("SELECT 1 FROM payment_user_blocks WHERE user_id=$1 AND environment=$2", [userId, settings.environment]);
     if (blocked.rowCount) throw new PaymentError("user_payment_review", 403);
-    const reserves = await db.query(`SELECT COALESCE(SUM(usdc_raw),0)::text AS raw, COUNT(*)::text AS count FROM charges
+    const reserves = await db.query(`SELECT COALESCE(SUM(usdc_raw),0)::text AS raw FROM charges
       WHERE reserved AND treasury_address=$1 AND network=$2`, [liquidity.owner, settings.network]);
     if (BigInt(liquidity.raw) - BigInt(reserves.rows[0].raw) < BigInt(quote.usdcRaw)) throw new PaymentError("insufficient_treasury");
-    // Conservative allowance for ATA rent and transfer fees for every reserved intention.
-    if (BigInt(liquidity.solLamports) < (BigInt(reserves.rows[0].count) + 1n) * 3000000n + 10000000n) throw new PaymentError("insufficient_treasury_sol");
     const id = randomUUID();
     const charge = { external_reference: `mp_${id.replaceAll("-", "")}`, amount_cents: quote.amountCents, pos_id: chargeSettings.pos };
     const body = orderBody(charge);

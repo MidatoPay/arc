@@ -38,11 +38,11 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     if(oldRpc===undefined)delete process.env.ETH_RPC_URL;else process.env.ETH_RPC_URL=oldRpc;});
   const wallet="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const settings={environment:"production",network:"mainnet-beta",seller:"123",pos:"POS1"};
-  let liquidityRaw="100000000",verificationCalls=0;
+  let liquidityRaw="100000000",solLamports="1000000000",verificationCalls=0;
   const adapters={db:pool,settings,assertWalletOwned:async(user)=>{if(user==="wrong")throw new Error("wallet_not_owned");},
     ensureMerchantPos:async(user)=>({external_id:`POS${user}`}),
     verifySeller:async()=>verificationCalls++,fetchQuote:async()=>({rate:"1650",roundId:"1",updatedAt:Math.floor(Date.now()/1000)}),
-    getTreasuryAddress:async()=>wallet,treasuryLiquidity:async()=>({owner:wallet,raw:liquidityRaw,solLamports:"1000000000"})};
+    getTreasuryAddress:async()=>wallet,treasuryLiquidity:async()=>({owner:wallet,raw:liquidityRaw,solLamports})};
   const input={ars:"10000.00",wallet};let c;
   await t.test("database preflight checks migrated tables and detects a missing migration without reading operations",async()=>{
     const healthy=await inspectPaymentDatabase(pool);assert.equal(healthy.ready,true);
@@ -57,11 +57,13 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     await query("INSERT INTO transactions(user_id,network,hash,kind,direction,who,amt,fx_rate,ars) VALUES('legacy','mainnet-beta','same-hash','pay','out','contact',1,1650,1650)");
     assert.equal((await query("SELECT * FROM transactions WHERE user_id='legacy'")).rowCount,2);
   });
-  await t.test("same intent across concurrent retries persists only one reservation",async()=>{
+  await t.test("same intent across concurrent retries persists one USDC reservation with no SOL minimum",async()=>{
+    solLamports="0";
     const key=randomUUID();const result=await Promise.all([createCharge("u1",input,key,adapters),createCharge("u1",input,key,adapters)]);
     assert.equal(result[0].id,result[1].id);c=result[0];assert.equal(c.usdc_raw,"6030303");
     assert.equal(c.pos_id,"POSu1");assert.equal(c.order_body.config.qr.external_pos_id,c.pos_id);
     assert.equal((await query("SELECT * FROM charges WHERE user_id='u1'")).rowCount,1);
+    solLamports="1000000000";
   });
   await t.test("retry after restart preserves key/body and rejects another user or changed amount",async()=>{
     const recovered=await createCharge("u1",input,c.idempotency_key,adapters);
@@ -125,6 +127,18 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     await reconcileCharge({query},c,settings,{request:async()=>({...provider,type_response:{qr_data:"EXACT-QR"}})});
     c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
     assert.equal(c.status,"awaiting_payment");assert.equal(c.qr_data,"EXACT-QR");
+  });
+  await t.test("an accredited charge reaches settlement without a fixed SOL minimum",async()=>{
+    const provider={id:c.order_id,user_id:c.seller_id,type:"qr",currency:"ARS",external_reference:c.external_reference,
+      total_amount:"10000.00",total_paid_amount:"10000.00",status:"processed",status_detail:"accredited",
+      config:{qr:{external_pos_id:c.pos_id}},transactions:{payments:[{id:"PAY1",amount:"10000.00",
+        paid_amount:"10000.00",status:"processed",status_detail:"accredited"}]}};
+    let settlements=0;
+    await reconcileCharge({query},c,settings,{request:async()=>provider,
+      getTreasuryAddress:async()=>wallet,liquidity:async()=>({raw:c.usdc_raw,solLamports:"0"}),
+      settlePayout:async()=>{settlements++;return {pending:true};}});
+    assert.equal(settlements,1);
+    assert.equal((await query("SELECT signature FROM charges WHERE id=$1",[c.id])).rows[0].signature,null);
   });
   await t.test("finalization and duplicate finalization insert one authoritative ledger movement",async()=>{
     c.signature="signature";c.payout_memo="memo";

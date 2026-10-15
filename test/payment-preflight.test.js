@@ -14,7 +14,7 @@ function fixture() {
  ETH_RPC_URL:"https://example.invalid",PAYMENTS_BASE_URL:"https://example.invalid",
  AIVEN_PG_URL:"postgresql://user:password@example.invalid/db?sslmode=require&application_name=payments",PAYMENTS_CHECK_USER_ID:"did:privy:merchant"});
  const adapters={verifyAccount:async()=>{},verifyStore:async()=>{},fetchQuote:async()=>({updatedAt:Math.floor(Date.now()/1000)}),
- rpc:async()=>network.genesis,getSigner:async()=>({}),liquidity:async()=>({raw:"10000",solLamports:"13000000"}),
+ rpc:async()=>network.genesis,getSigner:async()=>({}),liquidity:async()=>({raw:"10000",solLamports:"0"}),
  db:{connect:async()=>({query:async sql=>events.push(sql),release:()=>events.push("release")})},
  inspectDatabase:async()=>({ready:true,tables:[{}]}),getUser:async()=>({})};
  return {env,network,adapters,events};
@@ -37,6 +37,13 @@ test("preflight collects independent failures, reports missing names and bounds 
  assert.deepEqual(checks.private_variables.variables,["VITE_TREASURY_SECRET_KEY"]);
  assert.ok(checks.variables.missingVariables.includes("PRIVY_APP_SECRET"));
  assert.ok(!JSON.stringify(report).includes("private-sentinel"));
+});
+
+test("preflight accepts zero SOL without claiming a minimum SOL balance is available",async()=>{
+ const input=fixture();
+ const report=await runPaymentPreflight(input);
+ assert.equal(report.ready,true);
+ assert.deepEqual(report.checks.find(row=>row.name==="treasury").details,{minimumUsdcAvailable:true});
 });
 test("database preflight always rolls back and releases on a schema failure",async()=>{
  const input=fixture();input.adapters.inspectDatabase=async()=>({ready:false,tables:[]});
