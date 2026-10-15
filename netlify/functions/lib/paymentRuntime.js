@@ -41,7 +41,7 @@ export async function assertWalletOwned(userId, wallet) {
 export function paymentSettings(env=process.env,network=NETWORK) {
   const environment = env.MP_ENVIRONMENT || "test";
   if (!["test", "production"].includes(environment)) throw new PaymentError("invalid_mp_environment");
-  //if ((environment === "production") !== (network.cluster === "mainnet-beta")) throw new PaymentError("payment_network_mismatch");
+  // Mercado Pago environment and Solana cluster are configured independently.
   for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_WEBHOOK_SECRET", "SOLANA_RPC", "INTERNAL_WORKER_SECRET"]) {
     if (!env[key]?.trim()) throw new PaymentError(`missing_${key.toLowerCase()}`);
   }
@@ -92,11 +92,18 @@ export async function transaction(fn, poolOverride) {
   catch (error) { await db.query("ROLLBACK"); throw error; }
   finally { db.release(); }
 }
-export async function kickWorker() {
-  const origin = process.env.PAYMENTS_BASE_URL || process.env.URL;
-  if (!origin || !process.env.INTERNAL_WORKER_SECRET) return;
+export async function kickWorker({ env=process.env, request=fetch, log=console.error }={}) {
+  const origin = env.PAYMENTS_BASE_URL || env.URL;
+  const failed=(code,status)=>{
+    log("payments_worker_dispatch_failed",{code,...(status ? {status}: {})});
+    return {accepted:false,code};
+  };
+  if (!origin || !env.INTERNAL_WORKER_SECRET) return failed("payment_worker_not_configured");
   try {
-    await fetch(new URL("/.netlify/functions/payments-worker-background", origin), {
-      method: "POST", headers: { "x-worker-secret": process.env.INTERNAL_WORKER_SECRET }, signal: AbortSignal.timeout(4000) });
-  } catch { /* durable records will be picked up by the scheduled dispatcher */ }
+    const response=await request(new URL("/.netlify/functions/payments-worker-background", origin), {
+      method: "POST", headers: { "x-worker-secret": env.INTERNAL_WORKER_SECRET }, signal: AbortSignal.timeout(4000) });
+    if (!response.ok) return failed("payment_worker_dispatch_failed",response.status);
+    // Netlify acknowledges background invocation before the worker finishes.
+    return {accepted:true};
+  } catch { return failed("payment_worker_dispatch_failed"); }
 }

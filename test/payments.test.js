@@ -119,10 +119,13 @@ test("internal worker requests require a strong exact secret",()=>{
   try {assert.equal(internalAuthorized({headers:{"x-worker-secret":"a".repeat(64)}}),true);assert.equal(internalAuthorized({headers:{}}),false);}
   finally {if(before===undefined)delete process.env.INTERNAL_WORKER_SECRET;else process.env.INTERNAL_WORKER_SECRET=before;}
 });
-test("production Mercado Pago cannot run on a devnet deployment",()=>{
-  const before=process.env.MP_ENVIRONMENT;process.env.MP_ENVIRONMENT="production";
-  try {assert.throws(()=>paymentSettings(process.env,networkConfig("devnet")),/payment_network_mismatch/);}
-  finally {if(before===undefined)delete process.env.MP_ENVIRONMENT;else process.env.MP_ENVIRONMENT=before;}
+test("production Mercado Pago supports a devnet wallet independently of its payment environment",()=>{
+  const env={MP_ENVIRONMENT:"production",MP_ACCESS_TOKEN:"test-token",MP_USER_ID:"123",
+    MP_WEBHOOK_SECRET:"test-webhook",SOLANA_RPC:"https://api.devnet.solana.com",INTERNAL_WORKER_SECRET:"x".repeat(32)};
+  const settings=paymentSettings(env,networkConfig("devnet"));
+  assert.equal(settings.environment,"production");
+  assert.equal(settings.network,"devnet");
+  assert.throws(()=>paymentSettings({...env,MP_ACCESS_TOKEN:""},networkConfig("devnet")),/missing_mp_access_token/);
 });
 
 function payoutFixture() {
