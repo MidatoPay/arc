@@ -140,6 +140,10 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       {charge.lastError && <div role="status" style={{fontSize:13,color:"#E4483D"}}>{chargeError(charge.lastError)}</div>}
       {charge.signature && <div style={{fontSize:12,overflowWrap:"anywhere"}}>Transferencia USDC: {charge.signature}</div>}
       {["creating","awaiting_payment"].includes(charge.status) && <button disabled={busy} onClick={cancel} style={button}>Cancelar cobro</button>}
+      {charge.status === "cancel_pending" && <>
+        <p style={{margin:0,color:"#7A7A85"}}>La cancelación todavía no se confirmó. Podés iniciar otro cobro y consultar esta operación desde el historial.</p>
+        <button disabled={busy} onClick={reset} style={{...button,background:"#FF5A00",color:"white"}}>Iniciar otro cobro</button>
+      </>}
       {terminal.has(charge.status) && <button onClick={reset} style={{...button,background:"#FF5A00",color:"white"}}>Nuevo cobro</button>}
     </div>}
     {history.length>0 && <><h3 style={{marginBottom:0}}>Tus cobros</h3>{history.map((c)=><button key={c.id} onClick={()=>accept(c)} style={{...button,textAlign:"left",background:"white"}}>$ {c.ars} ARS · {labels[c.status] || c.status}<div style={{fontSize:12,color:"#7A7A85"}}>{c.reference}</div></button>)}</>}
