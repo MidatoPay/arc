@@ -44,6 +44,17 @@ test("database preflight always rolls back and releases on a schema failure",asy
  assert.equal(report.checks.find(row=>row.name==="database").code,"payment_schema_or_permissions_incomplete");
  assert.deepEqual(input.events,["BEGIN READ ONLY","ROLLBACK","release"]);
 });
+test("stale quote diagnostics include only numeric age fields and the published heartbeat",async()=>{
+ const input=fixture();
+ input.adapters.fetchQuote=async()=>{
+  const error=new Error("chainlink_invalid_or_stale");
+  error.quoteAge={updatedAt:1000,ageSeconds:10800,maxAgeSeconds:120,token:"private-sentinel"};throw error;
+ };
+ const report=await runPaymentPreflight(input),quote=report.checks.find(row=>row.name==="quote");
+ assert.equal(quote.code,"chainlink_invalid_or_stale");
+ assert.deepEqual(quote.details,{updatedAt:1000,ageSeconds:10800,maxAgeSeconds:120,publishedHeartbeatSeconds:86400});
+ assert.ok(!JSON.stringify(report).includes("private-sentinel"));
+});
 test("database TLS configuration preserves unrelated URL options without disabling verification",()=>{
  const config=paymentDatabaseConfig(fixture().env),url=new URL(config.connectionString);
  assert.equal(url.searchParams.has("sslmode"),false);assert.equal(url.searchParams.get("application_name"),"payments");

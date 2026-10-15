@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { quoteCharge, decimalUnits, unitsDecimal, verifyWebhook, validateOrder, orderBody, publicCharge } from "../netlify/functions/lib/paymentCore.js";
 import { settlePayout } from "../netlify/functions/lib/paymentWorker.js";
-import { validateRound } from "../src/priceFeed.js";
+import { validateRound,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS } from "../src/priceFeed.js";
 import { networkConfig } from "../src/network.js";
 import { internalAuthorized, paymentSettings } from "../netlify/functions/lib/paymentRuntime.js";
 import { verifySeller } from "../netlify/functions/lib/mercadopago.js";
@@ -102,6 +102,18 @@ test("network mint and chain configuration distinguish mainnet from testnet",()=
   assert.equal(networkConfig("mainnet-beta").chain,"solana:mainnet");
   assert.notEqual(networkConfig("mainnet-beta").mint,networkConfig("devnet").mint);
   assert.throws(()=>networkConfig("unknown"));
+});
+
+test("daily-feed metadata does not override the configured quote age limit",()=>{
+  const now=200000,updatedAt=BigInt(now-10800),round={answer:165000000000n,decimals:8,updatedAt,
+    roundId:20n,answeredInRound:20n,description:"USD / ARS"};
+  assert.throws(()=>validateRound(round,120,now),error=>{
+    assert.equal(error.message,"chainlink_invalid_or_stale");
+    assert.deepEqual(error.quoteAge,{updatedAt:Number(updatedAt),ageSeconds:10800,maxAgeSeconds:120});return true;
+  });
+  assert.equal(validateRound(round,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS,now).updatedAt,Number(updatedAt));
+  assert.throws(()=>validateRound({...round,updatedAt:BigInt(now-86401)},86400,now),/chainlink_invalid_or_stale/);
+  assert.throws(()=>validateRound(round,undefined,now),/chainlink_max_age_not_configured/);
 });
 test("internal worker requests require a strong exact secret",()=>{
   const before=process.env.INTERNAL_WORKER_SECRET;process.env.INTERNAL_WORKER_SECRET="a".repeat(64);

@@ -33,7 +33,17 @@ Las pruebas usan PostgreSQL embebido y adaptadores de servicios. El chequeo de F
 
 Se probaron migraciones repetibles, reservas concurrentes, persistencia previa a transmitir, recuperación de órdenes y transacciones, firmas de webhook, aislamiento por usuario y comisiones. Esta entrega no incorpora nuevas migraciones.
 
-Resultado local final: **78 pruebas aprobadas** con cada configuración de red; build del frontend aprobado y **13 Functions empaquetadas** con verificación de acceso sin autenticación. La ejecución de GitHub Actions queda pendiente del push y su resultado debe revisarse en el PR.
+Resultado local actual: **80 pruebas aprobadas** con cada configuración de red; build del frontend aprobado y **13 Functions empaquetadas** con verificación de acceso sin autenticación.
+
+Se verificó mediante la API pública de GitHub que el commit `77439ba4b7f345759453e7be140af9367268892a` está subido. [La ejecución de Actions](https://github.com/MidatoPay/solanahackcba/actions/runs/38667852614) no inició sus pasos: la anotación del job indica que la cuenta está bloqueada por un problema de facturación. El job mainnet figura fallido y devnet cancelado. Esto no acredita pruebas remotas ejecutadas; se necesita resolver la facturación y volver a lanzar el workflow. No había un PR abierto de esta rama en la consulta realizada.
+
+## Vigencia de la cotización Chainlink
+
+Se contrastó el directorio enlazado por la [documentación oficial de direcciones](https://docs.chain.link/data-feeds/price-feeds/addresses): [catálogo Ethereum mainnet](https://reference-data-directory.vercel.app/feeds-mainnet.json). Para el proxy `0xBb65fa58BDb7d33e4a3D1A40a7A9BD99E746367b`, el registro `USD / ARS` publica **heartbeat de 86400 segundos**, umbral de desviación **0,5%**, ocho decimales y horario `Forex_ARS`. Consulta: 14 de octubre de 2026. Son metadatos del proveedor, no una cotización ni una garantía de actualización exacta durante cierres del mercado.
+
+`CHAINLINK_MAX_AGE_SECONDS=120` puede rechazar rondas entre actualizaciones normales de este feed. Elegir `86400` permite usar rondas de hasta 24 horas; requiere aceptar expresamente esa antigüedad como política comercial. Una exigencia de cotización más reciente conserva un límite menor y puede detener los cobros. No se modifica silenciosamente esa política: el ejemplo continúa sin valor obligatorio y no se cambiaron variables de Netlify ni archivos productivos.
+
+El diagnóstico administrativo incluye ahora la edad de una ronda rechazada, el máximo configurado y el heartbeat publicado. El dato de heartbeat es informativo; nunca reemplaza `CHAINLINK_MAX_AGE_SECONDS`, la comprobación on-chain o el bloqueo de rondas vencidas. La expiración de la orden sigue siendo de 15 minutos y es independiente de la antigüedad del feed.
 
 Advertencias existentes: chunks grandes de Privy/Vite y uso de `import.meta` al empaquetar como CJS. El servidor toma la red de `process.env`; el smoke check comprueba que el paquete carga y valida solicitudes. No se considera suficiente comprobar únicamente el frontend.
 
@@ -41,7 +51,7 @@ Advertencias existentes: chunks grandes de Privy/Vite y uso de `import.meta` al 
 
 La auditoría posterior al primer push detectó avisos heredados del lockfile. Se fijaron versiones compatibles: Axios **1.20.0**, `proxy-addr` **2.0.8**, `@fastify/busboy` **3.2.2** e `image-size` **2.0.3**. Las dos últimas también pueden aparecer como dependencias opcionales al ejecutar `npm audit --omit=dev`. El control `npm run deps:check`, incorporado al workflow, impide aprobar dependencias de ejecución con alertas altas o críticas conocidas.
 
-Resultado del lockfile revisado: auditoría de ejecución con **0 críticas, 0 altas y 21 moderadas**; auditoría completa con **0 críticas, 26 altas y 23 moderadas**. Las altas restantes corresponden al árbol de herramientas de desarrollo. `deps:check` pasó. Se restauró la instalación con `npm ci` y se repitieron las 78 pruebas en ambas configuraciones y el build. Además, se revisaron los 196 archivos generados del frontend contra siete variables privadas configuradas localmente, sin encontrar sus valores. Este escaneo no demuestra qué contenían despliegues anteriores.
+Resultado del lockfile revisado: auditoría de ejecución con **0 críticas, 0 altas y 21 moderadas**; auditoría completa con **0 críticas, 26 altas y 23 moderadas**. Las altas restantes corresponden al árbol de herramientas de desarrollo. `deps:check` pasó. Se restauró la instalación con `npm ci` y las 80 pruebas actuales pasaron en ambas configuraciones, junto con el build. Además, se revisaron los 196 archivos generados del frontend contra siete variables privadas configuradas localmente, sin encontrar sus valores. Este escaneo no demuestra qué contenían despliegues anteriores.
 
 Los avisos moderados transitivos de Privy/WalletConnect y las alertas de herramientas de desarrollo requieren seguimiento. No se usó `npm audit fix --force`: sus propuestas pueden cambiar o retroceder versiones del SDK de wallets. El SDK servidor `@privy-io/server-auth` está deprecado; su migración a `@privy-io/node` requiere una tarea de compatibilidad separada. Esta revisión no equivale a certificar que no existen vulnerabilidades.
 

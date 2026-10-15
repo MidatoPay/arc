@@ -1,8 +1,12 @@
 import { ethers } from "ethers";
 
 // Chainlink USD/ARS Reference Price Feed — Ethereum Mainnet
-// https://data.chain.link/feeds/ethereum/mainnet/ars-usd
+// https://data.chain.link/feeds/ethereum/mainnet/usd-ars
 export const CHAINLINK_USD_ARS_FEED = "0xBb65fa58BDb7d33e4a3D1A40a7A9BD99E746367b";
+// Published catalog metadata, verified 2026-10-14. Informational, never a runtime
+// freshness fallback: CHAINLINK_MAX_AGE_SECONDS remains explicitly configured.
+// https://reference-data-directory.vercel.app/feeds-mainnet.json
+export const CHAINLINK_USD_ARS_HEARTBEAT_SECONDS = 86400;
 
 // Fallback off-chain si el RPC de Ethereum no responde.
 export const FALLBACK_FX_ARS_USD = 1650;
@@ -23,7 +27,13 @@ export function validateRound({ answer, decimals, updatedAt, roundId, answeredIn
   if (!Number.isSafeInteger(maxAge) || maxAge <= 0) throw new Error("chainlink_max_age_not_configured");
   if (description !== "USD / ARS" || answer <= 0n || Number(decimals) < 0 || Number(decimals) > 18 ||
       updatedAt <= 0n || updatedAt > BigInt(now) || BigInt(now) - updatedAt > BigInt(maxAge) ||
-      answeredInRound < roundId) throw new Error("chainlink_invalid_or_stale");
+      answeredInRound < roundId) {
+    const error=new Error("chainlink_invalid_or_stale");
+    const timestamp=Number(updatedAt);
+    if(Number.isSafeInteger(timestamp) && timestamp>0 && timestamp<=now)
+      error.quoteAge={updatedAt:timestamp,ageSeconds:now-timestamp,maxAgeSeconds:maxAge};
+    throw error;
+  }
   return { rate: ethers.formatUnits(answer, decimals), updatedAt: Number(updatedAt), roundId: String(roundId) };
 }
 

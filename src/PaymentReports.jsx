@@ -60,6 +60,8 @@ export default function PaymentReports({getAccessToken,onBack}) {
         {check.missingVariables?.length>0 && <div>Faltan: {check.missingVariables.join(", ")}</div>}
         {check.variables?.length>0 && <div>Revisar: {check.variables.join(", ")}</div>}
         {check.details?.ageSeconds!=null && <div>Cotización: {check.details.ageSeconds} segundos · máximo: {check.details.maxAgeSeconds} segundos</div>}
+        {check.details?.publishedHeartbeatSeconds && <div>Heartbeat publicado del feed: {check.details.publishedHeartbeatSeconds} segundos.
+          {check.details.maxAgeSeconds<check.details.publishedHeartbeatSeconds && " El máximo configurado es menor al heartbeat; puede detener cobros entre actualizaciones normales."}</div>}
       </div>)}
     </div>}
     <form onSubmit={(e)=>{e.preventDefault();if(!exporting)setFilters({...draft});}} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>

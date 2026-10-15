@@ -4,7 +4,7 @@ import { paymentSettings,paymentQuoteSettings,paymentDatabaseConfig,getPaymentDb
 import { verifySellerAccount,verifyStore } from "./mercadopago.js";
 import { treasuryLiquidity,treasuryRpc,getTreasurySigner } from "./treasuryPayout.js";
 import { inspectPaymentDatabase } from "./paymentDatabase.js";
-import { fetchArsQuote } from "../../../src/priceFeed.js";
+import { fetchArsQuote,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS } from "../../../src/priceFeed.js";
 import { publicSecretVariables } from "../../../scripts/public-env-policy.js";
 
 const required=["MP_ACCESS_TOKEN","MP_USER_ID","MP_STORE_ID","MP_WEBHOOK_SECRET","SOLANA_RPC","ETH_RPC_URL",
@@ -15,7 +15,7 @@ function failureCode(error) {
     "42501":"payment_database_permission_denied",ENOTFOUND:"payment_database_unavailable",ECONNREFUSED:"payment_database_unavailable",
     CERT_HAS_EXPIRED:"payment_database_tls_failed",SELF_SIGNED_CERT_IN_CHAIN:"payment_database_tls_failed"};
   if(known[error?.code])return known[error.code];
-  if(["chainlink_invalid_or_stale","chainlink_max_age_not_configured"].includes(error?.message))return error.message;
+  if(["chainlink_invalid_or_stale","chainlink_max_age_not_configured","chainlink_rpc_timeout"].includes(error?.message))return error.message;
   return "dependency_check_failed";
 }
 async function deadline(fn,timeoutMs) {
@@ -45,7 +45,14 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
   function add(name,keys,fn) {
     const absent=keys.filter(key=>!env[key]?.trim());
     if(absent.length){checks.push({name,status:"blocked",code:"missing_configuration",missingVariables:absent});return;}
-    jobs.push(deadline(fn,timeoutMs).then(details=>({name,status:"pass",...(details?{details}:{})}),error=>({name,status:"fail",code:failureCode(error)})));
+    jobs.push(deadline(fn,timeoutMs).then(details=>({name,status:"pass",...(details?{details}:{})}),error=>{
+      const failure={name,status:"fail",code:failureCode(error)};
+      if(name==="quote" && error?.quoteAge) {
+        const details=Object.fromEntries(["updatedAt","ageSeconds","maxAgeSeconds"].filter(key=>Number.isSafeInteger(error.quoteAge[key]) && error.quoteAge[key]>=0).map(key=>[key,error.quoteAge[key]]));
+        failure.details={...details,publishedHeartbeatSeconds:CHAINLINK_USD_ARS_HEARTBEAT_SECONDS};
+      }
+      return failure;
+    }));
   }
   if(settings) {
     add("mercadopago_account",[],async()=>{await (adapters.verifyAccount || verifySellerAccount)(settings);});
@@ -54,7 +61,8 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
   add("quote",["ETH_RPC_URL","CHAINLINK_MAX_AGE_SECONDS"],async()=>{
     const {rpc,maxAge}=paymentQuoteSettings(env);
     const quote=await (adapters.fetchQuote || fetchArsQuote)(rpc,maxAge);
-    return {updatedAt:quote.updatedAt,ageSeconds:Math.floor(Date.now()/1000)-quote.updatedAt,maxAgeSeconds:maxAge};
+    return {updatedAt:quote.updatedAt,ageSeconds:Math.floor(Date.now()/1000)-quote.updatedAt,maxAgeSeconds:maxAge,
+      publishedHeartbeatSeconds:CHAINLINK_USD_ARS_HEARTBEAT_SECONDS};
   });
   add("solana_network",["SOLANA_RPC"],async()=>{
     if(await (adapters.rpc || treasuryRpc)("getGenesisHash",[])!==network.genesis)throw new PaymentError("solana_rpc_network_mismatch");
