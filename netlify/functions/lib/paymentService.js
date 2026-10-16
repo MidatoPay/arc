@@ -43,8 +43,6 @@ export async function createCharge(userId, input, key, adapters = {}) {
       if (c.user_id !== userId || c.environment !== settings.environment || c.network !== settings.network || c.wallet_address !== input.wallet || c.amount_cents !== quote.amountCents) throw new PaymentError("idempotency_conflict", 409);
       return c;
     }
-    const blocked = await db.query("SELECT 1 FROM payment_user_blocks WHERE user_id=$1 AND environment=$2", [userId, settings.environment]);
-    if (blocked.rowCount) throw new PaymentError("user_payment_review", 403);
     const reserves = await db.query(`SELECT COALESCE(SUM(usdc_raw),0)::text AS raw FROM charges
       WHERE reserved AND treasury_address=$1 AND network=$2`, [liquidity.owner, settings.network]);
     if (BigInt(liquidity.raw) - BigInt(reserves.rows[0].raw) < BigInt(quote.usdcRaw)) throw new PaymentError("insufficient_treasury");
@@ -139,8 +137,6 @@ export async function incident(db, charge, reason) {
   await db.query("BEGIN");
   try {
     await db.query("INSERT INTO payment_incidents(charge_id,reason) VALUES($1,$2) ON CONFLICT DO NOTHING", [charge.id,reason]);
-    await db.query(`INSERT INTO payment_user_blocks(user_id,environment,reason) VALUES($1,$2,$3)
-      ON CONFLICT(user_id,environment) DO NOTHING`, [charge.user_id,charge.environment,reason]);
     await updateCharge(db, charge.id, { status: "manual_review", last_error: reason });
     await db.query("COMMIT");
   } catch (error) { await db.query("ROLLBACK"); throw error; }

@@ -39,7 +39,7 @@ import {
   searchContacts,
   validateContact,
 } from "./contacts.js";
-import { loadTransactions, addTransaction, mergeByHash } from "./transactions.js";
+import { loadTransactions, addTransaction, mergeByHash, activityStatusKey } from "./transactions.js";
 import { parsePayUrl, slugifyAlias } from "./payQr.js";
 
 // ————————————————————————————————————————————————
@@ -3042,8 +3042,11 @@ function TxCard({ tx, compact = false }) {
   const inbound = tx.direction === "in";
   const isConvert = tx.kind === "convert_ars_usdc" || tx.kind === "convert_usdc_ars";
   const arsEq = tx.ars;
+  const pendingCharge=tx.source==="mercadopago" && tx.settled===false;
+  const statusKey=activityStatusKey(tx);
+  const signature=tx.signature || (!tx.hash?.startsWith("charge:") ? tx.hash : null);
 
-  const title = isConvert
+  const title = tx.source==="mercadopago" ? t("movs.mercadopagoCharge") : isConvert
     ? tx.kind === "convert_ars_usdc"
       ? "ARS → USDC"
       : "USDC → ARS"
@@ -3051,15 +3054,17 @@ function TxCard({ tx, compact = false }) {
       ? t("movs.charge")
       : tx.who;
 
-  const primary =
-    isConvert && tx.kind === "convert_ars_usdc"
+  const primary = pendingCharge
+    ? `${t("movs.toReceive")}: ${fmt(tx.amt, 6, locale)} USDC`
+    : isConvert && tx.kind === "convert_ars_usdc"
       ? `+${fmt(tx.amt, 2, locale)} USDC`
       : isConvert && tx.kind === "convert_usdc_ars"
         ? `−${fmt(tx.amt, 2, locale)} USDC`
         : `${inbound ? "+" : "−"}${fmt(tx.amt, 2, locale)} USDC`;
 
-  const secondary =
-    isConvert && tx.kind === "convert_ars_usdc"
+  const secondary = pendingCharge
+    ? `${fmtArs(arsEq)} ARS`
+    : isConvert && tx.kind === "convert_ars_usdc"
       ? `−${fmtArs(arsEq)} ARS`
       : isConvert && tx.kind === "convert_usdc_ars"
         ? `+${fmtArs(arsEq)} ARS`
@@ -3076,7 +3081,7 @@ function TxCard({ tx, compact = false }) {
     <Card style={{ padding: compact ? 16 : 18 }}>
       <div
         onClick={compact ? undefined : () => setExpanded((v) => !v)}
-        style={{ display: "flex", alignItems: "center", gap: 13, cursor: compact ? "default" : "pointer" }}
+        style={{ display: "flex", alignItems: "center", gap: 13, flexWrap:pendingCharge?"wrap":undefined, cursor: compact ? "default" : "pointer" }}
       >
         <div
           style={{
@@ -3093,14 +3098,15 @@ function TxCard({ tx, compact = false }) {
           {isConvert ? <IconSwap size={18} /> : inbound ? <IconArrowDown size={18} /> : <IconArrowUp size={18} />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, whiteSpace: "nowrap" }}>{title}</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, whiteSpace:tx.source==="mercadopago"?"normal":"nowrap" }}>{title}</div>
+          {statusKey && <div style={{fontSize:12,color:C.mut,marginTop:4}}>{t(`movs.${statusKey}`)}</div>}
         </div>
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div style={{ textAlign: "right", flexShrink: 0, ...(pendingCharge?{flexBasis:"100%"}:{}) }}>
           <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{primary}</div>
           <div style={{ fontSize: 13, color: C.mut, marginTop: 2 }}>{secondary}</div>
-          {!compact && (
+          {!compact && signature && (
             <a
-              href={explorerTxUrl(tx.hash)}
+              href={explorerTxUrl(signature)}
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -3125,7 +3131,9 @@ function TxCard({ tx, compact = false }) {
       </div>
 
       {!compact && expanded && (
-        <TxDetail
+        pendingCharge ? <div style={{marginTop:12,fontSize:13,color:C.mut,overflowWrap:"anywhere"}}>
+          {tx.factura}<br/>{tx.orderId}<br/>{time}
+        </div> : <TxDetail
           usdc={tx.amt}
           ars={tx.ars}
           fx={tx.fxRate}
@@ -3769,7 +3777,7 @@ function AppInner() {
   }, [user?.id, getAccessToken]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !["home","movs"].includes(tab)) return;
     let cancelled = false;
     getAccessToken()
       .then((token) =>
@@ -3784,7 +3792,7 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, address, getAccessToken]);
+  }, [user?.id, address, getAccessToken, tab]);
 
   const handleAddContact = useCallback(
     async (data) => {

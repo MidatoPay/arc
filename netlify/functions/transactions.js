@@ -8,6 +8,7 @@ import pkg from "pg";
 import { PrivyClient } from "@privy-io/server-auth";
 import { reconcileWallet } from "./lib/reconcile.js";
 import { fetchArsPerUsd } from "../../src/priceFeed.js";
+import { listUserActivity } from "./lib/paymentActivity.js";
 
 /** Validación liviana de address Solana (base58, sin traer @solana/kit al bundle de la function). */
 function isSolanaAddress(value) {
@@ -118,11 +119,7 @@ export const handler = async (event) => {
         }
       }
 
-      const { rows } = await db.query(
-        `SELECT id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at
-         FROM transactions WHERE user_id = $1 AND network = $2 ORDER BY created_at DESC`,
-        [userId, NETWORK.cluster]
-      );
+      const rows = await listUserActivity(db,userId,NETWORK.cluster);
       return json(200, { transactions: rows });
     }
 

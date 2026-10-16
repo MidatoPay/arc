@@ -77,8 +77,11 @@ El worker serializa por operación con locks PostgreSQL. Guarda la transacción 
 
 - Revisar `payment_incidents`, `payment_user_blocks`, `charges.last_error` y `payment_inbox.last_error`. No hay un panel administrativo nuevo; la revisión se realiza desde la base privada.
 - Avisos de órdenes todavía desconocidas se conservan y reintentan. Tras siete días se marcan `quarantined=true` para revisión, sin borrarlos. Notificaciones duplicadas no duplican movimientos.
-- Una devolución antes de firmar detiene la entrega y libera reserva. Si existe firma, se bloquean nuevos cobros del usuario y se abre incidencia: revisar Mercado Pago y Solana antes de resolver. Las transferencias USDC no se revierten automáticamente.
+- Una devolución antes de firmar detiene la entrega y libera reserva. Si existe firma, se abre una incidencia de esa operación: revisar Mercado Pago y Solana antes de resolver. Las transferencias USDC no se revierten automáticamente.
 - Nunca borrar una firma o liberar una reserva ambigua para forzar un reintento. La resolución manual debe confirmar primero si hubo entrega. Una devolución posterior a una entrega conserva su historial; se gestiona fuera del circuito automático.
+- Una revisión afecta al cobro, sin bloquear nuevos cobros del usuario. La intención y su reserva USDC se conservan en el historial; cada cobro nuevo usa otra clave de idempotencia. La cuenta no queda bloqueada por incidencias de otras operaciones.
+- Activity combina los movimientos confirmados con las intenciones de cobro pendientes o en revisión. Un pago ARS acreditado sin entrega Solana figura como entrega USDC pendiente/en revisión, sin presentarlo como saldo recibido ni inventar una firma. Al confirmarse la entrega, la misma operación aparece una sola vez.
+- El worker vuelve a observar firmas guardadas en revisión por cambio de configuración o vencimiento. Si la orden sigue acreditada y la firma resulta `finalized`, registra una sola entrega y resuelve la incidencia técnica, incluso si la tesorería ya cambió. Esta recuperación no firma ni transmite otra transferencia.
 - Para pausar, establecer `PAYMENTS_ENABLED=false` y redesplegar. Seguir recibiendo avisos para conciliar y cancelar órdenes pendientes. No volver a desplegar código antiguo que exponga `/treasury` en mainnet.
 - Las credenciales MP no se rotan a otro vendedor con órdenes pendientes; las operaciones conservan vendedor/caja/tesorería y bloquean procesamiento ante cambios incompatibles.
 

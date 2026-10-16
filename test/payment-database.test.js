@@ -7,6 +7,7 @@ import { createCharge, getChargeAttempt, ensureOrder, incident, releaseReservati
 import { inspectPaymentDatabase } from "../netlify/functions/lib/paymentDatabase.js";
 import { finalizeDelivery, reconcileCharge } from "../netlify/functions/lib/paymentWorker.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
+import { listUserActivity } from "../netlify/functions/lib/paymentActivity.js";
 
 test("PostgreSQL migration, charge creation, reservations and single ledger effect", async (t) => {
   const engine=new PGlite();await engine.waitReady;
@@ -140,6 +141,37 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     assert.equal(settlements,1);
     assert.equal((await query("SELECT signature FROM charges WHERE id=$1",[c.id])).rows[0].signature,null);
   });
+  await t.test("a configuration review does not block a new charge and finalized payout recovers after treasury rotation",async()=>{
+    c.signature="signature";c.payout_memo="memo";
+    await query("UPDATE charges SET signature=$2,payout_memo=$3 WHERE id=$1",[c.id,c.signature,c.payout_memo]);
+    await incident({query},c,"charge_configuration_changed");
+    assert.equal((await query("SELECT * FROM payment_user_blocks WHERE user_id='u1'")).rowCount,0);
+    // Older deployments left this account-wide block behind; it must not prevent a new operation.
+    await query("INSERT INTO payment_user_blocks(user_id,environment,reason) VALUES('u1','production','charge_configuration_changed')");
+    const next=await createCharge("u1",input,randomUUID(),adapters);
+    assert.notEqual(next.id,c.id);
+    await query("DELETE FROM charges WHERE id=$1",[next.id]);
+    const pendingActivity=await listUserActivity({query},"u1","mainnet-beta");
+    const pending=pendingActivity.find(row=>row.charge_id===c.id);
+    assert.equal(pending.status,"manual_review");assert.equal(pending.settled,false);
+    assert.equal((await listUserActivity({query},"u2","mainnet-beta")).length,0);
+    c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+    const provider={id:c.order_id,user_id:c.seller_id,type:"qr",currency:"ARS",external_reference:c.external_reference,
+      total_amount:"10000.00",total_paid_amount:"10000.00",status:"processed",status_detail:"accredited",
+      config:{qr:{external_pos_id:c.pos_id}},transactions:{payments:[{id:"PAY1",amount:"10000.00",
+        paid_amount:"10000.00",status:"processed",status_detail:"accredited"}]}};
+    await reconcileCharge({query},c,settings,{request:async()=>provider,
+      getTreasuryAddress:async()=>assert.fail("observing a saved signature must not depend on the rotated treasury"),
+      settlePayout:async(_db,charge,options)=>{
+        assert.equal(charge.signature,"signature");assert.equal(options.allowBroadcast,false);
+        return {finalized:true,block:42};
+      }});
+    assert.equal((await query("SELECT status FROM charges WHERE id=$1",[c.id])).rows[0].status,"delivered");
+    assert.equal((await query("SELECT * FROM payment_user_blocks WHERE user_id='u1'")).rowCount,0);
+    assert.equal((await query("SELECT * FROM payment_incidents WHERE charge_id=$1 AND resolved_at IS NULL",[c.id])).rowCount,0);
+    const deliveredActivity=(await listUserActivity({query},"u1","mainnet-beta")).filter(row=>row.charge_id===c.id);
+    assert.equal(deliveredActivity.length,1);assert.equal(deliveredActivity[0].settled,true);
+  });
   await t.test("finalization and duplicate finalization insert one authoritative ledger movement",async()=>{
     c.signature="signature";c.payout_memo="memo";
     await query("UPDATE charges SET signature=$2,payout_memo=$3 WHERE id=$1",[c.id,c.signature,c.payout_memo]);
@@ -149,10 +181,15 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     assert.equal(entries.rowCount,1);assert.equal(String(entries.rows[0].fee_cents),"5000");
     const row=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];assert.equal(row.status,"delivered");assert.equal(row.reserved,false);
   });
-  await t.test("refund after delivery creates one incident and blocks future charges",async()=>{
+  await t.test("refund after delivery stays under review without blocking independent new charges",async()=>{
     await incident({query},c,"mercadopago_refund_after_payout");await incident({query},c,"mercadopago_refund_after_payout");
-    assert.equal((await query("SELECT * FROM payment_incidents WHERE charge_id=$1",[c.id])).rowCount,1);
-    await assert.rejects(()=>createCharge("u1",input,randomUUID(),adapters),/user_payment_review/);
+    assert.equal((await query("SELECT * FROM payment_incidents WHERE charge_id=$1 AND resolved_at IS NULL",[c.id])).rowCount,1);
+    await query("INSERT INTO payment_user_blocks(user_id,environment,reason) VALUES('u1','production','mercadopago_refund_after_payout')");
+    const next=await createCharge("u1",input,randomUUID(),adapters);
+    const activity=await listUserActivity({query},"u1","mainnet-beta");
+    const unsigned=activity.find(row=>row.charge_id===next.id);
+    assert.equal(unsigned.hash,`charge:${next.id}`);assert.equal(unsigned.signature,null);assert.equal(unsigned.settled,false);
+    await query("DELETE FROM charges WHERE id=$1",[next.id]);
   });
   await t.test("confirmed expiration releases the reservation without a ledger credit",async()=>{
     const pending=await createCharge("u4",input,randomUUID(),adapters);

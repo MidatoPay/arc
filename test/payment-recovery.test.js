@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareChargeAttempt, bindChargeAttempt, chargeError } from "../src/charges.js";
+import { prepareChargeAttempt, bindChargeAttempt, chargeError, canStartNewCharge } from "../src/charges.js";
 import { errorResponse, paymentQuoteSettings } from "../netlify/functions/lib/paymentRuntime.js";
 
 test("history cannot bind an unrelated operation to an unresolved payment attempt",()=>{
@@ -20,6 +20,16 @@ test("editing an unconfirmed amount retains the idempotency key and original wal
 test("a persisted operation cannot change its amount during a retry",()=>{
   const previous={key:"same-key",id:"persisted",ars:"100",wallet:"original"};
   assert.equal(prepareChargeAttempt(previous,"250","different"),previous);
+});
+
+test("reviewed charges allow a new operation while in-flight payment attempts retain their identity",()=>{
+  assert.equal(canStartNewCharge({status:"manual_review"}),true);
+  assert.equal(canStartNewCharge({status:"delivery_pending"}),false);
+  assert.equal(canStartNewCharge({status:"awaiting_payment"}),false);
+  const reviewed={key:"old-key",id:"reviewed",ars:"21",wallet:"original"};
+  const next=prepareChargeAttempt(canStartNewCharge({status:"manual_review"})?null:reviewed,"100","original");
+  assert.notEqual(next.key,reviewed.key);assert.equal(next.ars,"100");
+  assert.equal(prepareChargeAttempt(reviewed,"100","original"),reviewed);
 });
 test("database diagnostics expose safe codes and never raw credentials or SQL",()=>{
   const original=console.error,logs=[];console.error=(...args)=>logs.push(args);

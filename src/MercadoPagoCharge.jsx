@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
-import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt, bindChargeAttempt } from "./charges.js";
+import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt, bindChargeAttempt, canStartNewCharge } from "./charges.js";
 
 const terminal = new Set(["delivered","expired","canceled","refunded"]);
 const labels = { creating:"Creando QR en Mercado Pago…", awaiting_payment:"Esperando pago",
@@ -14,6 +14,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
   const [ars,setArs] = useState(""), [charge,setCharge] = useState(null), [qr,setQr] = useState("");
   const [busy,setBusy] = useState(false), [error,setError] = useState(""), [history,setHistory] = useState([]);
   const [nextCursor,setNextCursor]=useState(null),[loadingHistory,setLoadingHistory]=useState(false);
+  const [historyReady,setHistoryReady]=useState(false);
   const attempt = useRef(null), notified = useRef(new Set()), mounted = useRef(true), starting = useRef(false);
   const deliveredCallback = useRef(onDelivered); deliveredCallback.current = onDelivered;
   const request = useCallback(async (path,options) => chargeApi(path,await getAccessToken(),options),[getAccessToken]);
@@ -24,6 +25,9 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     if (key && attempt.current?.key===key) {
       attempt.current = bindChargeAttempt(attempt.current,current,key);
       saveChargeAttempt(userId,attempt.current);
+    }
+    if (canStartNewCharge(current) && attempt.current?.id===current.id) {
+      clearChargeAttempt(userId);attempt.current=null;
     }
     if (current.status === "delivered" && !notified.current.has(current.id)) {
       notified.current.add(current.id);
@@ -58,6 +62,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
   useEffect(() => {
     mounted.current=true;
     let canceled=false;
+    setHistoryReady(false);
     attempt.current=readChargeAttempt(userId);
     if (attempt.current) setArs(attempt.current.ars);
     request("/charges").then(({charges,nextCursor:after}) => {
@@ -65,23 +70,26 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       setHistory(charges);
       setNextCursor(after);
       const saved=attempt.current;
-      const current=charges.find((c) => c.id === saved?.id) || (!saved && charges.find((c) => !terminal.has(c.status)));
+      const current=charges.find((c) => c.id === saved?.id) || (!saved && charges.find((c) => !canStartNewCharge(c)));
       if (current) accept(current);
       else if (saved) {
         // Opening the screen only recovers an existing operation; it never starts a payment.
-        request(`/charges?attempt=${encodeURIComponent(saved.key)}`).then((result)=>{
+        return request(`/charges?attempt=${encodeURIComponent(saved.key)}`).then((result)=>{
           if (!canceled && result.charge) accept(result.charge,saved.key);
         }).catch((e)=>{ if (!canceled) setError(chargeError(e.code)); });
       }
-    }).catch((e) => { if (!canceled) setError(chargeError(e.code)); });
+    }).catch((e) => { if (!canceled) setError(chargeError(e.code)); })
+      .finally(()=>{if(!canceled)setHistoryReady(true);});
     return () => { canceled=true; mounted.current=false; };
   },[userId,request,accept,start]);
 
   useEffect(() => {
-    if (!chargeRequest) return;
-    if (!charge && !attempt.current && !starting.current) { setArs(String(chargeRequest.ars)); start(chargeRequest.ars); }
+    if (!chargeRequest || !historyReady) return;
+    if ((!charge || canStartNewCharge(charge)) && !attempt.current && !starting.current) {
+      setCharge(null);setArs(String(chargeRequest.ars));start(chargeRequest.ars);
+    }
     onChargeRequestConsumed();
-  },[chargeRequest,charge,start,onChargeRequestConsumed]);
+  },[chargeRequest,charge,start,onChargeRequestConsumed,historyReady]);
 
   useEffect(() => {
     let canceled=false;
@@ -140,8 +148,8 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       {charge.lastError && <div role="status" style={{fontSize:13,color:"#E4483D"}}>{chargeError(charge.lastError)}</div>}
       {charge.signature && <div style={{fontSize:12,overflowWrap:"anywhere"}}>Transferencia USDC: {charge.signature}</div>}
       {["creating","awaiting_payment"].includes(charge.status) && <button disabled={busy} onClick={cancel} style={button}>Cancelar cobro</button>}
-      {charge.status === "cancel_pending" && <>
-        <p style={{margin:0,color:"#7A7A85"}}>La cancelación todavía no se confirmó. Podés iniciar otro cobro y consultar esta operación desde el historial.</p>
+      {["cancel_pending","manual_review"].includes(charge.status) && <>
+        <p style={{margin:0,color:"#7A7A85"}}>{charge.status === "cancel_pending" ? "La cancelación todavía no se confirmó." : "Este cobro sigue en revisión."} Podés iniciar otro cobro y consultar esta operación desde el historial.</p>
         <button disabled={busy} onClick={reset} style={{...button,background:"#FF5A00",color:"white"}}>Iniciar otro cobro</button>
       </>}
       {terminal.has(charge.status) && <button onClick={reset} style={{...button,background:"#FF5A00",color:"white"}}>Nuevo cobro</button>}

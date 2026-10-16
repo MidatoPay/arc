@@ -7,6 +7,9 @@ export function saveChargeAttempt(userId, attempt) {
   localStorage.setItem(storageKey(userId), JSON.stringify(attempt));
 }
 export function clearChargeAttempt(userId) { localStorage.removeItem(storageKey(userId)); }
+export function canStartNewCharge(charge) {
+  return ["delivered","expired","canceled","refunded","manual_review","cancel_pending"].includes(charge?.status);
+}
 export function prepareChargeAttempt(previous, value, wallet) {
   if (previous?.id) return previous;
   return { key:previous?.key || crypto.randomUUID(), ars:String(value).replace(",","."), wallet:previous?.wallet || wallet };
@@ -54,6 +57,9 @@ export async function chargeApi(path, token, options = {}) {
   return body;
 }
 export const CHARGE_ERRORS = {
+  charge_configuration_changed:"La configuración de este cobro cambió. Estamos conciliando la operación; podés iniciar otro cobro.",
+  solana_expired_requires_review:"La entrega de USDC requiere verificar su confirmación. Podés iniciar otro cobro.",
+  solana_transaction_failed:"La transferencia de USDC falló y este cobro requiere revisión. Podés iniciar otro cobro.",
   invalid_treasury_secret_key:"TREASURY_SECRET_KEY no contiene una clave Solana válida. Revisá la variable privada de Functions.",
   solana_rpc_network_mismatch:"SOLANA_RPC apunta a una red distinta de VITE_SOLANA_CLUSTER. Revisá la configuración de Functions.",
   solana_rpc_unavailable:"El RPC de Solana no respondió correctamente. Conservamos el cobro para reintentar.",
