@@ -1,5 +1,5 @@
 const columns={
-  charges:["id","user_id","environment","network","seller_id","pos_id","amount_cents","fee_cents","usdc_raw","idempotency_key","order_body","order_id","signature","signed_wire","status"],
+  charges:["id","user_id","environment","network","seller_id","pos_id","amount_cents","fee_cents","usdc_raw","idempotency_key","order_body","order_id","signature","signed_wire","status","paid_at"],
   payment_inbox:["id","environment","event_key","order_id","payload","processed_at","quarantined"],
   payment_incidents:["id","charge_id","reason","resolved_at"],
   payment_user_blocks:["user_id","environment","reason"],

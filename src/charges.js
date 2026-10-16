@@ -1,4 +1,5 @@
 import { SOLANA } from "./chain.js";
+export { canStartNewCharge } from "./chargeStatus.js";
 const storageKey = (userId) => `mp_charge_${SOLANA.cluster}_${userId}`;
 export function readChargeAttempt(userId) {
   try { return JSON.parse(localStorage.getItem(storageKey(userId))); } catch { return null; }
@@ -7,9 +8,6 @@ export function saveChargeAttempt(userId, attempt) {
   localStorage.setItem(storageKey(userId), JSON.stringify(attempt));
 }
 export function clearChargeAttempt(userId) { localStorage.removeItem(storageKey(userId)); }
-export function canStartNewCharge(charge) {
-  return ["delivered","expired","canceled","refunded","manual_review","cancel_pending"].includes(charge?.status);
-}
 export function prepareChargeAttempt(previous, value, wallet) {
   if (previous?.id) return previous;
   return { key:previous?.key || crypto.randomUUID(), ars:String(value).replace(",","."), wallet:previous?.wallet || wallet };

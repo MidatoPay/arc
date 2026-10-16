@@ -1,4 +1,5 @@
 import { SOLANA } from "./chain.js";
+import { deliveryPhase, paymentReceived } from "./chargeStatus.js";
 // Cliente HTTP del historial de transacciones, con cache stale-while-revalidate
 // en localStorage. Mismo patrón que src/contacts.js. Ver
 // docs/superpowers/specs/2026-08-07-transactions-history-design.md § 1.4.
@@ -59,6 +60,8 @@ function fromWire(row) {
     fee: row.fee !== null && row.fee !== undefined ? Number(row.fee) : null,
     memo: row.memo,
     createdAt: row.created_at,
+    paidAt: row.paid_at || null,
+    lastError: row.last_error || null,
     chargeId: row.charge_id || null,
     orderId: row.order_id || null,
     source: row.source || "wallet",
@@ -101,10 +104,11 @@ export function mergeByHash(serverList, localList) {
   return [...onlyLocal, ...serverList];
 }
 
-export function activityStatusKey(tx) {
+export function activityStatusKey(tx, now) {
   if(tx.source!=="mercadopago")return null;
-  const paid=tx.providerStatus==="processed" && tx.providerDetail==="accredited";
+  const paid=paymentReceived(tx);
   if(tx.status==="manual_review")return paid?"chargePaidReview":"chargeReview";
+  if(paid)return ({pending:"chargePaidPending",confirmed:"chargeConfirmed",delayed:"chargePaidDelayed",delivered:"chargeDelivered"})[deliveryPhase(tx,now)];
   return ({creating:"chargeCreating",awaiting_payment:"chargeAwaiting",paid:"chargePaidPending",
     delivery_pending:"chargePaidPending",broadcasting:"chargePaidPending",confirmed:"chargeConfirmed",delivered:"chargeDelivered",
     canceled:"chargeCanceled",expired:"chargeExpired",cancel_pending:"chargeCancelPending",refunded:"chargeRefunded"})[tx.status] || "chargeReview";
@@ -114,6 +118,7 @@ export function activityRefreshInterval(transactions) {
   const pending=transactions.filter(tx=>tx.source==="mercadopago" && !tx.settled);
   if(pending.some(tx=>["paid","delivery_pending","broadcasting","confirmed"].includes(tx.status)))return 2500;
   if(pending.some(tx=>["creating","awaiting_payment","cancel_pending"].includes(tx.status)))return 5000;
+  if(pending.some(tx=>tx.status==="manual_review" && paymentReceived(tx)))return 15000;
   return null;
 }
 

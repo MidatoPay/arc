@@ -6,6 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { createCharge, getChargeAttempt, ensureOrder, incident, releaseReservation } from "../netlify/functions/lib/paymentService.js";
 import { inspectPaymentDatabase } from "../netlify/functions/lib/paymentDatabase.js";
 import { finalizeDelivery, reconcileCharge, settlePayout } from "../netlify/functions/lib/paymentWorker.js";
+import { publicCharge } from "../netlify/functions/lib/paymentCore.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
 import { listUserActivity } from "../netlify/functions/lib/paymentActivity.js";
 
@@ -20,7 +21,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await engine.exec(migration);await engine.exec(migration);
   const commissionMigration=await readFile(new URL("../db/migrations/20261013_commission_history.sql",import.meta.url),"utf8");
   await engine.exec(commissionMigration);await engine.exec(commissionMigration);
-  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql"])
+  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql","20261016_charge_paid_at.sql"])
     await engine.exec(await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8"));
   const query=async(sql,params=[])=>{
     const result=await engine.query(sql,params);
@@ -108,6 +109,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
       received.push({path,options});return options?.method==="POST" ? {...provider,type_response:{qr_data:"EXACT-QR"}}:provider;
     }});
     assert.equal(result.qr_data,"EXACT-QR");assert.equal(result.status,"awaiting_payment");
+    assert.equal(result.paid_at,null);
     assert.equal(received[0].options.headers["X-Idempotency-Key"],c.idempotency_key);
     c=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
   });
@@ -137,9 +139,37 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     let settlements=0;
     await reconcileCharge({query},c,settings,{request:async()=>provider,
       getTreasuryAddress:async()=>wallet,liquidity:async()=>({raw:c.usdc_raw,solLamports:"0"}),
-      followPayout:async()=>{settlements++;return {pending:true};}});
+      followPayout:async()=>{
+        const row=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+        assert.ok(row.paid_at);assert.equal(row.status,"paid");
+        assert.equal((await query("SELECT * FROM transactions WHERE charge_id=$1",[c.id])).rowCount,0);
+        const activity=(await listUserActivity({query},"u1","mainnet-beta")).find(row=>row.charge_id===c.id);
+        assert.ok(activity.paid_at);assert.equal(activity.settled,false);
+        settlements++;return {pending:true};
+      }});
     assert.equal(settlements,1);
     assert.equal((await query("SELECT signature FROM charges WHERE id=$1",[c.id])).rows[0].signature,null);
+    const first=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];
+    assert.equal(new Date(publicCharge(first).paidAt).getTime(),new Date(first.paid_at).getTime());
+    await reconcileCharge({query},first,settings,{request:async()=>provider,
+      getTreasuryAddress:async()=>wallet,liquidity:async()=>({raw:c.usdc_raw}),followPayout:async()=>({pending:true})});
+    const second=(await query("SELECT paid_at FROM charges WHERE id=$1",[c.id])).rows[0];
+    assert.equal(new Date(second.paid_at).getTime(),new Date(first.paid_at).getTime());
+    const paidMigration=await readFile(new URL("../db/migrations/20261016_charge_paid_at.sql",import.meta.url),"utf8");
+    await engine.exec(paidMigration);await engine.exec(paidMigration);
+    assert.equal(new Date((await query("SELECT paid_at FROM charges WHERE id=$1",[c.id])).rows[0].paid_at).getTime(),new Date(first.paid_at).getTime());
+  });
+  await t.test("an invalid provider payment cannot acquire a received timestamp or release the UI's pending charge",async()=>{
+    const unpaid=await createCharge("invalid-payment",input,randomUUID(),adapters);
+    await query("UPDATE charges SET order_id='ORDINVALIDPAY',status='awaiting_payment',qr_data='qr' WHERE id=$1",[unpaid.id]);
+    const current=(await query("SELECT * FROM charges WHERE id=$1",[unpaid.id])).rows[0];
+    const provider={id:current.order_id,user_id:current.seller_id,type:"qr",currency:"ARS",external_reference:current.external_reference,
+      total_amount:"10000.00",total_paid_amount:"10000.00",status:"processed",status_detail:"accredited",
+      config:{qr:{external_pos_id:current.pos_id}},transactions:{payments:[{id:"PAYINVALID",amount:"10000.00",paid_amount:"1.00",status:"processed",status_detail:"accredited"}]}};
+    await assert.rejects(()=>reconcileCharge({query},current,settings,{request:async()=>provider}),{code:"payment_mismatch"});
+    const row=(await query("SELECT * FROM charges WHERE id=$1",[current.id])).rows[0];
+    assert.equal(row.paid_at,null);assert.equal(row.status,"awaiting_payment");assert.equal(row.provider_status,null);
+    await query("DELETE FROM charges WHERE id=$1",[current.id]);
   });
   await t.test("a configuration review does not block a new charge and finalized payout recovers after treasury rotation",async()=>{
     c.signature="signature";c.payout_memo="memo";

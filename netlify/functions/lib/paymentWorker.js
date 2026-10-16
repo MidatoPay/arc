@@ -120,8 +120,11 @@ export async function reconcileCharge(db, charge, settings, adapters = {}) {
     order = await request(`/v1/orders/${encodeURIComponent(charge.order_id)}`,settings);
     result = validateOrder(order,charge);
   }
-  await updateCharge(db,charge.id,{provider_status:order.status,provider_detail:order.status_detail,
-    payment_id:result.paymentId,reconciled_at:new Date(),next_attempt_at:new Date(Date.now()+30000)});
+  const providerFields={provider_status:order.status,provider_detail:order.status_detail,
+    payment_id:result.paymentId,reconciled_at:new Date(),next_attempt_at:new Date(Date.now()+30000)};
+  if(result.paid && !result.refunded)providerFields.paid_at=charge.paid_at || new Date();
+  await updateCharge(db,charge.id,providerFields);
+  Object.assign(charge,providerFields);
   if (result.refunded) {
     if (charge.signature) {
       // Even an ambiguous broadcast may have executed. Keep its reservation until manual reconciliation.

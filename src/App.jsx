@@ -7,6 +7,7 @@ import PaymentReports from "./PaymentReports.jsx";
 import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
 import { reportsApi } from "./paymentReports.js";
 import { chargeApi } from "./charges.js";
+import { paymentReceived, deliveryNoticeKey } from "./chargeStatus.js";
 import jsQR from "jsqr";
 import { SOLANA, explorerAddressUrl, explorerTxUrl } from "./chain.js";
 import {
@@ -1081,6 +1082,8 @@ function Home({
   // Available y Funds (USDC) en ARS: siempre USDC × cotización Chainlink (ARS por 1 USDC).
   const usdcInArs = balance === null ? null : usdcBalanceToArs(balance, fxRate);
   const availableArs = (arsBalance || 0) + (usdcInArs || 0);
+  const pendingUsdc=txs.filter(tx=>tx.source==="mercadopago" && tx.settled===false && paymentReceived(tx))
+    .reduce((sum,tx)=>sum+Number(tx.amt || 0),0);
   const initial = (nombre || "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
@@ -1162,6 +1165,7 @@ function Home({
             <div style={{ fontSize: 14, color: C.mut }}>{balance === null ? "" : `${fmt(balance, 2, locale)} USDC`}</div>
           </div>
         </div>
+        {pendingUsdc>0 && <div style={{marginTop:12,fontSize:13,color:C.mut}}>{t("movs.pendingUsdc")}: {oculto?"••••••":fmt(pendingUsdc,6,locale)} USDC</div>}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
           <img src="/monedas/ars.png" alt="ARS" width={38} height={38} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>ARS</div>
@@ -3043,6 +3047,8 @@ function TxCard({ tx, compact = false }) {
   const isConvert = tx.kind === "convert_ars_usdc" || tx.kind === "convert_usdc_ars";
   const arsEq = tx.ars;
   const pendingCharge=tx.source==="mercadopago" && tx.settled===false;
+  const receivedCharge=tx.source==="mercadopago" && paymentReceived(tx);
+  const noticeKey=tx.source==="mercadopago"?deliveryNoticeKey(tx):null;
   const statusKey=activityStatusKey(tx);
   const signature=tx.signature || (!tx.hash?.startsWith("charge:") ? tx.hash : null);
 
@@ -3054,7 +3060,9 @@ function TxCard({ tx, compact = false }) {
       ? t("movs.charge")
       : tx.who;
 
-  const primary = pendingCharge
+  const primary = receivedCharge
+    ? `+${fmtArs(arsEq)} ARS`
+    : pendingCharge
     ? `${t("movs.toReceive")}: ${fmt(tx.amt, 6, locale)} USDC`
     : isConvert && tx.kind === "convert_ars_usdc"
       ? `+${fmt(tx.amt, 2, locale)} USDC`
@@ -3062,7 +3070,9 @@ function TxCard({ tx, compact = false }) {
         ? `−${fmt(tx.amt, 2, locale)} USDC`
         : `${inbound ? "+" : "−"}${fmt(tx.amt, 2, locale)} USDC`;
 
-  const secondary = pendingCharge
+  const secondary = receivedCharge
+    ? `${t(pendingCharge?"movs.pendingUsdc":"movs.creditedUsdc")}: ${fmt(tx.amt,6,locale)} USDC`
+    : pendingCharge
     ? `${fmtArs(arsEq)} ARS`
     : isConvert && tx.kind === "convert_ars_usdc"
       ? `−${fmtArs(arsEq)} ARS`
@@ -3081,7 +3091,7 @@ function TxCard({ tx, compact = false }) {
     <Card style={{ padding: compact ? 16 : 18 }}>
       <div
         onClick={compact ? undefined : () => setExpanded((v) => !v)}
-        style={{ display: "flex", alignItems: "center", gap: 13, flexWrap:pendingCharge?"wrap":undefined, cursor: compact ? "default" : "pointer" }}
+        style={{ display: "flex", alignItems: "center", gap: 13, flexWrap:tx.source==="mercadopago"?"wrap":undefined, cursor: compact ? "default" : "pointer" }}
       >
         <div
           style={{
@@ -3100,8 +3110,9 @@ function TxCard({ tx, compact = false }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, whiteSpace:tx.source==="mercadopago"?"normal":"nowrap" }}>{title}</div>
           {statusKey && <div style={{fontSize:12,color:C.mut,marginTop:4}}>{t(`movs.${statusKey}`)}</div>}
+          {noticeKey && <div style={{fontSize:12,color:C.mut,marginTop:6,lineHeight:1.5}}>{t(`movs.${noticeKey}`)}</div>}
         </div>
-        <div style={{ textAlign: "right", flexShrink: 0, ...(pendingCharge?{flexBasis:"100%"}:{}) }}>
+        <div style={{ textAlign: "right", flexShrink: 0, ...(tx.source==="mercadopago"?{flexBasis:"100%"}:{}) }}>
           <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{primary}</div>
           <div style={{ fontSize: 13, color: C.mut, marginTop: 2 }}>{secondary}</div>
           {!compact && signature && (
@@ -3875,6 +3886,14 @@ function AppInner() {
     return () => clearInterval(id);
   }, [address, refreshBalances]);
 
+  const pendingBalanceUpdates=useRef({userId:null,ids:new Set()});
+  useEffect(()=>{
+    const previous=pendingBalanceUpdates.current;
+    const finalized=previous.userId===user?.id && txs.some(tx=>tx.source==="mercadopago" && tx.settled===true && previous.ids.has(tx.chargeId));
+    pendingBalanceUpdates.current={userId:user?.id,ids:new Set(txs.filter(tx=>tx.source==="mercadopago" && tx.settled===false).map(tx=>tx.chargeId))};
+    if(finalized)refreshBalances();
+  },[txs,user?.id,refreshBalances]);
+
   const applyArsDelta = useCallback(
     (delta) => { 
       setArsBalance((prev) => {
@@ -3960,16 +3979,16 @@ function AppInner() {
     [wallet, address, signAndSendTransaction, refreshBalances, pushTx, locale, fxRate, t, walletDebugSignature]
   );
 
-  const handleChargeDelivered = useCallback(async (charge) => {
+  const handleChargePaymentReceived = useCallback(async () => {
     const token = await getAccessToken();
-    const fresh = await loadTransactions(user.id, token, address);
-    setTxs(fresh);
+    const fresh = await loadTransactions(user.id, token);
+    setTxs(previous=>mergeByHash(fresh,previous));
+  }, [getAccessToken, user?.id]);
+
+  const handleChargeDelivered = useCallback(async () => {
+    await handleChargePaymentReceived();
     await refreshBalances();
-    setReceipt({ kind: "charge_mercadopago", direction: "in", hash: charge.signature,
-      factura: charge.reference, usdc: Number(charge.usdc), ars: Number(charge.ars),
-      feeArs: charge.feeArs, orderId: charge.orderId, fxRate: Number(charge.fxRate),
-      ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) });
-  }, [getAccessToken, user?.id, address, refreshBalances, locale]);
+  }, [handleChargePaymentReceived, refreshBalances]);
 
   const handleConvertArsUsdc = useCallback(
     async (arsAmount) => {
@@ -4237,11 +4256,12 @@ function AppInner() {
           userId={user.id}
           getAccessToken={getAccessToken}
           onDelivered={handleChargeDelivered}
+          onPaymentReceived={handleChargePaymentReceived}
           chargeRequest={pendingCharge}
           onChargeRequestConsumed={() => setPendingCharge(null)}
         />
       )}
-      {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>Las conversiones independientes todavía no están disponibles. Cobrá con Mercado Pago para recibir USDC.</Card>}
+      {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>Las conversiones independientes todavía no están disponibles. Cobrá con MIDATOPAY para recibir USDC.</Card>}
       {tab === "convert" && SOLANA.cluster === "devnet" && (
         <Convert
           address={address}

@@ -89,7 +89,7 @@ export async function getAtaAddress(owner) {
 export async function getUsdcBalance(owner) {
   if (!owner || !isAddress(owner)) return null;
   const ata = await getAtaAddress(owner);
-  const account = await withRetry(() => fetchMaybeToken(rpc, ata));
+  const account = await withRetry(() => fetchMaybeToken(rpc, ata, {commitment:"finalized"}));
   if (!account.exists) return 0;
   return rawToUsdc(account.data.amount);
 }

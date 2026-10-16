@@ -78,6 +78,6 @@ export function publicCharge(c) {
     ars: unitsDecimal(c.amount_cents, 2), feeArs: unitsDecimal(c.fee_cents, 2), feeBps: c.fee_bps,
     usdc: unitsDecimal(c.usdc_raw, 6), fxRate: c.fx_rate, qrData: c.qr_data,
     orderId: c.order_id, paymentId: c.payment_id, signature: c.signature,
-    reference: c.external_reference, createdAt: c.created_at, expiresAt: c.expires_at,
+    reference: c.external_reference, createdAt: c.created_at, paidAt: c.paid_at, expiresAt: c.expires_at,
     lastError: c.last_error, network: c.network };
 }
