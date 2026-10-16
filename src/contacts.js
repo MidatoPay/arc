@@ -36,7 +36,7 @@ function toWire({ name, alias, addr, note }) {
 }
 
 function fromWire(row) {
-  return { id: row.id, name: row.name, alias: row.alias, addr: row.address, note: row.note || "" };
+  return { id: row.id, name: row.name, alias: row.alias, addr: row.address, note: row.note || "", solanaCompatible:isAddress(row.address || '') };
 }
 
 async function api(path, token, options = {}) {
@@ -60,10 +60,9 @@ async function api(path, token, options = {}) {
 /**
  * Sirve el cache al instante (vía onCache, si hay algo cacheado) y en
  * paralelo pide la lista real a /contacts; la respuesta del server pisa el
- * cache y es lo que resuelve la promise. Si el request falla (red/DB caída),
- * se resuelve con lo que había en cache en vez de rechazar, para no romper
- * la pantalla — el server sigue siendo la fuente de verdad la próxima vez
- * que cargue bien.
+ * cache y es lo que resuelve la promise. Si el request falla, el cache ya
+ * entregado puede seguir visible, pero la promise rechaza para que la UI
+ * distinga una agenda vacía de una falla de sincronización.
  */
 export function loadContacts(userId, token, onCache) {
   const cached = readCache(userId);
@@ -74,8 +73,7 @@ export function loadContacts(userId, token, onCache) {
       const list = contacts.map(fromWire);
       writeCache(userId, list);
       return list;
-    })
-    .catch(() => cached);
+    });
 }
 
 export async function addContact(userId, token, list, data) {
@@ -99,11 +97,24 @@ export async function removeContact(userId, token, list, id) {
   return next;
 }
 
-/** Resuelve un alias hablado a un contacto: match exacto primero, luego "contiene". */
+/** Exact, unique aliases only. Never interpret part of a wallet address as an alias. */
 export function findByAlias(list, alias) {
-  const a = (alias || "").toLowerCase();
-  if (!a) return null;
-  return list.find((c) => c.alias === a) || list.find((c) => a.includes(c.alias)) || null;
+  const matches=recipientCandidates(list,alias);
+  return matches.length===1?matches[0]:null;
+}
+
+export function recipientCandidates(list,alias) {
+  const a = (alias || "").trim().replace(/^@/,'').toLowerCase();
+  if (!a || isAddress((alias || '').trim())) return [];
+  const eligible=list.filter(c=>isAddress(c.addr || ''));
+  const aliases=eligible.filter(c=>c.alias.toLowerCase()===a);
+  return aliases.length?aliases:eligible.filter(c=>c.name.toLowerCase()===a);
+}
+
+export function resolveRecipient(list,recipient) {
+  const value=(recipient || '').trim();
+  if(isAddress(value))return {name:value,alias:'addr',addr:value};
+  return findByAlias(list,value);
 }
 
 export function searchContacts(list, query) {

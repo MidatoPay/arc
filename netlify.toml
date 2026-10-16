@@ -31,6 +31,33 @@
 [functions."payments-dispatch"]
   schedule = "* * * * *"
 
+[functions."transfers-dispatch"]
+  schedule = "* * * * *"
+
+[[redirects]]
+  from = "/wallet"
+  to = "/.netlify/functions/wallet"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/treasury/export-access"
+  to = "/.netlify/functions/treasury-export-access"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/transfers/*"
+  to = "/.netlify/functions/transfers/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/transfers"
+  to = "/.netlify/functions/transfers"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/merchant-profile"
   to = "/.netlify/functions/merchant-profile"

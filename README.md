@@ -250,6 +250,8 @@ Use `.env.production.example` as the checklist for the Netlify **Production** co
 
 The full production go-live guide is in `docs/MERCADOPAGO_PRODUCCION.md`.
 
+USDC sends through manual entry, QR and voice use the user's primary Privy wallet (index 0), with the user's signature and SOL costs covered by treasury. Two daily sends per user and a configurable global budget apply. General access defaults to disabled; `TRANSFERS_ALLOWED_USER_IDS` enables selected Privy users for a production pilot. See the [transfer operations guide](docs/USDC_TRANSFERS.md).
+
 ---
 
 ## 7. Commercial traction
@@ -288,4 +290,5 @@ business-lois/           Letters of intent (Deenex, Supermercado Soler)
 
 - [`datosadicionales.md`](datosadicionales.md): why MidatoPay is a strong fit for the Solana ecosystem, covering its capabilities, commercial proposition and adoption potential.
 - [`docs/MERCADOPAGO_PRODUCCION.md`](docs/MERCADOPAGO_PRODUCCION.md): operations guide for Mercado Pago → USDC (Spanish).
+- [`docs/USDC_TRANSFERS.md`](docs/USDC_TRANSFERS.md): primary wallet, USDC sends, production pilot and recovery (Spanish).
 - [`SOLANA-RULES.md`](SOLANA-RULES.md): Solana engineering rules.

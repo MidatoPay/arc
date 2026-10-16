@@ -8,7 +8,7 @@
     "dev:full": "netlify dev --offline",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
     "functions:check": "node scripts/check-functions.js",
     "deps:check": "npm audit --omit=dev --audit-level=high --fetch-retries=0 --fetch-timeout=15000",
     "payments:env": "node scripts/prepare-payments-env.js",

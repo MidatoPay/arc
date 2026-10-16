@@ -1,133 +1,41 @@
-// API de la agenda de contactos — puente entre el browser y Postgres (Aiven).
-// El browser nunca ve la connection string ni el secret de Privy: esta
-// Function es la única pieza que los tiene. Ver
-// docs/superpowers/specs/2026-08-05-contacts-agenda-design.md § 1.
+import {isAddress} from '@solana/kit';
+import {authenticatePayment,getPaymentDb,json,errorResponse} from './lib/paymentRuntime.js';
+import {PaymentError} from './lib/paymentCore.js';
 
-import pkg from "pg";
-import { PrivyClient } from "@privy-io/server-auth";
-
-const { Pool } = pkg;
-
-let pool;
-function getPool() {
-  if (!pool) {
-    const connectionString = (process.env.AIVEN_PG_URL || "").replace(/[?&]sslmode=[^&]*/, "");
-    pool = new Pool({
-      // `sslmode=require` en la connection string hace que pg-connection-string
-      // arme su propia config SSL y pise el objeto `ssl` de abajo (incluso con
-      // rejectUnauthorized: true, termina rechazando el CA cert real como si
-      // fuera self-signed) — se lo saca acá y el `ssl` explícito manda solo.
-      connectionString,
-      ssl: {
-        // Env vars no soportan multilínea sin comillas de forma portable
-        // (dotenv corta en el primer salto de línea) — el CA cert se guarda
-        // en una sola línea con \n literales y se reconstruye acá.
-        ca: (process.env.AIVEN_PG_CA_CERT || "").replace(/\\n/g, "\n"),
-        rejectUnauthorized: true,
-        // Aiven hostea varios servicios en el mismo endpoint y decide qué
-        // certificado presentar según el SNI. `pg` abre el socket TCP
-        // primero y recién después lo sube a TLS pasándole ese socket ya
-        // conectado — en ese modo Node NO deriva el SNI del host solo, hay
-        // que pasarlo. Sin esto, Aiven devuelve un cert autofirmado
-        // genérico (no el firmado por el Project CA de arriba) y la
-        // conexión truena con "self-signed certificate in certificate
-        // chain" pese a que el CA cert es el correcto.
-        servername: new URL(connectionString).hostname,
-      },
-    });
+const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export function validateContactInput(body) {
+  if(!body || typeof body!=='object' || Array.isArray(body))throw new PaymentError('invalid_contact',400);
+  for(const [key,max] of [['name',100],['alias',64],['address',44],['note',500]]) {
+    if(key==='note' && (body[key]===undefined || body[key]===null))continue;
+    if(typeof body[key]!=='string' || body[key].length>max || /[\u0000-\u001f\u007f]/.test(body[key]))throw new PaymentError('invalid_contact',400);
   }
-  return pool;
+  if(!body.name.trim() || !body.alias.trim())throw new PaymentError('missing_fields',400);
+  if(!isAddress(body.address.trim()))throw new PaymentError('invalid_address',400);
+  return {name:body.name.trim(),alias:body.alias.trim().toLowerCase(),address:body.address.trim(),note:(body.note||'').trim()};
 }
-
-let privy;
-function getPrivy() {
-  if (!privy) {
-    privy = new PrivyClient(process.env.VITE_PRIVY_APP_ID, process.env.PRIVY_APP_SECRET);
-  }
-  return privy;
-}
-
-function json(statusCode, body) {
-  return {
-    statusCode,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+export function createContactsHandler(adapters={}) {
+  return async event=>{
+    try {
+      const userId=await (adapters.authenticate || authenticatePayment)(event);
+      if(!['GET','POST','PUT','DELETE'].includes(event.httpMethod))return json(405,{error:'method_not_allowed'});
+      const db=adapters.db || getPaymentDb();
+      if(event.httpMethod==='GET') {
+        const {rows}=await db.query('SELECT id,name,alias,address,note FROM contacts WHERE user_id=$1 ORDER BY created_at DESC',[userId]);
+        return json(200,{contacts:rows.map(row=>({...row,solanaCompatible:isAddress(row.address)}))});
+      }
+      let body;try{body=JSON.parse(event.body || '{}');}catch{throw new PaymentError('invalid_json',400);}
+      if(!body || typeof body!=='object' || Array.isArray(body))throw new PaymentError('invalid_contact',400);
+      if(['PUT','DELETE'].includes(event.httpMethod) && !uuid.test(body.id || ''))throw new PaymentError('invalid_contact_id',400);
+      if(event.httpMethod==='DELETE') {
+        const result=await db.query('DELETE FROM contacts WHERE id=$1 AND user_id=$2 RETURNING id',[body.id,userId]);
+        return result.rows.length?json(200,{ok:true}):json(404,{error:'not_found'});
+      }
+      const c=validateContactInput(body);
+      const {rows}=event.httpMethod==='POST'
+        ? await db.query(`INSERT INTO contacts(user_id,name,alias,address,note) VALUES($1,$2,$3,$4,$5) RETURNING id,name,alias,address,note`,[userId,c.name,c.alias,c.address,c.note])
+        : await db.query(`UPDATE contacts SET name=$1,alias=$2,address=$3,note=$4,updated_at=now() WHERE id=$5 AND user_id=$6 RETURNING id,name,alias,address,note`,[c.name,c.alias,c.address,c.note,body.id,userId]);
+      return rows.length?json(200,{contact:{...rows[0],solanaCompatible:true}}):json(404,{error:'not_found'});
+    }catch(error){if(error?.code==='23505')return json(400,{error:'alias_duplicate'});return errorResponse(error);}
   };
 }
-
-async function authenticate(event) {
-  const authHeader = event.headers?.authorization || event.headers?.Authorization || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
-  try {
-    const claims = await getPrivy().verifyAuthToken(token);
-    return claims.userId;
-  } catch {
-    return null;
-  }
-}
-
-function rowToContact(row) {
-  return { id: row.id, name: row.name, alias: row.alias, address: row.address, note: row.note || "" };
-}
-
-export const handler = async (event) => {
-  const userId = await authenticate(event);
-  if (!userId) return json(401, { error: "unauthorized" });
-
-  const db = getPool();
-
-  try {
-    if (event.httpMethod === "GET") {
-      const { rows } = await db.query(
-        "SELECT id, name, alias, address, note FROM contacts WHERE user_id = $1 ORDER BY created_at DESC",
-        [userId]
-      );
-      return json(200, { contacts: rows.map(rowToContact) });
-    }
-
-    if (event.httpMethod === "POST") {
-      const { name, alias, address, note } = JSON.parse(event.body || "{}");
-      if (!name?.trim() || !alias?.trim() || !address?.trim()) {
-        return json(400, { error: "missing_fields" });
-      }
-      const { rows } = await db.query(
-        `INSERT INTO contacts (user_id, name, alias, address, note)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, alias, address, note`,
-        [userId, name.trim(), alias.trim().toLowerCase(), address.trim(), (note || "").trim()]
-      );
-      return json(200, { contact: rowToContact(rows[0]) });
-    }
-
-    if (event.httpMethod === "PUT") {
-      const { id, name, alias, address, note } = JSON.parse(event.body || "{}");
-      if (!id || !name?.trim() || !alias?.trim() || !address?.trim()) {
-        return json(400, { error: "missing_fields" });
-      }
-      const { rows } = await db.query(
-        `UPDATE contacts SET name = $1, alias = $2, address = $3, note = $4, updated_at = now()
-         WHERE id = $5 AND user_id = $6
-         RETURNING id, name, alias, address, note`,
-        [name.trim(), alias.trim().toLowerCase(), address.trim(), (note || "").trim(), id, userId]
-      );
-      if (rows.length === 0) return json(404, { error: "not_found" });
-      return json(200, { contact: rowToContact(rows[0]) });
-    }
-
-    if (event.httpMethod === "DELETE") {
-      const { id } = JSON.parse(event.body || "{}");
-      if (!id) return json(400, { error: "missing_fields" });
-      const { rowCount } = await db.query("DELETE FROM contacts WHERE id = $1 AND user_id = $2", [id, userId]);
-      if (rowCount === 0) return json(404, { error: "not_found" });
-      return json(200, { ok: true });
-    }
-
-    return json(405, { error: "method_not_allowed" });
-  } catch (err) {
-    if (err?.code === "23505") {
-      return json(400, { error: "alias_duplicate" });
-    }
-    return json(500, { error: "server_error" });
-  }
-};
+export const handler=createContactsHandler();

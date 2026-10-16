@@ -9,6 +9,7 @@ import { PrivyClient } from "@privy-io/server-auth";
 import { reconcileWallet } from "./lib/reconcile.js";
 import { fetchArsPerUsd } from "../../src/priceFeed.js";
 import { listUserActivity } from "./lib/paymentActivity.js";
+import {resolvePrimaryWallet} from './lib/primaryWallet.js';
 
 /** Validación liviana de address Solana (base58, sin traer @solana/kit al bundle de la function). */
 function isSolanaAddress(value) {
@@ -87,10 +88,7 @@ export const handler = async (event) => {
         // hubiera mandado address.
         let owned = false;
         try {
-          const user = await getPrivy().getUser(userId);
-          owned = (user.linkedAccounts || []).some(
-            (a) => a.type === "wallet" && a.address === address
-          );
+          owned=(await resolvePrimaryWallet(userId)).address===address;
         } catch {
           owned = false;
         }
@@ -98,7 +96,7 @@ export const handler = async (event) => {
         if (owned) {
           await db.query(
             `INSERT INTO wallets (user_id, address, network, updated_at) VALUES ($1, $2, $3, now())
-             ON CONFLICT (user_id, network) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
+             ON CONFLICT (user_id, network) DO NOTHING`,
             [userId, address, NETWORK.cluster]
           );
           try {

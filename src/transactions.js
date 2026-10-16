@@ -63,6 +63,7 @@ function fromWire(row) {
     paidAt: row.paid_at || null,
     lastError: row.last_error || null,
     chargeId: row.charge_id || null,
+    transferId: row.transfer_id || null,
     orderId: row.order_id || null,
     source: row.source || "wallet",
     status: row.status || "confirmed",
@@ -100,11 +101,13 @@ async function api(path, token, options = {}) {
 export function mergeByHash(serverList, localList) {
   const seen = new Set(serverList.map((tx) => tx.hash));
   const charges = new Set(serverList.map((tx)=>tx.chargeId).filter(Boolean));
-  const onlyLocal = localList.filter((tx) => !seen.has(tx.hash) && !(tx.chargeId && charges.has(tx.chargeId)));
+  const transfers=new Set(serverList.map(tx=>tx.transferId).filter(Boolean));
+  const onlyLocal = localList.filter((tx) => !seen.has(tx.hash) && !(tx.chargeId && charges.has(tx.chargeId)) && !(tx.transferId && transfers.has(tx.transferId)));
   return [...onlyLocal, ...serverList];
 }
 
 export function activityStatusKey(tx, now) {
+  if(tx.source==='transfer')return ({broadcasting:'transferPending',confirmed:'transferConfirmed',completed:'transferCompleted',failed:'transferFailed',manual_review:'transferReview'})[tx.status] || 'transferPending';
   if(tx.source!=="mercadopago")return null;
   const paid=paymentReceived(tx);
   if(tx.status==="manual_review")return paid?"chargePaidReview":"chargeReview";
@@ -115,6 +118,8 @@ export function activityStatusKey(tx, now) {
 }
 
 export function activityRefreshInterval(transactions) {
+  if(transactions.some(tx=>tx.source==='transfer' && ['broadcasting','confirmed'].includes(tx.status)))return 2500;
+  if(transactions.some(tx=>tx.source==='transfer' && tx.status==='manual_review'))return 15000;
   const pending=transactions.filter(tx=>tx.source==="mercadopago" && !tx.settled);
   if(pending.some(tx=>["paid","delivery_pending","broadcasting","confirmed"].includes(tx.status)))return 2500;
   if(pending.some(tx=>["creating","awaiting_payment","cancel_pending"].includes(tx.status)))return 5000;
