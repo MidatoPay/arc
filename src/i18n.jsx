@@ -282,6 +282,7 @@ const translations = {
       title: "Activity",
       toReceive:"To receive",
       mercadopagoCharge:"MIDATOPAY charge",
+      transferPending:'Transfer pending',transferConfirmed:'Confirmed · awaiting finalization',transferCompleted:'USDC sent',transferFailed:'Transfer failed',transferReview:'Transfer under review',
       pendingUsdc:"USDC pending credit",
       creditedUsdc:"USDC credited",
       chargeCreating:"Creating QR",
@@ -662,6 +663,7 @@ const translations = {
     movs: {
       toReceive:"A recibir",
       mercadopagoCharge:"Cobro MIDATOPAY",
+      transferPending:'Transferencia pendiente',transferConfirmed:'Confirmada · esperando finalización',transferCompleted:'USDC enviados',transferFailed:'Transferencia fallida',transferReview:'Transferencia en revisión',
       pendingUsdc:"USDC pendientes de acreditación",
       creditedUsdc:"USDC acreditados",
       chargeCreating:"Generando QR",

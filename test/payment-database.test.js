@@ -21,7 +21,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await engine.exec(migration);await engine.exec(migration);
   const commissionMigration=await readFile(new URL("../db/migrations/20261013_commission_history.sql",import.meta.url),"utf8");
   await engine.exec(commissionMigration);await engine.exec(commissionMigration);
-  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql","20261016_charge_paid_at.sql","20261016_merchant_profiles.sql"])
+  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql","20261016_charge_paid_at.sql","20261016_merchant_profiles.sql","20261016_wallet_transfers.sql"])
     await engine.exec(await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8"));
   const query=async(sql,params=[])=>{
     const result=await engine.query(sql,params);

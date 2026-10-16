@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        "/wallet": {target:"http://127.0.0.1:9999",changeOrigin:true,rewrite:path=>path.replace(/^\/wallet/,"/.netlify/functions/wallet")},
+        "/transfers": {target:"http://127.0.0.1:9999",changeOrigin:true,rewrite:path=>path.replace(/^\/transfers/,"/.netlify/functions/transfers")},
+        "/treasury/export-access": {target:"http://127.0.0.1:9999",changeOrigin:true,rewrite:()=>"/.netlify/functions/treasury-export-access"},
         "/merchant-profile": {
           target:"http://127.0.0.1:9999",changeOrigin:true,
           rewrite:(path)=>path.replace(/^\/merchant-profile/,"/.netlify/functions/merchant-profile"),

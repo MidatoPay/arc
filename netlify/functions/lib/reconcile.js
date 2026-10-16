@@ -122,6 +122,8 @@ export async function reconcileWallet(db, { userId, address, lastSyncedBlock, ge
 
       const paymentJob = await db.query("SELECT id FROM charges WHERE signature=$1 AND user_id=$2 AND network=$3", [s.signature,userId,NETWORK.cluster]);
       if (paymentJob.rowCount) continue; // payment worker writes its authoritative conversion metadata
+      const transferJob=await db.query('SELECT id FROM wallet_transfers WHERE signature=$1 AND user_id=$2 AND network=$3',[s.signature,userId,NETWORK.cluster]);
+      if(transferJob.rowCount)continue; // transfer worker persists its authoritative outgoing movement
       const memoText = extractMemo(tx);
       const decoded = decodeMemo(memoText);
       const fields = decoded?.fields ?? null;

@@ -1,4 +1,6 @@
 const columns={
+  wallet_transfers:["id","user_id","network","signature","signed_wire","usdc_raw","sponsor_day"],
+  wallet_identity_audit:["user_id","network","previous_address","primary_address"],
   charges:["id","user_id","environment","network","seller_id","pos_id","amount_cents","fee_cents","usdc_raw","idempotency_key","order_body","order_id","signature","signed_wire","status","paid_at"],
   payment_inbox:["id","environment","event_key","order_id","payload","processed_at","quarantined"],
   payment_incidents:["id","charge_id","reason","resolved_at"],
@@ -7,8 +9,8 @@ const columns={
   merchant_payment_pos:["user_id","environment","seller_id","merchant_email","store_id","external_id","pos_id","creation_key","creation_body","status"],
   merchant_pos_assignments:["environment","seller_id","merchant_email","external_id","pos_id","store_id","pos_name","claimed_user_id","claimed_at"],
   merchant_profiles:["user_id","user_name","business_name"],
-  transactions:["id","user_id","network","hash","charge_id","amt","fx_rate","ars","created_at"],
-  wallets:["user_id","network","address","last_synced_block"],
+  transactions:["id","user_id","network","hash","charge_id","transfer_id","amt","fx_rate","ars","created_at"],
+  wallets:["user_id","network","address","privy_wallet_id","hd_wallet_index","last_synced_block"],
 };
 const indexes=["transactions_user_network_hash_uidx","transactions_charge_uidx","charges_user_idx",
   "charges_jobs_idx","payment_inbox_pending_idx","commission_ledger_period_idx","charges_history_idx","transactions_history_idx"];

@@ -3,6 +3,7 @@ import { PrivyClient } from "@privy-io/server-auth";
 import { timingSafeEqual } from "node:crypto";
 import { NETWORK } from "../../../src/network.js";
 import { PaymentError } from "./paymentCore.js";
+import { primarySolanaWallet } from '../../../src/primaryWallet.js';
 
 let pool, privy;
 export function paymentDatabaseConfig(env=process.env) {
@@ -35,8 +36,7 @@ export async function authenticatePayment(event) {
 }
 export async function assertWalletOwned(userId, wallet) {
   const user = await getPaymentPrivy().getUser(userId);
-  if (!(user.linkedAccounts || []).some((a) => a.type === "wallet" && a.address === wallet &&
-    (a.chainType === "solana" || a.chain_type === "solana"))) throw new PaymentError("wallet_not_owned", 403);
+  if (primarySolanaWallet(user)?.address!==wallet) throw new PaymentError("primary_wallet_required", 403);
 }
 export function paymentSettings(env=process.env,network=NETWORK) {
   const environment = env.MP_ENVIRONMENT || "test";
@@ -92,7 +92,7 @@ export async function transaction(fn, poolOverride) {
   catch (error) { await db.query("ROLLBACK"); throw error; }
   finally { db.release(); }
 }
-export async function kickWorker({ env=process.env, request=fetch, log=console.error }={}) {
+export async function kickWorker({ env=process.env, request=fetch, log=console.error, functionName='payments-worker-background' }={}) {
   const origin = env.PAYMENTS_BASE_URL || env.URL;
   const failed=(code,status)=>{
     log("payments_worker_dispatch_failed",{code,...(status ? {status}: {})});
@@ -100,7 +100,8 @@ export async function kickWorker({ env=process.env, request=fetch, log=console.e
   };
   if (!origin || !env.INTERNAL_WORKER_SECRET) return failed("payment_worker_not_configured");
   try {
-    const response=await request(new URL("/.netlify/functions/payments-worker-background", origin), {
+    if(!['payments-worker-background','transfers-worker-background'].includes(functionName))return failed('invalid_worker');
+    const response=await request(new URL(`/.netlify/functions/${functionName}`, origin), {
       method: "POST", headers: { "x-worker-secret": env.INTERNAL_WORKER_SECRET }, signal: AbortSignal.timeout(4000) });
     if (!response.ok) return failed("payment_worker_dispatch_failed",response.status);
     // Netlify acknowledges background invocation before the worker finishes.

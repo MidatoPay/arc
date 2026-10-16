@@ -56,3 +56,7 @@ Usá **Chrome o Edge** para el micrófono. En Safari necesitás Dictado activado
 
 Cliente `@solana/kit` v8, Privy embedded Solana, USDC mint de Circle en devnet,
 memo SPL para la factura, Postgres (contactos/historial) sin cambios.
+
+## Transferencias USDC
+
+Enviar, QR y voz usan la wallet principal de Privy (índice 0), con firma del usuario y costo SOL cubierto por tesorería. Límite de dos envíos diarios y presupuesto global configurable. La funcionalidad se publica deshabilitada hasta completar la migración y validación: [guía de transferencias](docs/USDC_TRANSFERS.md).

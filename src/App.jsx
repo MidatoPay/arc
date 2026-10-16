@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePrivy, useWallets as useEvmWallets } from "@privy-io/react-auth";
-import { useWallets, useCreateWallet, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
+import { useWallets, useSignTransaction, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
 import { isAddress } from "@solana/kit";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
 import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
 import BusinessProfile from "./BusinessProfile.jsx";
+import {primarySolanaWallet} from './primaryWallet.js';
+import {useSponsoredTransfers,transferApi,exactUsdc} from './transfers.js';
+import TransferApproval from './TransferApproval.jsx';
+import TransferReceipt from './TransferReceipt.jsx';
 import { useMerchantProfile } from "./merchantProfile.js";
 import { userDisplayName, merchantDisplayName } from "./merchantIdentity.js";
 import { reportsApi } from "./paymentReports.js";
@@ -40,6 +44,8 @@ import {
   updateContact,
   removeContact,
   findByAlias,
+  resolveRecipient,
+  recipientCandidates,
   searchContacts,
   validateContact,
 } from "./contacts.js";
@@ -1078,7 +1084,7 @@ function GuestApp({ onExit, initialScan = null }) {
 // ————— Inicio —————
 function Home({
   nombre, address, balance, arsBalance,
-  txs, goCharge, goConvert, goPay, goSend, fxRate,
+  txs, goCharge, goConvert, goPay, goSend, fxRate, onOpenTransfer,
 }) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
@@ -1215,7 +1221,7 @@ function Home({
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
-        txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} compact />)
+        txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} compact onOpenTransfer={onOpenTransfer} />)
       )}
     </div>
   );
@@ -1435,63 +1441,32 @@ function Send({ address, balance, fxRate, contacts, onPay, onDone }) {
   const [amount, setAmount] = useState("");
   const [phase, setPhase] = useState("form");
   const [errMsg, setErrMsg] = useState("");
-  const [feeOpen, setFeeOpen] = useState(false);
 
-  const n = Number(amount);
-  const contact = useMemo(() => {
-    const q = recipient.trim();
-    if (!q) return null;
-    const byAlias = findByAlias(contacts, q);
-    if (byAlias) return byAlias;
-    const lower = q.toLowerCase();
-    const byName = contacts.find((c) => c.name.toLowerCase() === lower || c.alias === lower);
-    if (byName) return byName;
-    if (isAddress(q)) {
-      return { name: short(q), alias: "addr", addr: q };
-    }
-    return null;
-  }, [recipient, contacts]);
+  const n = Number(String(amount).replace(',','.'));
+  const contact=useMemo(()=>resolveRecipient(contacts,recipient),[recipient,contacts]);
 
   const suggestions = useMemo(() => {
     const q = recipient.trim();
     if (!q || contact) return [];
-    return searchContacts(contacts, q).slice(0, 5);
+    return searchContacts(contacts, q).filter(c=>isAddress(c.addr || '')).slice(0, 5);
   }, [recipient, contacts, contact]);
 
   const usdc = Number.isFinite(n) && n > 0 ? n : null;
-  const canSubmit = Boolean(contact && usdc != null && usdc >= 0.01 && address);
-
-  const estimatePayFn = useCallback(() => {
-    if (!contact || !usdc) return Promise.reject(new Error("Sin monto"));
-    return estimateUsdcTransfer({
-      from: address,
-      to: contact.addr,
-      usdc,
-      memo: `pay:${contact.alias}:${usdc}`,
-    });
-  }, [contact, usdc, address]);
-
-  const gas = useGasEstimate({
-    enabled: canSubmit && phase === "form",
-    from: address,
-    to: contact?.addr,
-    usdc,
-    memo: `pay:${contact?.alias}:${usdc}`,
-    estimateFn: estimatePayFn,
-  });
+  const canSubmit = Boolean(contact && usdc != null && usdc > 0 && address);
 
   const submit = async () => {
     setErrMsg("");
     setPhase("working");
     try {
       if (!contact) throw new Error(t("pay.recipientInvalid"));
-      if (usdc == null || usdc < 0.01) throw new Error(t("pay.amountTooLow"));
+      if (usdc == null || usdc <= 0) throw new Error(t("pay.amountTooLow"));
       if (balance !== null && usdc > balance) {
         throw new Error(t("voice.insufficientBalance", fmt(usdc, 2, locale), fmt(balance, 2, locale)));
       }
       const parsed = {
         amount: n,
         currency: "USDC",
+        usdcText:exactUsdc(amount),
         usdc,
         fxRate,
         contact,
@@ -1613,10 +1588,12 @@ function Send({ address, balance, fxRate, contacts, onPay, onDone }) {
           logo="/monedas/usdc.png"
         />
 
+        <button type="button" disabled={balance===null || balance<=0 || phase==='working'} onClick={()=>setAmount(Number(balance).toFixed(6))}>Enviar todo</button>
+        <small>Hasta 6 decimales. MidatoPay cubre el costo en SOL. Máximo 2 envíos por día.</small>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
           <span style={{ color: C.mut }}>{t("pay.youSend")}</span>
           <span style={{ fontWeight: 700, color: C.ink }}>
-            {usdc != null ? `${fmt(usdc, 2, locale)} USDC` : "—"}
+            {usdc != null ? `${fmt(usdc, 6, locale)} USDC` : "—"}
           </span>
         </div>
       </Card>
@@ -1638,67 +1615,7 @@ function Send({ address, balance, fxRate, contacts, onPay, onDone }) {
         {phase === "working" ? t("pay.working") : t("send.cta")}
       </button>
 
-      {canSubmit && (
-        <div style={{ padding: "4px 2px 0" }}>
-          <button
-            type="button"
-            onClick={() => setFeeOpen((v) => !v)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#fe6c1c",
-              fontWeight: 700,
-              cursor: "pointer",
-              padding: 0,
-              fontFamily: "inherit",
-              fontSize: 13,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {feeOpen ? t("send.hideFeeDetails") : t("send.viewFeeDetails")}
-            <IconChevronDown size={16} up={feeOpen} />
-          </button>
-
-          {feeOpen && (
-            <div
-              style={{
-                background: C.bg,
-                borderRadius: 16,
-                padding: "14px 16px",
-                marginTop: 10,
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{t("convert.feeTitle")}</div>
-              <div style={{ fontSize: 12.5, color: C.mut, marginTop: 4, lineHeight: 1.4 }}>{t("gas.disclaimer")}</div>
-
-              {gas.loading && (
-                <div style={{ fontSize: 14, color: C.mut, marginTop: 14 }}>{t("convert.feePending")}</div>
-              )}
-              {!gas.loading && gas.error && (
-                <button
-                  type="button"
-                  onClick={gas.retry}
-                  style={{ display: "block", marginTop: 14, background: "none", border: "none", color: C.orange, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 13 }}
-                >
-                  {t("gas.retry")}
-                </button>
-              )}
-              {!gas.loading && !gas.error && gas.estimate && (
-                <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16 }}>
-                    <span style={{ fontSize: 14, color: C.mut, flexShrink: 0 }}>{t("gas.totalNative")}</span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, textAlign: "right", whiteSpace: "nowrap" }}>
-                      − {fmt(gas.estimate.feeNative, 6, locale)} {gas.estimate.nativeSymbol || "SOL"}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      <p style={{fontSize:13,color:C.mut}}>La confirmación mostrará el destinatario completo y el importe exacto. El costo de red lo cubre MidatoPay.</p>
     </div>
   );
 }
@@ -1763,16 +1680,16 @@ function PayScan({
     setView("confirm");
   };
 
-  const qrUsdc = qr ? qr.ars / fxRate : null;
+  const qrUsdc = qr ? Math.floor(qr.ars / fxRate * 1000000) / 1000000 : null;
   const merchantName = guestMerchantName(qr?.who);
   const qrContact = qr ? { name: merchantName || qr.who || short(qr.addr), alias: "qr", addr: qr.addr } : null;
-  const knownContact = qr ? contacts.find((c) => c.addr.toLowerCase() === qr.addr.toLowerCase()) : null;
+  const knownContact = qr ? contacts.find((c) => c.addr === qr.addr) : null;
 
   const submitQr = async () => {
     setErrMsg("");
     setPhase("working");
     try {
-      if (qrUsdc == null || qrUsdc < 0.01) throw new Error(t("pay.amountTooLow"));
+      if (qrUsdc == null || qrUsdc <= 0) throw new Error(t("pay.amountTooLow"));
       if (balance !== null && qrUsdc > balance) {
         throw new Error(t("voice.insufficientBalance", fmt(qrUsdc, 2, locale), fmt(balance, 2, locale)));
       }
@@ -2395,7 +2312,7 @@ function Voice({
       let result;
       try {
         const token = getAccessToken ? await getAccessToken() : null;
-        result = await claudeParse(text, lang, contacts.map((c) => c.alias), token);
+        result = await claudeParse(text, lang, contacts.filter(c=>isAddress(c.addr || '')).map((c) => c.alias), token);
       } catch {
         result = localParse(text, lang);
       }
@@ -2421,14 +2338,14 @@ function Voice({
         setPhase("error");
         return;
       }
-      const contact = findByAlias(contacts, result.recipient);
-      if (!contact) {
+      const candidates=recipientCandidates(contacts,result.recipient);
+      if (!candidates.length) {
         setErrMsg(t("voice.aliasNotFound", result.recipient));
         setPhase("error");
         return;
       }
-      const usdc = result.currency === "ARS" ? result.amount / fxRate : result.amount;
-      if (usdc < 0.01) {
+      const usdc = result.currency === "ARS" ? Math.floor(result.amount / fxRate * 1000000) / 1000000 : result.amount;
+      if (usdc <= 0) {
         setErrMsg(t("voice.amountTooLow", result.amount, result.currency));
         setPhase("error");
         return;
@@ -2438,8 +2355,8 @@ function Voice({
         setPhase("error");
         return;
       }
-      setParsed({ ...result, contact, usdc, fxRate, factura: nuevaFactura() });
-      setPhase("confirm");
+      setParsed({ ...result, contact:candidates.length===1?candidates[0]:null, recipients:candidates, usdc, fxRate, factura: nuevaFactura() });
+      setPhase(candidates.length===1?'confirm':'choose_recipient');
     },
     [balance, fxRate, lang, locale, t, contacts, onCharge, getAccessToken]
   );
@@ -2523,25 +2440,6 @@ function Voice({
     const timer = setTimeout(() => listen(), 50);
     return () => clearTimeout(timer);
   }, [voiceKick]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const voiceMemo = useMemo(() => {
-    if (!parsed) return "";
-    return armarMemo({
-      inv: parsed.factura,
-      to: parsed.contact.alias,
-      cur: parsed.currency,
-      amt: parsed.amount,
-      kind: "voice",
-    });
-  }, [parsed]);
-
-  const gas = useGasEstimate({
-    enabled: phase === "confirm" && Boolean(parsed),
-    from: address,
-    to: parsed?.contact?.addr,
-    usdc: parsed?.usdc,
-    memo: voiceMemo,
-  });
 
   const execute = async () => {
     setPhase("sending");
@@ -2782,6 +2680,15 @@ function Voice({
         </>
       )}
 
+      {phase==='choose_recipient' && parsed && <Card>
+        <h3>{lang==='en'?'Choose the recipient':'Elegí el destinatario'}</h3>
+        <p>{lang==='en'?'Several contacts have that name. No transfer has been sent.':'Hay varios contactos con ese nombre. Todavía no se envió la transferencia.'}</p>
+        {parsed.recipients.map(contact=><button key={contact.id || contact.alias} onClick={()=>{setParsed(previous=>({...previous,contact}));setPhase('confirm');}}
+          style={{display:'block',width:'100%',textAlign:'left',padding:14,marginBottom:8,font:'inherit',overflowWrap:'anywhere'}}>
+          {contact.name} · @{contact.alias}<br/>{contact.addr}
+        </button>)}
+        <button onClick={reset}>Cancelar</button>
+      </Card>}
       {phase === "confirm" && parsed && (
         <>
           <Card>
@@ -2813,7 +2720,7 @@ function Voice({
                 parsed.currency === "ARS" ? [t("voice.equals"), `$${fmtArs(parsed.amount)} ARS`] : [t("voice.equals"), `$${fmtArs(parsed.usdc * parsed.fxRate)} ARS`],
                 [t("voice.exchangeRate"), `1 USDC = $${fmtArs(parsed.fxRate)} ARS`],
                 [t("voice.invoice"), parsed.factura],
-                [t("voice.network"), "Solana Devnet"],
+                [t("voice.network"), `Solana ${SOLANA.cluster}`],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
                   <span style={{ color: C.mut }}>{k}:</span>
@@ -2821,22 +2728,15 @@ function Voice({
                 </div>
               ))}
             </div>
-            <GasEstimatePanel
-              estimate={gas.estimate}
-              loading={gas.loading}
-              error={gas.error}
-              onRetry={gas.retry}
-              locale={locale}
-              t={t}
-            />
+            <p style={{fontSize:13,color:C.mut}}>Costo para vos: 0 SOL. MidatoPay cubre la red. Máximo 2 envíos diarios.</p>
           </Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button
               onClick={execute}
-              disabled={!address || gas.loading}
+              disabled={!address}
               style={{
                 ...btnOrange,
-                opacity: !address || gas.loading ? 0.5 : 1,
+                opacity: !address ? 0.5 : 1,
                 background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
                 boxShadow: "0 10px 22px rgba(254,108,28,.28)",
               }}
@@ -3043,7 +2943,7 @@ function Success({ receipt, onClose, hideFx = false }) {
 
 // ————— Movimientos —————
 /** Card de movimiento — home (compact) y pantalla Movimientos. */
-function TxCard({ tx, compact = false }) {
+function TxCard({ tx, compact = false, onOpenTransfer }) {
   const { t, locale } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const inbound = tx.direction === "in";
@@ -3071,7 +2971,7 @@ function TxCard({ tx, compact = false }) {
       ? `+${fmt(tx.amt, 2, locale)} USDC`
       : isConvert && tx.kind === "convert_usdc_ars"
         ? `−${fmt(tx.amt, 2, locale)} USDC`
-        : `${inbound ? "+" : "−"}${fmt(tx.amt, 2, locale)} USDC`;
+        : `${inbound ? "+" : "−"}${fmt(tx.amt, tx.source==='transfer'?6:2, locale)} USDC`;
 
   const secondary = receivedCharge
     ? `${t(pendingCharge?"movs.pendingUsdc":"movs.creditedUsdc")}: ${fmt(tx.amt,6,locale)} USDC`
@@ -3112,6 +3012,7 @@ function TxCard({ tx, compact = false }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, whiteSpace:tx.source==="mercadopago"?"normal":"nowrap" }}>{title}</div>
+          {tx.transferId && onOpenTransfer && <button onClick={event=>{event.stopPropagation();onOpenTransfer(tx.transferId);}} style={{font:'inherit',fontSize:12,marginTop:6}}>Ver estado del envío</button>}
           {statusKey && <div style={{fontSize:12,color:C.mut,marginTop:4}}>{t(`movs.${statusKey}`)}</div>}
           {noticeKey && <div style={{fontSize:12,color:C.mut,marginTop:6,lineHeight:1.5}}>{t(`movs.${noticeKey}`)}</div>}
         </div>
@@ -3162,7 +3063,7 @@ function TxCard({ tx, compact = false }) {
   );
 }
 
-function Movimientos({ txs, address }) {
+function Movimientos({ txs, address, onOpenTransfer }) {
   const { t } = useLanguage();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -3176,7 +3077,7 @@ function Movimientos({ txs, address }) {
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
       ) : (
-        txs.map((tx) => <TxCard key={tx.hash} tx={tx} />)
+        txs.map((tx) => <TxCard key={tx.hash} tx={tx} onOpenTransfer={onOpenTransfer} />)
       )}
 
       <a
@@ -3200,7 +3101,7 @@ function Movimientos({ txs, address }) {
 }
 
 // ————— Más (menú) —————
-function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, treasuryAddress, merchantProfile }) {
+function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, treasuryAddress, merchantProfile, treasuryExportAccess }) {
   const { t, lang, setLang } = useLanguage();
   const [confirmar, setConfirmar] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -3282,7 +3183,7 @@ function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, tr
       <Card><BusinessProfile profile={merchantProfile.profile} error={merchantProfile.error}
         onSave={merchantProfile.save} onRetry={merchantProfile.retry} /></Card>
 
-      <TreasuryWalletExport key={privyId} treasuryAddress={treasuryAddress} />
+      <TreasuryWalletExport key={privyId} treasuryAddress={treasuryExportAccess?.address} authorized={treasuryExportAccess?.authorized===true} />
 
       <Card style={{ padding: "4px 20px" }}>
         {goReports && <Fila icon={<IconSearch />} titulo="Operaciones y comisiones" sub="Historial de todos los comercios" onClick={goReports} />}
@@ -3377,7 +3278,7 @@ function errorMessage(t, field, reason) {
 }
 
 // ————— Agenda —————
-function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
+function ContactsScreen({ contacts, onAdd, onUpdate, onRemove, loadError, onRetry }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [form, setForm] = useState(null); // null = cerrado; { } = nuevo o edición
@@ -3468,6 +3369,7 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
         <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("agenda.subtitle")}</p>
       </div>
 
+      {loadError && <Card><div role="alert">{loadError}</div><button onClick={onRetry}>Volver a cargar</button></Card>}
       {!form && (
         <>
           <input
@@ -3606,6 +3508,13 @@ function AppInner() {
   const [guestInitialScan, setGuestInitialScan] = useState(null);
   const [pendingCharge, setPendingCharge] = useState(null);
   const [paymentAdmin,setPaymentAdmin]=useState(false);
+  const [treasuryExportAccess,setTreasuryExportAccess]=useState(null);
+  useEffect(()=>{
+    let canceled=false;setTreasuryExportAccess(null);
+    if(authenticated && user?.id)transferApi('/treasury/export-access',getAccessToken)
+      .then(access=>{if(!canceled)setTreasuryExportAccess({userId:user.id,...access});}).catch(()=>{});
+    return()=>{canceled=true;};
+  },[authenticated,user?.id,getAccessToken]);
   useEffect(()=>{
     if (!ready || !authenticated || !user?.id) return;
     getAccessToken().then(token=>chargeApi("/merchant-pos",token,{method:"POST"}))
@@ -3651,40 +3560,20 @@ function AppInner() {
     window.history.replaceState({}, "", url.toString());
   }, [guestMode, guestInitialScan]);
 
-  const linkedSolanaAddress = useMemo(() => {
-    const accounts = user?.linkedAccounts || [];
-    const sol = accounts.find(
-      (a) =>
-        a.type === "wallet" &&
-        a.address &&
-        (a.chainType === "solana" || a.chain_type === "solana")
-    );
-    if (sol?.address) return sol.address;
-    // Fallback: wallet embebida Privy sin 0x (Solana base58)
-    const embedded = accounts.find(
-      (a) =>
-        a.type === "wallet" &&
-        a.walletClientType === "privy" &&
-        a.address &&
-        !String(a.address).startsWith("0x")
-    );
-    return embedded?.address || "";
-  }, [user?.linkedAccounts]);
-
-  const wallet = useMemo(() => {
-    if (!wallets?.length) return null;
-    if (linkedSolanaAddress) {
-      return wallets.find((w) => w.address === linkedSolanaAddress) || null;
-    }
-    return (
-      wallets.find((w) => w.standardWallet?.name === "Privy") ||
-      wallets.find((w) => /privy/i.test(String(w.standardWallet?.name || ""))) ||
-      wallets.find((w) => w.walletClientType === "privy") ||
-      null
-    );
-  }, [wallets, linkedSolanaAddress]);
-
-  const address = linkedSolanaAddress || wallet?.address || "";
+  const [primaryRecord,setPrimaryRecord]=useState(null);
+  const [primaryRevision,setPrimaryRevision]=useState(0);
+  const linkedSolanaAddress=primarySolanaWallet(user)?.address || '';
+  useEffect(()=>{
+    let canceled=false;setPrimaryRecord(null);setWalletError('');
+    if(authenticated && user?.id)transferApi('/wallet',getAccessToken)
+      .then(({wallet:record})=>{if(!canceled)setPrimaryRecord({userId:user.id,...record});})
+      .catch(()=>{if(!canceled)setWalletError('No se pudo verificar la wallet principal. Sincronizá tu sesión.');});
+    return()=>{canceled=true;};
+  },[authenticated,user?.id,getAccessToken,primaryRevision,linkedSolanaAddress]);
+  const address=primaryRecord?.userId===user?.id && primaryRecord.address===linkedSolanaAddress ? primaryRecord.address : '';
+  const wallet=useMemo(()=>wallets?.find(w=>w.address===address) || null,[wallets,address]);
+  const {signTransaction}=useSignTransaction();
+  const transferEngine=useSponsoredTransfers({userId:authenticated?user?.id:null,wallet,getAccessToken,signTransaction});
   const walletDebug = {
     privyReady: ready,
     authenticated,
@@ -3721,57 +3610,17 @@ function AppInner() {
   const email = user?.email?.address || user?.phone?.number || "";
   const nombre = merchantProfile.profile?.userName || userDisplayName(user);
   const merchantName = merchantDisplayName(merchantProfile.profile?.businessName,nombre);
+  const openTransfer=async id=>{try{const {transfer}=await transferApi(`/transfers/${id}`,getAccessToken);setReceipt({transfer});}catch(error){setWalletError(error.message);}};
   const activityTxs = txs.map(tx => tx.source === "mercadopago" ? {...tx,who:merchantName} : tx);
-
-  const { createWallet } = useCreateWallet({
-    onError: (err) => {
-      const msg = String(err?.message || err);
-      if (/already has an embedded wallet/i.test(msg)) return;
-      setWalletError(msg);
-    },
-  });
-  const walletCreateAttempted = useRef(false);
-
-  useEffect(() => {
-    if (!authenticated) {
-      walletCreateAttempted.current = false;
-      setWalletError("");
-    }
-  }, [authenticated]);
-
-  useEffect(() => {
-    if (address) setWalletError("");
-  }, [address]);
-
-  useEffect(() => {
-    if (!ready || !authenticated || !solanaWalletsReady) return;
-    if (address || walletCreateAttempted.current) return;
-
-    const timer = setTimeout(() => {
-      if (walletCreateAttempted.current) return;
-      walletCreateAttempted.current = true;
-      console.info("[MidatoPay wallet] Privy no informó una dirección; intentando crear la wallet inicial");
-      createWallet({ createAdditional: false })
-        .catch((err) => {
-          const msg = String(err?.message || err);
-          console.error("[MidatoPay wallet] Falló la creación de wallet inicial", {
-            name: err?.name,
-            code: err?.code,
-            message: msg,
-          });
-          if (/already has an embedded wallet/i.test(msg)) return;
-          setWalletError(msg);
-        });
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [ready, authenticated, solanaWalletsReady, address, createWallet]);
 
   useEffect(() => {
     setArsBalance(loadArsBalance(address));
   }, [address]);
 
   const [contacts, setContacts] = useState([]);
+  const [contactsError,setContactsError]=useState('');
+  const [contactsRevision,setContactsRevision]=useState(0);
+  const currentContactOwner=useRef(user?.id);currentContactOwner.current=user?.id;
   const contactsRef = useRef(contacts);
   contactsRef.current = contacts;
 
@@ -3780,7 +3629,7 @@ function AppInner() {
       setContacts([]);
       return;
     }
-    let cancelled = false;
+    let cancelled = false;setContacts([]);setContactsError('');
     getAccessToken()
       .then((token) =>
         loadContacts(user.id, token, (cached) => {
@@ -3790,11 +3639,11 @@ function AppInner() {
       .then((fresh) => {
         if (!cancelled) setContacts(fresh);
       })
-      .catch(() => {});
+      .catch(() => {if(!cancelled)setContactsError('No se pudo actualizar la agenda. Los contactos visibles pueden estar desactualizados.');});
     return () => {
       cancelled = true;
     };
-  }, [user?.id, getAccessToken]);
+  }, [user?.id, getAccessToken, tab, contactsRevision]);
 
   useEffect(() => {
     if (!user?.id || !["home","movs"].includes(tab)) return;
@@ -3834,8 +3683,9 @@ function AppInner() {
   const handleAddContact = useCallback(
     async (data) => {
       const token = await getAccessToken();
+      if(currentContactOwner.current!==user.id)throw new Error('La sesión cambió.');
       const next = await addContact(user.id, token, contactsRef.current, data);
-      setContacts(next);
+      if(currentContactOwner.current===user.id)setContacts(next);
     },
     [user?.id, getAccessToken]
   );
@@ -3843,8 +3693,9 @@ function AppInner() {
   const handleUpdateContact = useCallback(
     async (id, data) => {
       const token = await getAccessToken();
+      if(currentContactOwner.current!==user.id)throw new Error('La sesión cambió.');
       const next = await updateContact(user.id, token, contactsRef.current, id, data);
-      setContacts(next);
+      if(currentContactOwner.current===user.id)setContacts(next);
     },
     [user?.id, getAccessToken]
   );
@@ -3852,8 +3703,9 @@ function AppInner() {
   const handleRemoveContact = useCallback(
     async (id) => {
       const token = await getAccessToken();
+      if(currentContactOwner.current!==user.id)throw new Error('La sesión cambió.');
       const next = await removeContact(user.id, token, contactsRef.current, id);
-      setContacts(next);
+      if(currentContactOwner.current===user.id)setContacts(next);
     },
     [user?.id, getAccessToken]
   );
@@ -3926,67 +3778,14 @@ function AppInner() {
     [user?.id, getAccessToken]
   );
 
-  const sendPayment = useCallback(
-    async (parsed) => {
-      const kind = parsed.kind || "voice";
-      if (!wallet || wallet.address !== address) {
-        console.error("[MidatoPay wallet] Firma de pago bloqueada: falta wallet conectada con la dirección vinculada", walletDebug);
-        throw new Error(t("home.walletUnavailable"));
-      }
-      const memo = armarMemo({
-        inv: parsed.factura,
-        to: parsed.contact.alias,
-        cur: parsed.currency,
-        amt: parsed.amount,
-        kind,
-      });
-      let tx;
-      try {
-        tx = await sendUsdc(wallet, signAndSendTransaction, {
-          to: parsed.contact.addr,
-          usdc: parsed.usdc,
-          memo,
-        });
-      } catch (err) {
-        console.error("[MidatoPay wallet] Falló el envío USDC", {
-          name: err?.name,
-          code: err?.code,
-          message: String(err?.message || err),
-          walletAddress: short(wallet.address),
-        });
-        throw err;
-      }
-      const effectiveFxRate = parsed.fxRate || fxRate;
-      const ars = parsed.usdc * effectiveFxRate;
-      pushTx({
-        hash: tx.hash,
-        who: parsed.contact.name,
-        amt: parsed.usdc,
-        fxRate: effectiveFxRate,
-        ars,
-        factura: parsed.factura,
-        block: tx.block,
-        fee: tx.fee,
-        memo: tx.memo,
-        kind,
-        direction: "out",
-      });
-      await refreshBalances();
-      return {
-        kind,
-        hash: tx.hash,
-        block: tx.block,
-        fee: tx.fee,
-        memo: tx.memo,
-        factura: parsed.factura,
-        usdc: parsed.usdc,
-        ars,
-        fxRate: effectiveFxRate,
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
-      };
-    },
-    [wallet, address, signAndSendTransaction, refreshBalances, pushTx, locale, fxRate, t, walletDebugSignature]
-  );
+  const sendPayment=useCallback(async parsed=>{
+    if(!wallet || wallet.address!==address)throw new Error(t('home.walletUnavailable'));
+    const transfer=await transferEngine.send(parsed);
+    getAccessToken().then(token=>loadTransactions(user.id,token)).then(fresh=>{
+      if(currentContactOwner.current===user.id)setTxs(previous=>mergeByHash(fresh,previous));
+    }).catch(()=>{});
+    return {transfer,transferId:transfer.id,hash:transfer.signature,usdc:Number(transfer.usdc),ars:Number(transfer.ars),fxRate:Number(transfer.fxRate)};
+  },[wallet,address,transferEngine.send,getAccessToken,user?.id,t]);
 
   const handleChargePaymentReceived = useCallback(async () => {
     const token = await getAccessToken();
@@ -4122,7 +3921,12 @@ function AppInner() {
               </button>
             </Card>
           )}
+          {transferEngine.recovery && <Card style={{marginBottom:12}}>
+            <p>Hay una operación pendiente de recuperar.</p>
+            <button onClick={async()=>{try{const transfer=await transferEngine.recover();if(transfer && !transfer.unsigned)setReceipt({transfer});else await transferEngine.discardUnsigned();}catch(e){setWalletError(e.message);}}}>Recuperar o descartar preparación sin enviar</button>
+          </Card>}
           {children}
+          <TransferApproval engine={{...transferEngine,network:SOLANA.cluster}} />
         </div>
 
         {voiceOpen && (
@@ -4194,6 +3998,7 @@ function AppInner() {
       <Card style={{ textAlign: "center", padding: 40, marginTop: 40 }}>
         <div style={{ fontSize: 17, fontWeight: 700 }}>{t("home.creatingTitle")}</div>
         <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>{t("home.creatingBody")}</div>
+        <button onClick={()=>setPrimaryRevision(value=>value+1)} style={{...btnOutline,marginTop:16}}>Sincronizar wallet principal</button>
         {walletError && (
           <div style={{ fontSize: 13, color: C.red, marginTop: 16, lineHeight: 1.5, wordBreak: "break-word" }}>
             {walletError}
@@ -4203,6 +4008,13 @@ function AppInner() {
     );
   }
 
+  if (receipt?.transfer) return shell(<TransferReceipt key={receipt.transfer.id} transfer={receipt.transfer} getAccessToken={getAccessToken}
+    onUpdate={transfer=>{if(['completed','failed'].includes(transfer.status)){
+      refreshBalances();getAccessToken().then(token=>loadTransactions(user.id,token)).then(fresh=>{
+        if(currentContactOwner.current===user.id)setTxs(previous=>mergeByHash(fresh,previous));
+      }).catch(()=>{});
+    }}}
+    onClose={dest=>{setReceipt(null);setPayFullscreen(false);setTab(dest);}} />);
   if (receipt) {
     return shell(
       <Success
@@ -4219,6 +4031,7 @@ function AppInner() {
 
   return shell(
     <>
+      {walletError && <Card><div role="alert">{walletError}</div></Card>}
       {tab === "home" && (
         <Home
           nombre={nombre}
@@ -4226,6 +4039,7 @@ function AppInner() {
           balance={balance}
           arsBalance={arsBalance}
           txs={activityTxs}
+          onOpenTransfer={openTransfer}
           goCharge={() => setTab("charge")}
           goConvert={() => setTab("convert")}
           goPay={() => { setPayFullscreen(true); setTab("pay"); }}
@@ -4283,12 +4097,14 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "movs" && <Movimientos txs={activityTxs} address={address} />}
+      {tab === "movs" && <Movimientos txs={activityTxs} address={address} onOpenTransfer={openTransfer} />}
       {tab === "reports" && paymentAdmin && <PaymentReports getAccessToken={getAccessToken} onBack={()=>setTab("mas")} />}
       {tab === "stack" && <Stack />}
       {tab === "agenda" && (
         <ContactsScreen
           contacts={contacts}
+          loadError={contactsError}
+          onRetry={()=>setContactsRevision(value=>value+1)}
           onAdd={handleAddContact}
           onUpdate={handleUpdateContact}
           onRemove={handleRemoveContact}
@@ -4298,6 +4114,7 @@ function AppInner() {
         <Mas
           key={user.id}
           merchantProfile={merchantProfile}
+          treasuryExportAccess={treasuryExportAccess?.userId===user.id?treasuryExportAccess:null}
           email={email}
           address={address}
           nombre={nombre}
