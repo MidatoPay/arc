@@ -59,6 +59,14 @@ function fromWire(row) {
     fee: row.fee !== null && row.fee !== undefined ? Number(row.fee) : null,
     memo: row.memo,
     createdAt: row.created_at,
+    chargeId: row.charge_id || null,
+    orderId: row.order_id || null,
+    source: row.source || "wallet",
+    status: row.status || "confirmed",
+    providerStatus: row.provider_status || null,
+    providerDetail: row.provider_detail || null,
+    settled: row.settled !== false,
+    signature: row.signature || (row.hash?.startsWith("charge:") ? null : row.hash),
   };
 }
 
@@ -88,8 +96,18 @@ async function api(path, token, options = {}) {
  */
 export function mergeByHash(serverList, localList) {
   const seen = new Set(serverList.map((tx) => tx.hash));
-  const onlyLocal = localList.filter((tx) => !seen.has(tx.hash));
+  const charges = new Set(serverList.map((tx)=>tx.chargeId).filter(Boolean));
+  const onlyLocal = localList.filter((tx) => !seen.has(tx.hash) && !(tx.chargeId && charges.has(tx.chargeId)));
   return [...onlyLocal, ...serverList];
+}
+
+export function activityStatusKey(tx) {
+  if(tx.source!=="mercadopago")return null;
+  const paid=tx.providerStatus==="processed" && tx.providerDetail==="accredited";
+  if(tx.status==="manual_review")return paid?"chargePaidReview":"chargeReview";
+  return ({creating:"chargeCreating",awaiting_payment:"chargeAwaiting",paid:"chargePaidPending",
+    delivery_pending:"chargePaidPending",broadcasting:"chargePaidPending",delivered:"chargeDelivered",
+    canceled:"chargeCanceled",expired:"chargeExpired",cancel_pending:"chargeCancelPending",refunded:"chargeRefunded"})[tx.status] || "chargeReview";
 }
 
 /**

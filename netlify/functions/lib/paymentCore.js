@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual, createHash } from "node:crypto";
 
+export const RECOVERABLE_PAYOUT_REVIEW_REASONS = ["charge_configuration_changed", "solana_expired_requires_review"];
+export const CHARGE_SCOPED_REVIEW_REASONS = [...RECOVERABLE_PAYOUT_REVIEW_REASONS, "solana_transaction_failed"];
+
 export class PaymentError extends Error {
   constructor(code, status = 503) { super(code); this.code = code; this.status = status; }
 }

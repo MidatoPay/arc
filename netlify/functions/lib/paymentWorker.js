@@ -1,4 +1,4 @@
-import { PaymentError, validateOrder, unitsDecimal } from "./paymentCore.js";
+import { PaymentError, validateOrder, unitsDecimal, CHARGE_SCOPED_REVIEW_REASONS, RECOVERABLE_PAYOUT_REVIEW_REASONS } from "./paymentCore.js";
 import { getPaymentDb, paymentSettings, assertPaymentsEnabled } from "./paymentRuntime.js";
 import { withChargeLock, ensureOrder, updateCharge, assertChargeConfig, releaseReservation, incident } from "./paymentService.js";
 import { mpRequest } from "./mercadopago.js";
@@ -50,6 +50,12 @@ export async function finalizeDelivery(db, charge, block) {
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(charge_id) DO NOTHING`,
       [charge.id,charge.user_id,charge.environment,charge.network,charge.amount_cents,charge.fee_cents,charge.fee_bps,charge.fx_rate,charge.usdc_raw]);
     await db.query("UPDATE charges SET status='delivered',reserved=false,delivered_at=COALESCE(delivered_at,now()),last_error=NULL WHERE id=$1",[charge.id]);
+    await db.query("UPDATE payment_incidents SET resolved_at=now() WHERE charge_id=$1 AND resolved_at IS NULL AND reason=ANY($2::text[])",
+      [charge.id,CHARGE_SCOPED_REVIEW_REASONS]);
+    await db.query(`DELETE FROM payment_user_blocks b WHERE b.user_id=$1 AND b.environment=$2 AND b.reason=ANY($3::text[])
+      AND NOT EXISTS (SELECT 1 FROM payment_incidents i JOIN charges c ON c.id=i.charge_id
+        WHERE c.user_id=b.user_id AND c.environment=b.environment AND i.reason=b.reason AND i.resolved_at IS NULL)`,
+      [charge.user_id,charge.environment,CHARGE_SCOPED_REVIEW_REASONS]);
     await db.query("COMMIT");
   } catch (error) { await db.query("ROLLBACK"); throw error; }
 }
@@ -93,7 +99,17 @@ export async function reconcileCharge(db, charge, settings, adapters = {}) {
     else await releaseReservation(db,charge,{status:order.status,last_error:null});
     return;
   }
-  if (wasManual || charge.status === "delivered") return;
+  if (charge.status === "delivered") return;
+  // Observe the already authorized wire before consulting the current treasury.
+  // A rotated signer must not prevent recording a transfer that already finalized.
+  if (charge.signature && result.paid && (!wasManual || RECOVERABLE_PAYOUT_REVIEW_REASONS.includes(charge.last_error))) {
+    const settlement = await (adapters.settlePayout || settlePayout)(db,charge,
+      {allowBroadcast:!wasManual && process.env.PAYMENTS_ENABLED==="true"});
+    if (settlement.finalized) await finalizeDelivery(db,charge,settlement.block);
+    else if (settlement.review) await incident(db,charge,settlement.review);
+    return;
+  }
+  if (wasManual) return;
   if (!result.paid) {
     if(!wasManual && charge.status==="creating" && !charge.cancel_requested)
       await updateCharge(db,charge.id,{status:"awaiting_payment",last_error:null});
@@ -101,8 +117,6 @@ export async function reconcileCharge(db, charge, settings, adapters = {}) {
   }
   await updateCharge(db,charge.id,{status:charge.signature ? charge.status : "paid",last_error:null});
   if(!charge.signature)assertPaymentsEnabled();
-  const blocked = await db.query("SELECT 1 FROM payment_user_blocks WHERE user_id=$1 AND environment=$2",[charge.user_id,charge.environment]);
-  if (blocked.rowCount) { await incident(db,charge,"user_payment_review"); return; }
   const owner = await (adapters.getTreasuryAddress || getTreasuryAddress)();
   assertChargeConfig(charge,settings,owner);
   if (!owner || owner !== charge.treasury_address) throw new PaymentError("treasury_account_mismatch");
@@ -149,8 +163,9 @@ export async function runPaymentWorker(settings = paymentSettings(), budgetMs = 
   }
   // Status reconciliation also recovers missing webhooks. Delivered charges remain auditable via inbox.
   const pending = await db.query(`SELECT id FROM charges WHERE environment=$1 AND network=$2 AND next_attempt_at<=now()
-    AND status NOT IN ('delivered','expired','canceled','refunded','manual_review') ORDER BY next_attempt_at LIMIT 50`,
-    [settings.environment,settings.network]);
+    AND (status NOT IN ('delivered','expired','canceled','refunded','manual_review')
+      OR (status='manual_review' AND signature IS NOT NULL AND last_error=ANY($3::text[]))) ORDER BY next_attempt_at LIMIT 50`,
+    [settings.environment,settings.network,RECOVERABLE_PAYOUT_REVIEW_REASONS]);
   for (const charge of pending.rows) {
     if (Date.now()>deadline) break;
     await processCharge(charge.id,settings);
