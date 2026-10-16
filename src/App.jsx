@@ -3570,7 +3570,8 @@ function AppInner() {
       .catch(()=>{if(!canceled)setWalletError('No se pudo verificar la wallet principal. Sincronizá tu sesión.');});
     return()=>{canceled=true;};
   },[authenticated,user?.id,getAccessToken,primaryRevision,linkedSolanaAddress]);
-  const address=primaryRecord?.userId===user?.id && primaryRecord.address===linkedSolanaAddress ? primaryRecord.address : '';
+  const address=authenticated && user?.id && primaryRecord &&
+    primaryRecord.userId===user.id && primaryRecord.address===linkedSolanaAddress ? primaryRecord.address : '';
   const wallet=useMemo(()=>wallets?.find(w=>w.address===address) || null,[wallets,address]);
   const {signTransaction}=useSignTransaction();
   const transferEngine=useSponsoredTransfers({userId:authenticated?user?.id:null,wallet,getAccessToken,signTransaction});
@@ -3987,7 +3988,7 @@ function AppInner() {
     );
   }
 
-  if (!ready || !authenticated) {
+  if (!ready || !authenticated || !user?.id) {
     return <AuthEntry onLogin={login} ready={ready} />;
   }
 
