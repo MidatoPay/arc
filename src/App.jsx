@@ -5,6 +5,9 @@ import { isAddress } from "@solana/kit";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
 import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
+import BusinessProfile from "./BusinessProfile.jsx";
+import { useMerchantProfile } from "./merchantProfile.js";
+import { userDisplayName, merchantDisplayName } from "./merchantIdentity.js";
 import { reportsApi } from "./paymentReports.js";
 import { chargeApi } from "./charges.js";
 import { paymentReceived, deliveryNoticeKey } from "./chargeStatus.js";
@@ -3052,7 +3055,7 @@ function TxCard({ tx, compact = false }) {
   const statusKey=activityStatusKey(tx);
   const signature=tx.signature || (!tx.hash?.startsWith("charge:") ? tx.hash : null);
 
-  const title = tx.source==="mercadopago" ? t("movs.mercadopagoCharge") : isConvert
+  const title = tx.source==="mercadopago" ? tx.who : isConvert
     ? tx.kind === "convert_ars_usdc"
       ? "ARS → USDC"
       : "USDC → ARS"
@@ -3197,7 +3200,7 @@ function Movimientos({ txs, address }) {
 }
 
 // ————— Más (menú) —————
-function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, treasuryAddress }) {
+function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, treasuryAddress, merchantProfile }) {
   const { t, lang, setLang } = useLanguage();
   const [confirmar, setConfirmar] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -3275,6 +3278,9 @@ function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, tr
           </div>
         </div>
       </Card>
+
+      <Card><BusinessProfile profile={merchantProfile.profile} error={merchantProfile.error}
+        onSave={merchantProfile.save} onRetry={merchantProfile.retry} /></Card>
 
       <TreasuryWalletExport key={privyId} treasuryAddress={treasuryAddress} />
 
@@ -3577,6 +3583,7 @@ function ContactsScreen({ contacts, onAdd, onUpdate, onRemove }) {
 function AppInner() {
   const { t, locale } = useLanguage();
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
+  const merchantProfile = useMerchantProfile(authenticated ? user?.id : null,getAccessToken);
   const { ready: walletInfrastructureReady } = useEvmWallets();
   const { ready: solanaWalletsReady, wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
@@ -3712,7 +3719,9 @@ function AppInner() {
     refreshTreasuryStatus().then((st) => setTreasuryAddress(st.address));
   }, []);
   const email = user?.email?.address || user?.phone?.number || "";
-  const nombre = email ? email.split("@")[0].split(/[.\-_]/)[0].replace(/^./, (c) => c.toUpperCase()) : "👋";
+  const nombre = merchantProfile.profile?.userName || userDisplayName(user);
+  const merchantName = merchantDisplayName(merchantProfile.profile?.businessName,nombre);
+  const activityTxs = txs.map(tx => tx.source === "mercadopago" ? {...tx,who:merchantName} : tx);
 
   const { createWallet } = useCreateWallet({
     onError: (err) => {
@@ -4216,7 +4225,7 @@ function AppInner() {
           address={address}
           balance={balance}
           arsBalance={arsBalance}
-          txs={txs}
+          txs={activityTxs}
           goCharge={() => setTab("charge")}
           goConvert={() => setTab("convert")}
           goPay={() => { setPayFullscreen(true); setTab("pay"); }}
@@ -4252,6 +4261,7 @@ function AppInner() {
       {tab === "charge" && (
         <MercadoPagoCharge
           key={`${user.id}:${address}`}
+          merchantName={merchantName}
           address={address}
           userId={user.id}
           getAccessToken={getAccessToken}
@@ -4273,7 +4283,7 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "movs" && <Movimientos txs={txs} address={address} />}
+      {tab === "movs" && <Movimientos txs={activityTxs} address={address} />}
       {tab === "reports" && paymentAdmin && <PaymentReports getAccessToken={getAccessToken} onBack={()=>setTab("mas")} />}
       {tab === "stack" && <Stack />}
       {tab === "agenda" && (
@@ -4286,6 +4296,8 @@ function AppInner() {
       )}
       {tab === "mas" && (
         <Mas
+          key={user.id}
+          merchantProfile={merchantProfile}
           email={email}
           address={address}
           nombre={nombre}

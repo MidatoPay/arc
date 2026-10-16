@@ -6,6 +6,7 @@ const columns={
   commission_ledger:["charge_id","merchant_user_id","environment","network","fee_cents","earned_at"],
   merchant_payment_pos:["user_id","environment","seller_id","merchant_email","store_id","external_id","pos_id","creation_key","creation_body","status"],
   merchant_pos_assignments:["environment","seller_id","merchant_email","external_id","pos_id","store_id","pos_name","claimed_user_id","claimed_at"],
+  merchant_profiles:["user_id","user_name","business_name"],
   transactions:["id","user_id","network","hash","charge_id","amt","fx_rate","ars","created_at"],
   wallets:["user_id","network","address","last_synced_block"],
 };

@@ -9,6 +9,8 @@ La acción **Cobrar** usa QR dinámicos de Mercado Pago y entrega USDC desde tes
 
 El administrador configurado en `PAYMENTS_ADMIN_USER_IDS` accede desde **Más → Operaciones y comisiones** al historial de todos los comercios, filtros, totales y exportación CSV. Para probar frontend y backend juntos en local: `npm run dev:full` y abrir `http://localhost:8888`.
 
+En **Profile → Nombre del negocio**, cada usuario puede guardar o borrar el nombre de su comercio. Activity y el encabezado del QR usan ese nombre; si está vacío, usan el nombre del usuario de Privy. La tabla `merchant_profiles` vincula ambos nombres al DID autenticado de Privy. Antes de desplegar esta versión, aplicar `db/migrations/20261016_merchant_profiles.sql` (incluida en `npm run db:migrate:payments`). El endpoint autenticado `/merchant-profile` permite consultar el perfil con GET y actualizar únicamente `businessName` con PATCH.
+
 El circuito de demo descrito más abajo corresponde a devnet. En mainnet, los desembolsos directos de `/treasury`, las conversiones fiat simuladas y el modo guest de prueba están deshabilitados.
 
 ## Setup

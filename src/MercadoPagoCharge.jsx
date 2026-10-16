@@ -8,7 +8,7 @@ import { useLanguage } from "./i18n.jsx";
 const terminal = new Set(["delivered","expired","canceled","refunded"]);
 const button = { border:0,borderRadius:14,padding:"14px 18px",font:"inherit",fontWeight:600,cursor:"pointer" };
 
-export default function MercadoPagoCharge({ userId, address, getAccessToken, onDelivered, onPaymentReceived, chargeRequest, onChargeRequestConsumed }) {
+export default function MercadoPagoCharge({ userId, address, merchantName, getAccessToken, onDelivered, onPaymentReceived, chargeRequest, onChargeRequestConsumed }) {
   const {t}=useLanguage();
   const [ars,setArs] = useState(""), [charge,setCharge] = useState(null), [qr,setQr] = useState("");
   const [busy,setBusy] = useState(false), [error,setError] = useState(""), [history,setHistory] = useState([]);
@@ -162,7 +162,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     catch(e){if(mounted.current)setError(chargeError(e.code));}finally{if(mounted.current)setLoadingHistory(false);}
   };
   return <section style={{display:"flex",flexDirection:"column",gap:16}}>
-    <h2 style={{margin:0,fontSize:26}}>Cobrar con MIDATOPAY</h2>
+    <h2 style={{margin:0,fontSize:26,overflowWrap:"anywhere"}}>{merchantName}</h2>
     <p style={{margin:0,color:"#7A7A85"}}>Recibí el pago en pesos y acreditá USDC en tu wallet. Comisión de conversión: 0,5%.</p>
     {error && <div role="alert" style={{color:"#E4483D"}}>{error}</div>}
     {!charge ? <>

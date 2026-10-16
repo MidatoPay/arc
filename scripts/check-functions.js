@@ -20,7 +20,7 @@ const functions=await zipFunctions("netlify/functions",output,{
  config:{"*":{nodeBundler:"esbuild"}},archiveFormat:"none"
 });
 const entries=[];
-for(const name of ["charges","merchant-pos","payment-reports","mercadopago-webhook","payments-worker-background"]) {
+for(const name of ["charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background"]) {
  const entry=functions.find(fn=>fn.name===name);
  if(!entry)throw new Error(`Missing packaged function: ${name}`);
  // Netlify's runtime loads these bundles as CJS, outside this repo's type=module.

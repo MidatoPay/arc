@@ -21,7 +21,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await engine.exec(migration);await engine.exec(migration);
   const commissionMigration=await readFile(new URL("../db/migrations/20261013_commission_history.sql",import.meta.url),"utf8");
   await engine.exec(commissionMigration);await engine.exec(commissionMigration);
-  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql","20261016_charge_paid_at.sql"])
+  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql","20261016_charge_paid_at.sql","20261016_merchant_profiles.sql"])
     await engine.exec(await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8"));
   const query=async(sql,params=[])=>{
     const result=await engine.query(sql,params);
@@ -274,5 +274,19 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await t.test("repeatable migration backfill does not duplicate booked commissions",async()=>{
     await engine.exec(commissionMigration);
     assert.equal((await query("SELECT * FROM commission_ledger")).rowCount,1);
+  });
+  await t.test("Activity uses the current business name for pending and settled charges and leaves other users unchanged",async()=>{
+    await query("INSERT INTO merchant_profiles(user_id,user_name,business_name) VALUES('u1','Juan','Mi negocio'),('legacy','Otro','Otro negocio')");
+    const pending=await createCharge("u1",input,randomUUID(),adapters);
+    let activity=await listUserActivity({query},"u1","mainnet-beta");
+    assert.equal(activity.find(row=>row.charge_id===pending.id).who,"Mi negocio");
+    assert.equal(activity.find(row=>row.signature==="signature").who,"Mi negocio");
+    await query("UPDATE merchant_profiles SET business_name=NULL WHERE user_id='u1'");
+    activity=await listUserActivity({query},"u1","mainnet-beta");
+    assert.equal(activity.find(row=>row.charge_id===pending.id).who,"Juan");
+    assert.equal(activity.find(row=>row.signature==="signature").who,"Juan");
+    const other=await listUserActivity({query},"legacy","mainnet-beta");
+    assert.equal(other[0].who,"contact");
+    await query("DELETE FROM charges WHERE id=$1",[pending.id]);
   });
 });
