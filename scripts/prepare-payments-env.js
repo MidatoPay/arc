@@ -9,7 +9,7 @@ let contents = await readFile(target, "utf8").catch((e) => { if(e.code === "ENOE
 const values = {
   VITE_SOLANA_CLUSTER:production?"mainnet-beta":"devnet", MP_ENVIRONMENT:production?"production":"test", PAYMENTS_ENABLED:"false",
   MP_ACCESS_TOKEN:"", MP_USER_ID:"", MP_EXTERNAL_POS_ID:"", MP_STORE_ID:"", MP_WEBHOOK_SECRET:"",
-  CONVERSION_FEE_BPS:"50",
+  CONVERSION_FEE_BPS:"50", CHAINLINK_MAX_AGE_SECONDS:"90000",
   ETH_RPC_URL:production?"https://ethereum.publicnode.com":"",
   SOLANA_RPC:production?"https://api.mainnet-beta.solana.com":"",
   VITE_SOLANA_WSS:production?"wss://api.mainnet-beta.solana.com":"",
