@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createCharge, getChargeAttempt, ensureOrder, incident, releaseReservation } from "../netlify/functions/lib/paymentService.js";
 import { inspectPaymentDatabase } from "../netlify/functions/lib/paymentDatabase.js";
-import { finalizeDelivery, reconcileCharge } from "../netlify/functions/lib/paymentWorker.js";
+import { finalizeDelivery, reconcileCharge, settlePayout } from "../netlify/functions/lib/paymentWorker.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
 import { listUserActivity } from "../netlify/functions/lib/paymentActivity.js";
 
@@ -20,7 +20,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
   await engine.exec(migration);await engine.exec(migration);
   const commissionMigration=await readFile(new URL("../db/migrations/20261013_commission_history.sql",import.meta.url),"utf8");
   await engine.exec(commissionMigration);await engine.exec(commissionMigration);
-  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql"])
+  for(const file of ["20261014_merchant_pos.sql","20261014_merchant_pos_assignments.sql","20261016_payment_payout_attempts.sql"])
     await engine.exec(await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8"));
   const query=async(sql,params=[])=>{
     const result=await engine.query(sql,params);
@@ -137,7 +137,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     let settlements=0;
     await reconcileCharge({query},c,settings,{request:async()=>provider,
       getTreasuryAddress:async()=>wallet,liquidity:async()=>({raw:c.usdc_raw,solLamports:"0"}),
-      settlePayout:async()=>{settlements++;return {pending:true};}});
+      followPayout:async()=>{settlements++;return {pending:true};}});
     assert.equal(settlements,1);
     assert.equal((await query("SELECT signature FROM charges WHERE id=$1",[c.id])).rows[0].signature,null);
   });
@@ -162,7 +162,7 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
         paid_amount:"10000.00",status:"processed",status_detail:"accredited"}]}};
     await reconcileCharge({query},c,settings,{request:async()=>provider,
       getTreasuryAddress:async()=>assert.fail("observing a saved signature must not depend on the rotated treasury"),
-      settlePayout:async(_db,charge,options)=>{
+      followPayout:async(_db,charge,options)=>{
         assert.equal(charge.signature,"signature");assert.equal(options.allowBroadcast,false);
         return {finalized:true,block:42};
       }});
@@ -180,6 +180,27 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     const entries=await query("SELECT * FROM commission_ledger WHERE charge_id=$1",[c.id]);
     assert.equal(entries.rowCount,1);assert.equal(String(entries.rows[0].fee_cents),"5000");
     const row=(await query("SELECT * FROM charges WHERE id=$1",[c.id])).rows[0];assert.equal(row.status,"delivered");assert.equal(row.reserved,false);
+  });
+  await t.test("confirmed USDC is visible without completing the delivery ledger",async()=>{
+    const pending=await createCharge("confirmation-user",input,randomUUID(),adapters);
+    await query("UPDATE charges SET signature='confirmed-only',signed_wire='wire',status='broadcasting' WHERE id=$1",[pending.id]);
+    const current=(await query("SELECT * FROM charges WHERE id=$1",[pending.id])).rows[0];
+    const result=await settlePayout({query},current,{rpc:async()=>({value:[{confirmationStatus:"confirmed",slot:43}]})});
+    assert.equal(result.confirmed,true);assert.equal(result.finalized,undefined);
+    const row=(await query("SELECT status,reserved,delivered_at FROM charges WHERE id=$1",[pending.id])).rows[0];
+    assert.equal(row.status,"confirmed");assert.equal(row.reserved,true);assert.equal(row.delivered_at,null);
+    assert.equal((await query("SELECT * FROM transactions WHERE charge_id=$1",[pending.id])).rowCount,0);
+    assert.equal((await query("SELECT * FROM commission_ledger WHERE charge_id=$1",[pending.id])).rowCount,0);
+    const activity=(await listUserActivity({query},"confirmation-user","mainnet-beta"))[0];
+    assert.equal(activity.status,"confirmed");assert.equal(activity.settled,false);
+    await query("DELETE FROM charges WHERE id=$1",[pending.id]);
+  });
+  await t.test("reviewed retry history retains the previous signed wire without duplicate archive records",async()=>{
+    for(let i=0;i<2;i++)await query(`INSERT INTO payment_payout_attempts(signature,charge_id,signed_wire,last_valid_block_height,payout_memo,reason)
+      VALUES('expired-signature',$1,'original-signed-wire',100,'original-memo','expired_verified_not_landed') ON CONFLICT DO NOTHING`,[c.id]);
+    const archived=await query("SELECT * FROM payment_payout_attempts WHERE charge_id=$1",[c.id]);
+    assert.equal(archived.rows.length,1);assert.equal(archived.rows[0].signed_wire,"original-signed-wire");
+    assert.equal((await query("SELECT * FROM transactions WHERE charge_id=$1",[c.id])).rowCount,1);
   });
   await t.test("refund after delivery stays under review without blocking independent new charges",async()=>{
     await incident({query},c,"mercadopago_refund_after_payout");await incident({query},c,"mercadopago_refund_after_payout");

@@ -106,8 +106,15 @@ export function activityStatusKey(tx) {
   const paid=tx.providerStatus==="processed" && tx.providerDetail==="accredited";
   if(tx.status==="manual_review")return paid?"chargePaidReview":"chargeReview";
   return ({creating:"chargeCreating",awaiting_payment:"chargeAwaiting",paid:"chargePaidPending",
-    delivery_pending:"chargePaidPending",broadcasting:"chargePaidPending",delivered:"chargeDelivered",
+    delivery_pending:"chargePaidPending",broadcasting:"chargePaidPending",confirmed:"chargeConfirmed",delivered:"chargeDelivered",
     canceled:"chargeCanceled",expired:"chargeExpired",cancel_pending:"chargeCancelPending",refunded:"chargeRefunded"})[tx.status] || "chargeReview";
+}
+
+export function activityRefreshInterval(transactions) {
+  const pending=transactions.filter(tx=>tx.source==="mercadopago" && !tx.settled);
+  if(pending.some(tx=>["paid","delivery_pending","broadcasting","confirmed"].includes(tx.status)))return 2500;
+  if(pending.some(tx=>["creating","awaiting_payment","cancel_pending"].includes(tx.status)))return 5000;
+  return null;
 }
 
 /**

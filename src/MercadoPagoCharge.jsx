@@ -5,7 +5,7 @@ import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChar
 const terminal = new Set(["delivered","expired","canceled","refunded"]);
 const labels = { creating:"Creando QR en Mercado Pago…", awaiting_payment:"Esperando pago",
   paid:"Pago confirmado. Preparando USDC…", delivery_pending:"Pago confirmado. Entrega de USDC pendiente",
-  broadcasting:"Pago confirmado. Confirmando entrega de USDC…", delivered:"USDC entregados",
+  broadcasting:"Pago confirmado. Confirmando entrega de USDC…", confirmed:"Confirmado, finalizando…", delivered:"USDC entregados",
   cancel_pending:"Cancelación pendiente de confirmación", expired:"El QR venció", canceled:"Cobro cancelado",
   refunded:"Pago reembolsado", manual_review:"Este cobro requiere revisión" };
 const button = { border:0,borderRadius:14,padding:"14px 18px",font:"inherit",fontWeight:600,cursor:"pointer" };
@@ -103,13 +103,14 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
 
   useEffect(() => {
     if (!charge || terminal.has(charge.status)) return;
+    const pollMs=["paid","delivery_pending","broadcasting","confirmed"].includes(charge.status)?2500:5000;
     let canceled=false, timer;
     const poll=async () => {
       try { const {charge:current}=await request(`/charges/${charge.id}`); if (!canceled) { accept(current); setError(""); } }
       catch (e) { if (!canceled) setError(chargeError(e.code)); }
-      if (!canceled) timer=setTimeout(poll,5000);
+      if (!canceled) timer=setTimeout(poll,pollMs);
     };
-    timer=setTimeout(poll,5000);
+    timer=setTimeout(poll,pollMs);
     return () => { canceled=true;clearTimeout(timer); };
   },[charge?.id,charge?.status,request,accept]);
 
