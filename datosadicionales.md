@@ -107,7 +107,11 @@ Why this structure supports adoption:
 
 ## 6. Evidence of commercial interest
 
-**Letter of intent from Deenex Technologies S.A.S.** (16 May 2026, `business-lois/Carta_Intencion_Deenex_MidatoPay.pdf`):
+MidatoPay has two letters of intent that cover both sides of adoption: a **distribution channel** (Deenex) and a **merchant** (Supermercado Soler).
+
+### 6.1 Deenex Technologies S.A.S.
+
+**Letter of intent** (16 May 2026, `business-lois/Carta_Intencion_Deenex_MidatoPay.pdf`):
 
 - **Who Deenex is:** an omnichannel platform for food-service chains, with a PWA app, WhatsApp ordering and a loyalty CRM. It is a **distribution channel** that reaches many merchants at once.
 - **Stated reach:** **500 active locations** across several Argentine provinces, with a projection of **2,000 locations by December 2026** and plans for regional expansion to Brazil and Mexico.
@@ -119,10 +123,21 @@ Why this structure supports adoption:
   - move toward an NDA, a framework partnership agreement and a technical annex.
 - **Validation of the thesis:** the letter describes exactly MidatoPay's proposition. The customer pays in pesos with their usual methods and the merchant receives stable assets, without passing crypto complexity on to the end consumer.
 
-**Why it matters for Solana:**
+### 6.2 Supermercado Soler
 
-- Food-service chains have high sales frequency and low ticket sizes. Every merchant onboarded generates recurring USDC settlements on Solana.
+**Letter of intent** (26 November 2025, `business-lois/Carta_Intencion_Wang_Midatopay.pdf`), signed by the supermarket's owner:
+
+- **Who it is:** a supermarket, the exact merchant profile MidatoPay targets: daily peso revenue that loses value between the sale and its use.
+- **What it values:** converting peso revenue into digital dollars (stablecoins) to protect the value of its daily cash against inflation and devaluation.
+- **What attracts it most:** MidatoPay's model of **pooled volume purchasing with other supermarkets**, which could offer better conversion rates and operational benefits.
+- **Next step it asks for:** a product demo and the evaluation of a pilot in its operations.
+
+### 6.3 Why it matters for Solana
+
+- The two letters validate the thesis from both ends: a channel that reaches hundreds of locations, and a merchant that asks to try the product in its own operations.
+- Food-service chains and supermarkets have high sales frequency. Every merchant onboarded generates recurring USDC settlements on Solana.
 - A single distribution partner shortens the onboarding of hundreds of locations.
+- Pooled volume across merchants is a natural driver of larger, recurring USDC flows on Solana.
 
 ---
 
@@ -137,7 +152,8 @@ Why this structure supports adoption:
 
 **Expansion opportunities:**
 
-- **More merchants.** Rollout across the Deenex network, from 500 to the projected 2,000 locations, following a pilot → onboarding → scale plan.
+- **More merchants.** Rollout across the Deenex network, from 500 to the projected 2,000 locations, following a pilot → onboarding → scale plan, and a pilot with Supermercado Soler.
+- **Pooled volume purchasing.** Grouping the conversion volume of several supermarkets to obtain better conversion rates, as Supermercado Soler highlights.
 - **New flows:**
   - partial conversion, where the merchant chooses how much to keep in USDC;
   - supplier payments in USDC from the merchant's balance;
@@ -170,7 +186,7 @@ Why this structure supports adoption:
   - repeatable migrations.
 - **Running on Solana mainnet**, with mint and genesis-hash checks per network. The [treasury](https://explorer.solana.com/address/7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L) and a [real transaction](https://explorer.solana.com/tx/3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv) are publicly visible on Solana Explorer.
 - **An implemented monetization model:** 0.5% enforced at three levels (function, insert and database constraint).
-- **Documented commercial interest:** a letter of intent from a distribution platform with 500 active locations.
+- **Documented commercial interest:** two letters of intent, one from a distribution platform with 500 active locations and one from a supermarket that asks for a demo and a pilot.
 - **A team with experience in the target market:** the CEO has spent more than five years working with small merchants on QR payment adoption and at payment companies.
 
 ---
@@ -182,5 +198,5 @@ MidatoPay has the potential to become an infrastructure layer that brings everyd
 | Axis | Summary |
 |---|---|
 | **Demonstrated value** | The full path from charge to settlement is built with production-grade code. A peso payment through Mercado Pago, verified server-side, becomes a finalized USDC transfer on Solana mainnet to the merchant's embedded wallet, with its memo and with the 0.5% fee recorded exactly once. |
-| **Adoption potential** | A letter of intent from a platform with 500 active locations, projecting 2,000, points to a concrete channel. Every onboarded merchant turns daily peso sales into recurring USDC settlements on Solana, without changing anything for the customer. |
+| **Adoption potential** | Two letters of intent point to concrete demand: a platform with 500 active locations, projecting 2,000, and a supermarket that wants to pilot the product. Every onboarded merchant turns daily peso sales into recurring USDC settlements on Solana, without changing anything for the customer. |
 | **Solana's role** | Solana is the product's settlement rail: native USDC, low and predictable cost, embedded wallets, public traceability, and a clear path toward Solana Pay, Squads and fee sponsorship. |

@@ -254,10 +254,18 @@ The full production go-live guide is in `docs/MERCADOPAGO_PRODUCCION.md`.
 
 ## 7. Commercial traction
 
-`business-lois/Carta_Intencion_Deenex_MidatoPay.pdf` contains a **letter of intent from Deenex Technologies S.A.S.** dated 16 May 2026. Deenex is an omnichannel platform for food-service chains in Argentina. In the letter, Deenex intends to:
+The `business-lois/` folder contains two letters of intent: one from a distribution channel and one from a merchant.
+
+**Deenex Technologies S.A.S.** (16 May 2026, `business-lois/Carta_Intencion_Deenex_MidatoPay.pdf`). Deenex is an omnichannel platform for food-service chains in Argentina. In the letter, Deenex intends to:
 
 - offer MidatoPay to its whole network, which currently has **500 active locations** and is projected to reach 2,000 by December 2026;
 - support MidatoPay with a pilot, training and merchant onboarding.
+
+**Supermercado Soler** (26 November 2025, `business-lois/Carta_Intencion_Wang_Midatopay.pdf`), signed by its owner. In the letter, the supermarket:
+
+- states its formal interest in MidatoPay as a tool to protect the value of its daily cash against inflation and devaluation, by converting peso revenue into digital dollars (stablecoins);
+- highlights MidatoPay's model of **pooled volume purchasing with other supermarkets**, which could offer better conversion rates and operational benefits;
+- asks for a product demo and wants to evaluate a pilot in its operations.
 
 ---
 
@@ -271,7 +279,7 @@ db/                      Schema and migrations
 scripts/                 Environment setup, checks and migrations
 test/                    Tests
 docs/                    Operations and integration guides
-business-lois/           Letter of intent (Deenex)
+business-lois/           Letters of intent (Deenex, Supermercado Soler)
 ```
 
 ---
