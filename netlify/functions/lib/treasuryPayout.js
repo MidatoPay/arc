@@ -241,7 +241,7 @@ export async function prepareTreasuryPayout({ to, usdc, rawAmount, kind, ars, fx
   ];
 
   const rpc = getRpc();
-  const { value: latestBlockhash } = await withRetry(() => rpc.getLatestBlockhash().send());
+  const { value: latestBlockhash } = await withRetry(() => rpc.getLatestBlockhash({commitment:"confirmed"}).send());
 
   const message = pipe(
     createTransactionMessage({ version: 0 }),

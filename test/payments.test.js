@@ -154,7 +154,9 @@ test("transmit timeout preserves signature and retries the identical wire",async
 test("confirmed is pending; only finalized completes delivery",async()=>{
   for(const level of ["confirmed","finalized"]){const {events,c,adapters}=payoutFixture();c.signature="signature";
     adapters.rpc=async()=>({value:[{confirmationStatus:level,slot:42}]});
-    const result=await settlePayout(null,c,adapters);assert.equal(Boolean(result.finalized),level==="finalized");assert.equal(events.length,0);}
+    const result=await settlePayout(null,c,adapters);assert.equal(Boolean(result.finalized),level==="finalized");
+    if(level==="confirmed") {assert.equal(result.confirmed,true);assert.deepEqual(events,[["save",{status:"confirmed",last_error:null}]]);}
+    else assert.equal(events.length,0);}
 });
 test("failed or expired ambiguous signatures require review instead of a second transfer",async()=>{
   for(const failed of [true,false]) {const {events,c,adapters}=payoutFixture();c.signature="signature";c.last_valid_block_height="80";

@@ -39,7 +39,7 @@ import {
   searchContacts,
   validateContact,
 } from "./contacts.js";
-import { loadTransactions, addTransaction, mergeByHash, activityStatusKey } from "./transactions.js";
+import { loadTransactions, addTransaction, mergeByHash, activityStatusKey, activityRefreshInterval } from "./transactions.js";
 import { parsePayUrl, slugifyAlias } from "./payQr.js";
 
 // ————————————————————————————————————————————————
@@ -3793,6 +3793,23 @@ function AppInner() {
       cancelled = true;
     };
   }, [user?.id, address, getAccessToken, tab]);
+
+  const activityPollMs=activityRefreshInterval(txs);
+  useEffect(()=>{
+    if(!user?.id || !["home","movs"].includes(tab) || !activityPollMs)return;
+    let cancelled=false,timer;
+    const poll=async()=>{
+      try {
+        const token=await getAccessToken();
+        // Read persisted Activity only: do not run a wallet RPC scan each tick.
+        const fresh=await loadTransactions(user.id,token);
+        if(!cancelled)setTxs(prev=>mergeByHash(fresh,prev));
+      } catch { /* Keep the last persisted Activity when authentication is temporarily unavailable. */ }
+      finally {if(!cancelled)timer=setTimeout(poll,activityPollMs);}
+    };
+    timer=setTimeout(poll,activityPollMs);
+    return ()=>{cancelled=true;clearTimeout(timer);};
+  },[user?.id,getAccessToken,tab,activityPollMs]);
 
   const handleAddContact = useCallback(
     async (data) => {

@@ -4,6 +4,9 @@ import { withChargeLock, ensureOrder, updateCharge, assertChargeConfig, releaseR
 import { mpRequest } from "./mercadopago.js";
 import { getTreasuryAddress, treasuryLiquidity, prepareTreasuryPayout, treasuryRpc } from "./treasuryPayout.js";
 
+export const PAYOUT_POLL_INTERVAL_MS = 2500;
+export const PAYOUT_FOLLOW_MS = 120000;
+
 export async function settlePayout(db, charge, adapters = {}) {
   const rpc = adapters.rpc || treasuryRpc;
   const prepare = adapters.prepare || prepareTreasuryPayout;
@@ -23,16 +26,50 @@ export async function settlePayout(db, charge, adapters = {}) {
   const status = result.value?.[0];
   if (status?.err) return { review: "solana_transaction_failed" };
   if (status?.confirmationStatus === "finalized") return { finalized: true, block: status.slot };
-  if (status) return { pending: true };
+  if (status?.confirmationStatus === "confirmed") {
+    if (charge.status !== "confirmed") {
+      const fields={status:"confirmed",last_error:null};
+      await save(fields);Object.assign(charge,fields);
+    }
+    return {pending:true,confirmed:true,block:status.slot};
+  }
   const height = await rpc("getBlockHeight", [{ commitment: "finalized" }]);
   if (BigInt(height) > BigInt(charge.last_valid_block_height)) {
+    // A processed signature may still finalize after its blockhash expires.
+    if (status) return {pending:true};
     // Absence from one RPC is not proof of non-execution. Never build a second transfer blindly.
     return { review: "solana_expired_requires_review" };
   }
   if(adapters.allowBroadcast===false)return {pending:true};
-  await rpc("sendTransaction", [charge.signed_wire, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 0 }]);
-  await save({ status: "broadcasting" });
+  // Omit maxRetries so the RPC also rebroadcasts until the blockhash expires.
+  await rpc("sendTransaction", [charge.signed_wire, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed" }]);
+  if (charge.status !== "broadcasting") {
+    await save({status:"broadcasting"});charge.status="broadcasting";
+  }
   return { pending: true };
+}
+
+export async function followPayout(db, charge, adapters = {}) {
+  const now=adapters.now || Date.now;
+  const wait=adapters.wait || (ms=>new Promise(resolve=>setTimeout(resolve,ms)));
+  const settle=adapters.settle || settlePayout;
+  const deadline=Math.min(now()+PAYOUT_FOLLOW_MS,adapters.deadline ?? Infinity);
+  let result={pending:true},lastError;
+  while(now()<deadline) {
+    try {
+      result=await settle(db,charge,adapters);lastError=null;
+      if(result.finalized || result.review || !charge.signature)return result;
+    } catch(error) {
+      // Transport errors can follow an accepted broadcast. Keep the saved wire.
+      if(!["solana_rpc_unavailable","solana_rpc_timeout"].includes(error?.code))throw error;
+      lastError=error;
+    }
+    const remaining=deadline-now();
+    if(remaining<=0)break;
+    await wait(Math.min(PAYOUT_POLL_INTERVAL_MS,remaining));
+  }
+  if(lastError)throw lastError;
+  return result;
 }
 
 export async function finalizeDelivery(db, charge, block) {
@@ -103,8 +140,8 @@ export async function reconcileCharge(db, charge, settings, adapters = {}) {
   // Observe the already authorized wire before consulting the current treasury.
   // A rotated signer must not prevent recording a transfer that already finalized.
   if (charge.signature && result.paid && (!wasManual || RECOVERABLE_PAYOUT_REVIEW_REASONS.includes(charge.last_error))) {
-    const settlement = await (adapters.settlePayout || settlePayout)(db,charge,
-      {allowBroadcast:!wasManual && process.env.PAYMENTS_ENABLED==="true"});
+    const settlement = await (adapters.followPayout || followPayout)(db,charge,
+      {allowBroadcast:!wasManual && process.env.PAYMENTS_ENABLED==="true",deadline:adapters.payoutDeadline});
     if (settlement.finalized) await finalizeDelivery(db,charge,settlement.block);
     else if (settlement.review) await incident(db,charge,settlement.review);
     return;
@@ -124,14 +161,15 @@ export async function reconcileCharge(db, charge, settings, adapters = {}) {
     const liquidity = await (adapters.liquidity || treasuryLiquidity)();
     if (BigInt(liquidity.raw) < BigInt(charge.usdc_raw)) throw new PaymentError("insufficient_treasury");
   }
-  const settlement = await (adapters.settlePayout || settlePayout)(db,charge,{allowBroadcast:process.env.PAYMENTS_ENABLED==="true"});
+  const settlement = await (adapters.followPayout || followPayout)(db,charge,
+    {allowBroadcast:process.env.PAYMENTS_ENABLED==="true",deadline:adapters.payoutDeadline});
   if (settlement.review) await incident(db,charge,settlement.review);
   else if (settlement.finalized) await finalizeDelivery(db,charge,settlement.block);
 }
 
-export async function processCharge(id, settings = paymentSettings()) {
+export async function processCharge(id, settings = paymentSettings(), options = {}) {
   return withChargeLock(id, async (db, charge) => {
-    try { await reconcileCharge(db,charge,settings); return true; }
+    try { await reconcileCharge(db,charge,settings,{payoutDeadline:options.deadline}); return true; }
     catch (error) {
       const code = error instanceof PaymentError ? error.code : "payment_service_unavailable";
       if (["order_mismatch","payment_mismatch","charge_configuration_changed"].includes(code)) await incident(db,charge,code);
@@ -142,33 +180,38 @@ export async function processCharge(id, settings = paymentSettings()) {
   });
 }
 
-export async function runPaymentWorker(settings = paymentSettings(), budgetMs = 600000) {
-  const db = getPaymentDb(), deadline = Date.now()+budgetMs;
+export async function runPaymentWorker(settings = paymentSettings(), budgetMs = 600000, adapters = {}) {
+  const db = adapters.db || getPaymentDb(),now=adapters.now || Date.now,deadline = now()+budgetMs;
+  const process=adapters.processCharge || processCharge,request=adapters.request || mpRequest;
+  // Each tracked charge holds one session advisory lock. Pool max is four;
+  // leave one connection available for normal requests and queue reads.
+  const batch=async(items,work)=>{
+    let index=0;
+    await Promise.all(Array.from({length:Math.min(3,items.length)},async()=>{
+      while(index<items.length && now()<deadline){const item=items[index++];await work(item);}
+    }));
+  };
   const inbox = await db.query(`SELECT * FROM payment_inbox WHERE environment=$1 AND processed_at IS NULL AND NOT quarantined
     AND next_attempt_at<=now() ORDER BY received_at LIMIT 50`,[settings.environment]);
-  for (const event of inbox.rows) {
-    if (Date.now()>deadline) break;
+  await batch(inbox.rows,async(event)=>{
     try {
-      const order = await mpRequest(`/v1/orders/${encodeURIComponent(event.order_id)}`,settings);
+      const order = await request(`/v1/orders/${encodeURIComponent(event.order_id)}`,settings);
       const found = await db.query("SELECT id FROM charges WHERE environment=$1 AND (order_id=$2 OR external_reference=$3)",
         [settings.environment,event.order_id,order.external_reference]);
       if (!found.rows[0]) throw new PaymentError("unknown_order");
-      const success = await processCharge(found.rows[0].id,settings);
+      const success = await process(found.rows[0].id,settings,{deadline});
       if (!success) throw new PaymentError("reconciliation_pending");
       await db.query("UPDATE payment_inbox SET processed_at=now(),last_error=NULL WHERE id=$1",[event.id]);
     } catch (error) {
       await db.query(`UPDATE payment_inbox SET attempts=attempts+1,last_error=$2,next_attempt_at=now()+interval '1 minute',
         quarantined=(received_at<now()-interval '7 days') WHERE id=$1`,[event.id,error instanceof PaymentError ? error.code : "reconciliation_unavailable"]);
     }
-  }
+  });
   // Status reconciliation also recovers missing webhooks. Delivered charges remain auditable via inbox.
   const pending = await db.query(`SELECT id FROM charges WHERE environment=$1 AND network=$2 AND next_attempt_at<=now()
     AND (status NOT IN ('delivered','expired','canceled','refunded','manual_review')
       OR (status='manual_review' AND signature IS NOT NULL AND last_error=ANY($3::text[]))) ORDER BY next_attempt_at LIMIT 50`,
     [settings.environment,settings.network,RECOVERABLE_PAYOUT_REVIEW_REASONS]);
-  for (const charge of pending.rows) {
-    if (Date.now()>deadline) break;
-    await processCharge(charge.id,settings);
-  }
+  await batch(pending.rows,charge=>process(charge.id,settings,{deadline}));
   return { checked: pending.rowCount, notifications: inbox.rowCount };
 }
