@@ -32,6 +32,12 @@
   schedule = "* * * * *"
 
 [[redirects]]
+  from = "/merchant-profile"
+  to = "/.netlify/functions/merchant-profile"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/payment-reports/*"
   to = "/.netlify/functions/payment-reports/:splat"
   status = 200
