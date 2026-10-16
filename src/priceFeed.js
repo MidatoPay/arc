@@ -3,8 +3,8 @@ import { ethers } from "ethers";
 // Chainlink USD/ARS Reference Price Feed — Ethereum Mainnet
 // https://data.chain.link/feeds/ethereum/mainnet/usd-ars
 export const CHAINLINK_USD_ARS_FEED = "0xBb65fa58BDb7d33e4a3D1A40a7A9BD99E746367b";
-// Published catalog metadata, verified 2026-10-14. Informational only:
-// the latest round is accepted without an age limit.
+// Published catalog metadata, verified 2026-10-14. Informational: the enforced
+// limit comes from CHAINLINK_MAX_AGE_SECONDS (recommended 90000 = heartbeat + 1 h).
 // https://reference-data-directory.vercel.app/feeds-mainnet.json
 export const CHAINLINK_USD_ARS_HEARTBEAT_SECONDS = 86400;
 
@@ -23,21 +23,25 @@ const AGGREGATOR_ABI = [
   "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
 ];
 
-export function validateRound({ answer, decimals, updatedAt, roundId, answeredInRound, description }, now = Math.floor(Date.now() / 1000)) {
-  if (description !== "USD / ARS" || answer <= 0n || Number(decimals) < 0 || Number(decimals) > 18 ||
-      updatedAt <= 0n || updatedAt > BigInt(now) ||
-      answeredInRound < roundId) {
-    const error=new Error("chainlink_invalid_round");
+export function validateRound({ answer, decimals, updatedAt, roundId, answeredInRound, description }, maxAge, now = Math.floor(Date.now() / 1000)) {
+  // A quote that moves money must always have an explicit freshness limit.
+  if (!Number.isSafeInteger(maxAge) || maxAge <= 0) throw new Error("chainlink_max_age_not_configured");
+  const quoteAge=(error)=>{
     const timestamp=Number(updatedAt);
     if(Number.isSafeInteger(timestamp) && timestamp>0 && timestamp<=now)
-      error.quoteAge={updatedAt:timestamp,ageSeconds:now-timestamp};
-    throw error;
-  }
+      error.quoteAge={updatedAt:timestamp,ageSeconds:now-timestamp,maxAgeSeconds:maxAge};
+    return error;
+  };
+  if (description !== "USD / ARS" || answer <= 0n || Number(decimals) < 0 || Number(decimals) > 18 ||
+      updatedAt <= 0n || updatedAt > BigInt(now) ||
+      answeredInRound < roundId) throw quoteAge(new Error("chainlink_invalid_round"));
+  // An old price could be arbitraged against the treasury.
+  if (BigInt(now) - updatedAt > BigInt(maxAge)) throw quoteAge(new Error("chainlink_stale_round"));
   return { rate: ethers.formatUnits(answer, decimals), updatedAt: Number(updatedAt), roundId: String(roundId) };
 }
 
 // Money-moving operations use this strict path, never the display fallback.
-export async function fetchArsQuote(rpcUrl) {
+export async function fetchArsQuote(rpcUrl, maxAge) {
   const request = new ethers.FetchRequest(rpcUrl);
   request.timeout = 10000;
   const provider = new ethers.JsonRpcProvider(request, 1, { batchMaxCount: 1 });
@@ -49,7 +53,7 @@ export async function fetchArsQuote(rpcUrl) {
       new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("chainlink_rpc_timeout")),12000);})
     ]);
     return validateRound({ answer: round.answer, updatedAt: round.updatedAt, roundId: round.roundId,
-      answeredInRound: round.answeredInRound, decimals, description });
+      answeredInRound: round.answeredInRound, decimals, description }, maxAge);
   } finally { clearTimeout(timer);provider.destroy(); }
 }
 

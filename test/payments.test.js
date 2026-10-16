@@ -93,9 +93,11 @@ test("a tagged Mercado Pago test seller cannot authorize production charges",asy
 
 test("Chainlink round must be positive, correct pair, complete and have a valid timestamp",()=>{
   const round={answer:165000000000n,decimals:8,updatedAt:1000n,roundId:20n,answeredInRound:20n,description:"USD / ARS"};
-  assert.equal(validateRound(round,1100).rate,"1650.0");
+  assert.equal(validateRound(round,90000,1100).rate,"1650.0");
   for(const change of [{answer:0n},{updatedAt:0n},{updatedAt:1101n},{answeredInRound:19n},{description:"ARS / USD"}])
-    assert.throws(()=>validateRound({...round,...change},1100),/chainlink_invalid_round/);
+    assert.throws(()=>validateRound({...round,...change},90000,1100),/chainlink_invalid_round/);
+  for(const maxAge of [undefined,0,-1,1.5,NaN,Infinity])
+    assert.throws(()=>validateRound(round,maxAge,1100),/chainlink_max_age_not_configured/);
 });
 test("network mint and chain configuration distinguish mainnet from testnet",()=>{
   assert.equal(networkConfig("mainnet-beta").mint,"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -104,15 +106,18 @@ test("network mint and chain configuration distinguish mainnet from testnet",()=
   assert.throws(()=>networkConfig("unknown"));
 });
 
-test("old complete Chainlink rounds remain usable without an age limit",()=>{
-  const now=2000000,updatedAt=BigInt(now-10*CHAINLINK_USD_ARS_HEARTBEAT_SECONDS),round={answer:165000000000n,decimals:8,updatedAt,
-    roundId:20n,answeredInRound:20n,description:"USD / ARS"};
-  assert.equal(validateRound(round,now).updatedAt,Number(updatedAt));
-  assert.equal(quoteCharge("10000",validateRound(round,now).rate).usdcRaw,"6030303");
-  assert.throws(()=>validateRound({...round,answer:0n},now),error=>{
-    assert.equal(error.message,"chainlink_invalid_round");
-    assert.deepEqual(error.quoteAge,{updatedAt:Number(updatedAt),ageSeconds:now-Number(updatedAt)});return true;
-  });
+test("quotes older than CHAINLINK_MAX_AGE_SECONDS (25 h) are rejected; a round at the limit is accepted",()=>{
+  const now=2000000,maxAge=90000,round=(age)=>({answer:165000000000n,decimals:8,updatedAt:BigInt(now-age),
+    roundId:20n,answeredInRound:20n,description:"USD / ARS"});
+  // A normal daily update (heartbeat) and a round exactly at the 25 h limit are valid.
+  assert.equal(validateRound(round(CHAINLINK_USD_ARS_HEARTBEAT_SECONDS),maxAge,now).rate,"1650.0");
+  assert.equal(quoteCharge("10000",validateRound(round(maxAge),maxAge,now).rate).usdcRaw,"6030303");
+  // One second past the limit, and a ten-day-old round, cannot price a charge.
+  for(const age of [maxAge+1,10*CHAINLINK_USD_ARS_HEARTBEAT_SECONDS])
+    assert.throws(()=>validateRound(round(age),maxAge,now),error=>{
+      assert.equal(error.message,"chainlink_stale_round");
+      assert.deepEqual(error.quoteAge,{updatedAt:now-age,ageSeconds:age,maxAgeSeconds:maxAge});return true;
+    });
 });
 test("internal worker requests require a strong exact secret",()=>{
   const before=process.env.INTERNAL_WORKER_SECRET;process.env.INTERNAL_WORKER_SECRET="a".repeat(64);

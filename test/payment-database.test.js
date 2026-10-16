@@ -9,6 +9,7 @@ import { finalizeDelivery, reconcileCharge, settlePayout } from "../netlify/func
 import { publicCharge } from "../netlify/functions/lib/paymentCore.js";
 import { reportFilters, listReportOperations, reportSummary, listOwnCharges } from "../netlify/functions/lib/paymentReporting.js";
 import { listUserActivity } from "../netlify/functions/lib/paymentActivity.js";
+import { validateRound } from "../src/priceFeed.js";
 
 test("PostgreSQL migration, charge creation, reservations and single ledger effect", async (t) => {
   const engine=new PGlite();await engine.waitReady;
@@ -34,9 +35,10 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     const previous=tail;let release;tail=new Promise((r)=>{release=r;});await previous;
     return {query,release};
   }};
-  const oldEnabled=process.env.PAYMENTS_ENABLED,oldRpc=process.env.ETH_RPC_URL;
-  process.env.PAYMENTS_ENABLED="true";process.env.ETH_RPC_URL="https://example.invalid";
+  const oldEnabled=process.env.PAYMENTS_ENABLED,oldRpc=process.env.ETH_RPC_URL,oldAge=process.env.CHAINLINK_MAX_AGE_SECONDS;
+  process.env.PAYMENTS_ENABLED="true";process.env.ETH_RPC_URL="https://example.invalid";process.env.CHAINLINK_MAX_AGE_SECONDS="90000";
   t.after(()=>{if(oldEnabled===undefined)delete process.env.PAYMENTS_ENABLED;else process.env.PAYMENTS_ENABLED=oldEnabled;
+    if(oldAge===undefined)delete process.env.CHAINLINK_MAX_AGE_SECONDS;else process.env.CHAINLINK_MAX_AGE_SECONDS=oldAge;
     if(oldRpc===undefined)delete process.env.ETH_RPC_URL;else process.env.ETH_RPC_URL=oldRpc;});
   const wallet="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const settings={environment:"production",network:"mainnet-beta",seller:"123",pos:"POS1"};
@@ -90,6 +92,16 @@ test("PostgreSQL migration, charge creation, reservations and single ledger effe
     liquidityRaw="6030303";
     await assert.rejects(()=>createCharge("u3",input,randomUUID(),adapters),/insufficient_treasury/);
     assert.equal((await query("SELECT * FROM charges WHERE user_id='u3'")).rowCount,0);liquidityRaw="100000000";
+  });
+  await t.test("a quote older than CHAINLINK_MAX_AGE_SECONDS rejects the charge without a reservation",async()=>{
+    let receivedMaxAge;
+    const now=Math.floor(Date.now()/1000);
+    const stale={...adapters,fetchQuote:async(_rpc,maxAge)=>{receivedMaxAge=maxAge;
+      return validateRound({answer:165000000000n,decimals:8,updatedAt:BigInt(now-90001),roundId:20n,answeredInRound:20n,
+        description:"USD / ARS"},maxAge,now);}};
+    await assert.rejects(()=>createCharge("stale-user",input,randomUUID(),stale),{code:"quote_stale"});
+    assert.equal(receivedMaxAge,90000);
+    assert.equal((await query("SELECT * FROM charges WHERE user_id='stale-user'")).rowCount,0);
   });
   await t.test("invalid amount fails before any Mercado Pago or quote request",async()=>{
     const before=verificationCalls;

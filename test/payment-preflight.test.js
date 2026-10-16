@@ -11,7 +11,7 @@ function fixture() {
  const env=Object.fromEntries(["MP_ACCESS_TOKEN","MP_USER_ID","MP_STORE_ID","MP_WEBHOOK_SECRET","SOLANA_RPC","ETH_RPC_URL",
  "AIVEN_PG_CA_CERT","VITE_PRIVY_APP_ID","PRIVY_APP_SECRET","TREASURY_SECRET_KEY"].map(key=>[key,"private-sentinel"]));
  Object.assign(env,{MP_ENVIRONMENT:"production",INTERNAL_WORKER_SECRET:"x".repeat(32),PAYMENTS_ENABLED:"false",CONVERSION_FEE_BPS:"50",
- ETH_RPC_URL:"https://example.invalid",PAYMENTS_BASE_URL:"https://example.invalid",
+ CHAINLINK_MAX_AGE_SECONDS:"90000",ETH_RPC_URL:"https://example.invalid",PAYMENTS_BASE_URL:"https://example.invalid",
  AIVEN_PG_URL:"postgresql://user:password@example.invalid/db?sslmode=require&application_name=payments",PAYMENTS_CHECK_USER_ID:"did:privy:merchant"});
  const adapters={verifyAccount:async()=>{},verifyStore:async()=>{},fetchQuote:async()=>({updatedAt:Math.floor(Date.now()/1000)}),
  rpc:async()=>network.genesis,getSigner:async()=>({}),liquidity:async()=>({raw:"10000",solLamports:"0"}),
@@ -51,16 +51,24 @@ test("database preflight always rolls back and releases on a schema failure",asy
  assert.equal(report.checks.find(row=>row.name==="database").code,"payment_schema_or_permissions_incomplete");
  assert.deepEqual(input.events,["BEGIN READ ONLY","ROLLBACK","release"]);
 });
-test("invalid quote diagnostics retain numeric age information without enforcing a limit",async()=>{
- const input=fixture();
- input.adapters.fetchQuote=async()=>{
-  const error=new Error("chainlink_invalid_round");
-  error.quoteAge={updatedAt:1000,ageSeconds:10800,maxAgeSeconds:120,token:"private-sentinel"};throw error;
+test("stale quote diagnostics include only numeric age fields, the configured maximum and the published heartbeat",async()=>{
+ const input=fixture();let receivedMaxAge;
+ input.adapters.fetchQuote=async(_rpc,maxAge)=>{
+  receivedMaxAge=maxAge;
+  const error=new Error("chainlink_stale_round");
+  error.quoteAge={updatedAt:1000,ageSeconds:90001,maxAgeSeconds:90000,token:"private-sentinel"};throw error;
  };
  const report=await runPaymentPreflight(input),quote=report.checks.find(row=>row.name==="quote");
- assert.equal(quote.code,"chainlink_invalid_round");
- assert.deepEqual(quote.details,{updatedAt:1000,ageSeconds:10800,ageLimitEnforced:false,publishedHeartbeatSeconds:86400});
+ assert.equal(receivedMaxAge,90000);assert.equal(report.ready,false);
+ assert.equal(quote.code,"chainlink_stale_round");
+ assert.deepEqual(quote.details,{updatedAt:1000,ageSeconds:90001,maxAgeSeconds:90000,publishedHeartbeatSeconds:86400});
  assert.ok(!JSON.stringify(report).includes("private-sentinel"));
+});
+test("preflight blocks the quote check when CHAINLINK_MAX_AGE_SECONDS is missing",async()=>{
+ const input=fixture();delete input.env.CHAINLINK_MAX_AGE_SECONDS;
+ const report=await runPaymentPreflight(input),checks=Object.fromEntries(report.checks.map(row=>[row.name,row]));
+ assert.equal(report.ready,false);assert.ok(checks.variables.missingVariables.includes("CHAINLINK_MAX_AGE_SECONDS"));
+ assert.equal(checks.quote.status,"blocked");assert.deepEqual(checks.quote.missingVariables,["CHAINLINK_MAX_AGE_SECONDS"]);
 });
 test("database TLS configuration preserves unrelated URL options without disabling verification",()=>{
  const config=paymentDatabaseConfig(fixture().env),url=new URL(config.connectionString);
