@@ -22,14 +22,19 @@ test("a persisted operation cannot change its amount during a retry",()=>{
   assert.equal(prepareChargeAttempt(previous,"250","different"),previous);
 });
 
-test("reviewed charges allow a new operation while in-flight payment attempts retain their identity",()=>{
+test("received and reviewed charges allow a new operation while unpaid attempts retain their identity",()=>{
   assert.equal(canStartNewCharge({status:"manual_review"}),true);
-  assert.equal(canStartNewCharge({status:"delivery_pending"}),false);
+  for(const status of ["paid","delivery_pending","broadcasting","confirmed"])
+    assert.equal(canStartNewCharge({status}),true);
   assert.equal(canStartNewCharge({status:"awaiting_payment"}),false);
+  assert.equal(canStartNewCharge({status:"creating"}),false);
   const reviewed={key:"old-key",id:"reviewed",ars:"21",wallet:"original"};
   const next=prepareChargeAttempt(canStartNewCharge({status:"manual_review"})?null:reviewed,"100","original");
   assert.notEqual(next.key,reviewed.key);assert.equal(next.ars,"100");
   assert.equal(prepareChargeAttempt(reviewed,"100","original"),reviewed);
+  const paid={...reviewed,id:"paid"};
+  const nextPaid=prepareChargeAttempt(canStartNewCharge({status:"paid"})?null:paid,"22","original");
+  assert.notEqual(nextPaid.key,paid.key);assert.equal(nextPaid.ars,"22");
 });
 test("database diagnostics expose safe codes and never raw credentials or SQL",()=>{
   const original=console.error,logs=[];console.error=(...args)=>logs.push(args);

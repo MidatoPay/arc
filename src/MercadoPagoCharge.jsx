@@ -1,25 +1,37 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
 import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt, bindChargeAttempt, canStartNewCharge } from "./charges.js";
+import { chargeStatusLabel, paymentReceived } from "./chargeStatus.js";
+import ChargeSummary from "./ChargeSummary.jsx";
+import { useLanguage } from "./i18n.jsx";
 
 const terminal = new Set(["delivered","expired","canceled","refunded"]);
-const labels = { creating:"Creando QR en Mercado Pago…", awaiting_payment:"Esperando pago",
-  paid:"Pago confirmado. Preparando USDC…", delivery_pending:"Pago confirmado. Entrega de USDC pendiente",
-  broadcasting:"Pago confirmado. Confirmando entrega de USDC…", confirmed:"Confirmado, finalizando…", delivered:"USDC entregados",
-  cancel_pending:"Cancelación pendiente de confirmación", expired:"El QR venció", canceled:"Cobro cancelado",
-  refunded:"Pago reembolsado", manual_review:"Este cobro requiere revisión" };
 const button = { border:0,borderRadius:14,padding:"14px 18px",font:"inherit",fontWeight:600,cursor:"pointer" };
 
-export default function MercadoPagoCharge({ userId, address, getAccessToken, onDelivered, chargeRequest, onChargeRequestConsumed }) {
+export default function MercadoPagoCharge({ userId, address, getAccessToken, onDelivered, onPaymentReceived, chargeRequest, onChargeRequestConsumed }) {
+  const {t}=useLanguage();
   const [ars,setArs] = useState(""), [charge,setCharge] = useState(null), [qr,setQr] = useState("");
   const [busy,setBusy] = useState(false), [error,setError] = useState(""), [history,setHistory] = useState([]);
   const [nextCursor,setNextCursor]=useState(null),[loadingHistory,setLoadingHistory]=useState(false);
   const [historyReady,setHistoryReady]=useState(false);
   const attempt = useRef(null), notified = useRef(new Set()), mounted = useRef(true), starting = useRef(false);
+  const selectedId=useRef(null);
+  const historyRef=useRef(history);historyRef.current=history;
   const deliveredCallback = useRef(onDelivered); deliveredCallback.current = onDelivered;
+  const paidCallback = useRef(onPaymentReceived); paidCallback.current = onPaymentReceived;
   const request = useCallback(async (path,options) => chargeApi(path,await getAccessToken(),options),[getAccessToken]);
+  const notify=useCallback((current)=>{
+    const event=current.status==="delivered"?"delivered":paymentReceived(current)?"paid":null;
+    const key=`${event}:${current.id}`;
+    if(!event || notified.current.has(key))return;
+    notified.current.add(key);
+    Promise.resolve((event==="delivered"?deliveredCallback:paidCallback).current?.(current)).catch(()=>{
+      if(mounted.current)setError("El pago fue recibido. Volvé a abrir Activity para actualizar el historial.");
+    });
+  },[]);
   const accept = useCallback((current,key) => {
     if (!mounted.current) return;
+    selectedId.current=current.id;
     setCharge(current);
     setHistory((list) => list.some((c)=>c.id===current.id)?list.map((c)=>c.id===current.id?current:c):[current,...list]);
     if (key && attempt.current?.key===key) {
@@ -29,14 +41,8 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     if (canStartNewCharge(current) && attempt.current?.id===current.id) {
       clearChargeAttempt(userId);attempt.current=null;
     }
-    if (current.status === "delivered" && !notified.current.has(current.id)) {
-      notified.current.add(current.id);
-      if(attempt.current?.id===current.id)clearChargeAttempt(userId);
-      Promise.resolve(deliveredCallback.current?.(current)).catch(() => {
-        if (mounted.current) setError("Los USDC fueron entregados. Volvé a abrir el historial para actualizar el comprobante.");
-      });
-    }
-  },[userId]);
+    notify(current);
+  },[userId,notify]);
   const start = useCallback(async (value) => {
     if (starting.current) return;
     starting.current = true; setBusy(true); setError("");
@@ -94,25 +100,50 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
   useEffect(() => {
     let canceled=false;
     setQr("");
-    if (charge?.qrData && charge.status === "awaiting_payment" && new Date(charge.expiresAt).getTime()>Date.now()) {
+    if (charge?.qrData && charge.status === "awaiting_payment" && !paymentReceived(charge) && new Date(charge.expiresAt).getTime()>Date.now()) {
       QRCode.toDataURL(charge.qrData,{margin:4,width:320,errorCorrectionLevel:"M"})
         .then((value) => { if (!canceled) setQr(value); }).catch(() => { if (!canceled) setError("No se pudo mostrar el QR. Volvé a abrir el cobro."); });
     }
     return () => { canceled=true; };
-  },[charge?.qrData,charge?.status,charge?.expiresAt]);
+  },[charge?.qrData,charge?.status,charge?.providerStatus,charge?.providerDetail,charge?.expiresAt]);
 
   useEffect(() => {
     if (!charge || terminal.has(charge.status)) return;
     const pollMs=["paid","delivery_pending","broadcasting","confirmed"].includes(charge.status)?2500:5000;
     let canceled=false, timer;
     const poll=async () => {
-      try { const {charge:current}=await request(`/charges/${charge.id}`); if (!canceled) { accept(current); setError(""); } }
-      catch (e) { if (!canceled) setError(chargeError(e.code)); }
+      try { const {charge:current}=await request(`/charges/${charge.id}`); if (!canceled && selectedId.current===charge.id) { accept(current); setError(""); } }
+      catch (e) { if (!canceled && selectedId.current===charge.id) setError(chargeError(e.code)); }
       if (!canceled) timer=setTimeout(poll,pollMs);
     };
     timer=setTimeout(poll,pollMs);
     return () => { canceled=true;clearTimeout(timer); };
   },[charge?.id,charge?.status,request,accept]);
+
+  const backgroundCharges=history.filter(c=>c.id!==charge?.id);
+  const backgroundPollMs=backgroundCharges.some(c=>["paid","delivery_pending","broadcasting","confirmed"].includes(c.status))?2500:
+    backgroundCharges.some(c=>c.status==="manual_review" && paymentReceived(c))?15000:null;
+  useEffect(()=>{
+    if(!historyReady || !backgroundPollMs)return;
+    let canceled=false,timer;
+    const poll=async()=>{
+      const tracked=new Set(historyRef.current.filter(c=>paymentReceived(c) && c.status!=="delivered").map(c=>c.id));
+      try {
+        const {charges}=await request("/charges");
+        if(!canceled){
+          setHistory(previous=>{
+            const fresh=new Map(charges.map(c=>[c.id,c]));
+            return previous.map(c=>fresh.get(c.id)||c);
+          });
+          // Refresh completed deliveries without selecting them over a new QR.
+          for(const current of charges)if(current.status==="delivered" && tracked.has(current.id))notify(current);
+        }
+      } catch { /* The worker continues even if a history refresh fails. */ }
+      finally {if(!canceled)timer=setTimeout(poll,backgroundPollMs);}
+    };
+    timer=setTimeout(poll,backgroundPollMs);
+    return ()=>{canceled=true;clearTimeout(timer);};
+  },[historyReady,backgroundPollMs,request,notify]);
 
   const cancel=async () => {
     setBusy(true);setError("");
@@ -121,6 +152,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
   };
   const reset=() => {
     if(attempt.current?.id===charge?.id){clearChargeAttempt(userId);attempt.current=null;}
+    selectedId.current=null;
     setCharge(null);setQr("");setArs(attempt.current?.ars || "");setError("");
   };
   const moreHistory=async()=>{
@@ -130,32 +162,17 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     catch(e){if(mounted.current)setError(chargeError(e.code));}finally{if(mounted.current)setLoadingHistory(false);}
   };
   return <section style={{display:"flex",flexDirection:"column",gap:16}}>
-    <h2 style={{margin:0,fontSize:26}}>Cobrar con Mercado Pago</h2>
+    <h2 style={{margin:0,fontSize:26}}>Cobrar con MIDATOPAY</h2>
     <p style={{margin:0,color:"#7A7A85"}}>Recibí el pago en pesos y acreditá USDC en tu wallet. Comisión de conversión: 0,5%.</p>
     {error && <div role="alert" style={{color:"#E4483D"}}>{error}</div>}
     {!charge ? <>
       <label style={{display:"flex",flexDirection:"column",gap:8}}>Importe en ARS
         <input value={ars} disabled={busy} inputMode="decimal" placeholder="0,00" onChange={(e)=>setArs(e.target.value)} style={{font:"inherit",padding:16,border:"1px solid #ECECF0",borderRadius:14}} />
       </label>
-      <button disabled={busy || !ars} onClick={()=>start(ars)} style={{...button,background:"#FF5A00",color:"white",opacity:busy?0.5:1}}>{busy ? "Iniciando cobro…" : attempt.current ? "Iniciar o recuperar cobro" : "Iniciar cobro"}</button>
+      <button disabled={busy || !ars || !historyReady} onClick={()=>start(ars)} style={{...button,background:"#FF5A00",color:"white",opacity:busy?0.5:1}}>{busy ? "Iniciando cobro…" : attempt.current ? "Iniciar o recuperar cobro" : "Iniciar cobro"}</button>
       {attempt.current && <small>Podés editar el importe si el cobro todavía no fue creado. Si ya existe, recuperaremos la operación original.</small>}
-    </> : <div style={{padding:20,borderRadius:20,background:"white",display:"flex",flexDirection:"column",gap:12}}>
-      <strong aria-live="polite">{labels[charge.status] || "Actualizando cobro"}</strong>
-      <div>Importe: $ {charge.ars} ARS</div>
-      <div>Comisión: $ {charge.feeArs} ARS · Cotización: $ {charge.fxRate} / USDC</div>
-      <strong>A recibir: {charge.usdc} USDC</strong>
-      {qr && new Date(charge.expiresAt).getTime()>Date.now() && <img src={qr} width={280} height={280} alt="QR de pago Mercado Pago" style={{alignSelf:"center",maxWidth:"100%",objectFit:"contain"}} />}
-      <div style={{fontSize:13,color:"#7A7A85",overflowWrap:"anywhere"}}>Operación: {charge.reference}<br/>Orden: {charge.orderId || "pendiente"}<br/>Vence: {charge.expiresAt ? new Date(charge.expiresAt).toLocaleString() : "pendiente"}</div>
-      {charge.lastError && <div role="status" style={{fontSize:13,color:"#E4483D"}}>{chargeError(charge.lastError)}</div>}
-      {charge.signature && <div style={{fontSize:12,overflowWrap:"anywhere"}}>Transferencia USDC: {charge.signature}</div>}
-      {["creating","awaiting_payment"].includes(charge.status) && <button disabled={busy} onClick={cancel} style={button}>Cancelar cobro</button>}
-      {["cancel_pending","manual_review"].includes(charge.status) && <>
-        <p style={{margin:0,color:"#7A7A85"}}>{charge.status === "cancel_pending" ? "La cancelación todavía no se confirmó." : "Este cobro sigue en revisión."} Podés iniciar otro cobro y consultar esta operación desde el historial.</p>
-        <button disabled={busy} onClick={reset} style={{...button,background:"#FF5A00",color:"white"}}>Iniciar otro cobro</button>
-      </>}
-      {terminal.has(charge.status) && <button onClick={reset} style={{...button,background:"#FF5A00",color:"white"}}>Nuevo cobro</button>}
-    </div>}
-    {history.length>0 && <><h3 style={{marginBottom:0}}>Tus cobros</h3>{history.map((c)=><button key={c.id} onClick={()=>accept(c)} style={{...button,textAlign:"left",background:"white"}}>$ {c.ars} ARS · {labels[c.status] || c.status}<div style={{fontSize:12,color:"#7A7A85"}}>{c.reference}</div></button>)}</>}
+    </> : <ChargeSummary charge={charge} qr={qr} busy={busy} onCancel={cancel} onReset={reset} t={t} errorMessage={chargeError(charge.lastError)} />}
+    {history.length>0 && <><h3 style={{marginBottom:0}}>Tus cobros</h3>{history.map((c)=><button key={c.id} disabled={busy} onClick={()=>accept(c)} style={{...button,textAlign:"left",background:"white"}}>$ {c.ars} ARS · {chargeStatusLabel(c)}<div style={{fontSize:12,color:"#7A7A85"}}>{c.reference}</div></button>)}</>}
     {nextCursor && <button disabled={loadingHistory} onClick={moreHistory} style={button}>{loadingHistory?"Cargando…":"Cargar cobros anteriores"}</button>}
   </section>;
 }

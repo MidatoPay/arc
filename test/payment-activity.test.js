@@ -17,12 +17,13 @@ test("Activity distinguishes an accredited payment under review from a completed
   assert.equal(activityStatusKey({source:"wallet"}),null);
 });
 
-test("Activity follows an unpaid QR into confirmation and stops polling completed or reviewed deliveries",()=>{
+test("Activity adapts polling to unpaid, active and reviewed deliveries and stops for completed charges",()=>{
   const charge={source:"mercadopago",settled:false,status:"awaiting_payment"};
   assert.equal(activityRefreshInterval([charge]),5000);
   for(const status of ["paid","delivery_pending","broadcasting","confirmed"])
     assert.equal(activityRefreshInterval([charge,{...charge,status}]),2500);
   assert.equal(activityRefreshInterval([{...charge,status:"delivered",settled:true}]),null);
   assert.equal(activityRefreshInterval([{...charge,status:"manual_review"}]),null);
+  assert.equal(activityRefreshInterval([{...charge,status:"manual_review",providerStatus:"processed",providerDetail:"accredited"}]),15000);
   assert.equal(activityRefreshInterval([{source:"wallet",status:"confirmed"}]),null);
 });

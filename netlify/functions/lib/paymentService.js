@@ -110,6 +110,7 @@ export async function ensureOrder(db, charge, settings, adapters = {}) {
   const validated = validateOrder(canonical, charge);
   const fields = { payment_id: validated.paymentId, status: "awaiting_payment", provider_status: canonical.status,
     provider_detail: canonical.status_detail, last_error: charge.qr_data ? null : "mercadopago_missing_qr" };
+  if (validated.paid && !validated.refunded) fields.paid_at = charge.paid_at || new Date();
   if (!charge.qr_data) {
     fields.cancel_requested = true;
     fields.status = "cancel_pending";
