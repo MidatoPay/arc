@@ -27,6 +27,6 @@ export function useMerchantProfile(userId, getAccessToken) {
     if (currentId.current === userId) {setRecord({userId,profile});setError('');}
     return profile;
   },[userId,getAccessToken]);
-  return {profile:record?.userId === userId ? record.profile : null,error,
+  return {profile:userId && record && record.userId === userId ? record.profile : null,error,
     save,retry:() => setRevision(value => value+1)};
 }
