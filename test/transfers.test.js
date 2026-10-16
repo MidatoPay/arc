@@ -7,7 +7,8 @@ import {generateKeyPairSigner,getTransactionDecoder,getTransactionEncoder,partia
 import {NETWORK} from '../src/network.js';
 import {exactUsdc} from '../src/transfers.js';
 import {prepareTransfer,validateUserSignature,signSponsoredTransfer,sourceBalance,tokenAddress} from '../netlify/functions/lib/transferChain.js';
-import {createTransfer,submitTransfer,cancelUnsignedTransfer,transferQuota,transferDay,publicTransfer} from '../netlify/functions/lib/transferService.js';
+import {createTransfer,submitTransfer,cancelUnsignedTransfer,transferQuota,transferDay,publicTransfer,transferQuote} from '../netlify/functions/lib/transferService.js';
+import {transfersEnabledFor,assertTransfersEnabled} from '../netlify/functions/lib/transferAccess.js';
 import {processTransfer} from '../netlify/functions/lib/transferWorker.js';
 import {listUserActivity} from '../netlify/functions/lib/paymentActivity.js';
 import {createTransfersHandler} from '../netlify/functions/transfers.js';
@@ -23,6 +24,19 @@ test('transfer endpoint authenticates before any database or signing operation',
  const handler=createTransfersHandler({authenticate:async()=>{throw new PaymentError('unauthorized',401);},create:()=>assert.fail('Must not create')});
  assert.equal((await handler({httpMethod:'POST',path:'/transfers'})).statusCode,401);
 });
+
+test('production pilot requires an exact authenticated user ID and preserves Chainlink freshness configuration',async()=>{
+ const env={TRANSFERS_ENABLED:'false',TRANSFERS_ALLOWED_USER_IDS:'did:privy:pilot, did:privy:second',ETH_RPC_URL:'https://example.com/rpc',CHAINLINK_MAX_AGE_SECONDS:'90000'};
+ assert.equal(transfersEnabledFor('did:privy:pilot',env),true);
+ for(const user of ['did:privy:pilo','did:privy:pilot-extra','',null,'other']) {
+  assert.equal(transfersEnabledFor(user,env),false);
+  assert.throws(()=>assertTransfersEnabled(user,env),/transfers_disabled/);
+ }
+ assert.equal(transfersEnabledFor('other',{...env,TRANSFERS_ENABLED:'true'}),true);
+ assert.equal(transfersEnabledFor('did:privy:pilot',{...env,TRANSFERS_ALLOWED_USER_IDS:''}),false);
+ assert.equal(await transferQuote({env,fetchQuote:async(rpc,maxAge)=>{assert.equal(rpc,env.ETH_RPC_URL);assert.equal(maxAge,90000);return {rate:'1600'};}}),'1600');
+ await assert.rejects(()=>transferQuote({env:{...env,CHAINLINK_MAX_AGE_SECONDS:''}}),/missing_chainlink_max_age_seconds/);
+});
 test('primary USDC transfers preserve signatures, reserve quota/budget and complete only on verified finalization',async t=>{
  const engine=new PGlite();await engine.waitReady;t.after(()=>engine.close());
  const base=(await readFile('db/schema.sql','utf8')).replace('CREATE EXTENSION IF NOT EXISTS pgcrypto;','');await engine.exec(base);
@@ -33,9 +47,9 @@ test('primary USDC transfers preserve signatures, reserve quota/budget and compl
  const query=async(sql,params)=>{const r=await engine.query(sql,params);return {...r,rowCount:r.affectedRows ?? r.rows.length};};
  const db={query,connect:async()=>{const previous=tail;let release;tail=new Promise(resolve=>{release=resolve;});await previous;return {query,release};}};
  const user=await generateKeyPairSigner(),treasury=await generateKeyPairSigner(),recipient=await generateKeyPairSigner();
- const old={enabled:process.env.TRANSFERS_ENABLED,budget:process.env.TRANSFER_DAILY_SOL_BUDGET,max:process.env.TRANSFER_MAX_SOL_COST};
- process.env.TRANSFERS_ENABLED='true';delete process.env.TRANSFER_DAILY_SOL_BUDGET;delete process.env.TRANSFER_MAX_SOL_COST;
- t.after(()=>{for(const [key,value] of Object.entries({TRANSFERS_ENABLED:old.enabled,TRANSFER_DAILY_SOL_BUDGET:old.budget,TRANSFER_MAX_SOL_COST:old.max}))if(value===undefined)delete process.env[key];else process.env[key]=value;});
+ const old={enabled:process.env.TRANSFERS_ENABLED,allowed:process.env.TRANSFERS_ALLOWED_USER_IDS,budget:process.env.TRANSFER_DAILY_SOL_BUDGET,max:process.env.TRANSFER_MAX_SOL_COST};
+ process.env.TRANSFERS_ENABLED='true';delete process.env.TRANSFERS_ALLOWED_USER_IDS;delete process.env.TRANSFER_DAILY_SOL_BUDGET;delete process.env.TRANSFER_MAX_SOL_COST;
+ t.after(()=>{for(const [key,value] of Object.entries({TRANSFERS_ENABLED:old.enabled,TRANSFERS_ALLOWED_USER_IDS:old.allowed,TRANSFER_DAILY_SOL_BUDGET:old.budget,TRANSFER_MAX_SOL_COST:old.max}))if(value===undefined)delete process.env[key];else process.env[key]=value;});
  let height=10,balance=10000000n,simulationError=null,status=null,transaction=null,networkGenesis=NETWORK.genesis;
  const broadcasts=[];
  const rpc=async(method,params)=>{
@@ -162,6 +176,22 @@ test('primary USDC transfers preserve signatures, reserve quota/budget and compl
   await processTransfer(accepted.id,{db,rpc:failAfterBroadcast});await processTransfer(accepted.id,{db,rpc});
   assert.equal(broadcasts.at(-1),accepted.signed_wire);assert.equal(broadcasts.at(-2),accepted.signed_wire);
   assert.equal((await transferQuota(db,'disk-user')).used,1);
+ });
+ await t.test('production pilot enables only its owner through preparation, submit, availability and worker broadcast',async()=>{
+  const outsider=await createTransfer('outside-pilot',input,randomUUID(),adapters);
+  const owner='did:privy:pilot';process.env.TRANSFERS_ENABLED='false';process.env.TRANSFERS_ALLOWED_USER_IDS=owner;
+  try {
+   await assert.rejects(()=>createTransfer('outside-pilot',input,randomUUID(),adapters),/transfers_disabled/);
+   await assert.rejects(async()=>submitTransfer('outside-pilot',outsider.id,await userSigned(outsider),adapters),/transfers_disabled/);
+   const draft=await createTransfer(owner,{...input,amount:'0.000001'},randomUUID(),adapters);
+   const accepted=await submitTransfer(owner,draft.id,await userSigned(draft),adapters);
+   const count=broadcasts.length;status=null;
+   await processTransfer(accepted.id,{db,rpc});assert.equal(broadcasts.length,count+1);
+   const availability=async userId=>JSON.parse((await createTransfersHandler({db,authenticate:async()=>userId})({httpMethod:'GET',path:'/transfers'})).body).enabled;
+   assert.equal(await availability(owner),true);assert.equal(await availability('outside-pilot'),false);
+   delete process.env.TRANSFERS_ALLOWED_USER_IDS;
+   await processTransfer(accepted.id,{db,rpc});assert.equal(broadcasts.length,count+1);
+  }finally{process.env.TRANSFERS_ENABLED='true';delete process.env.TRANSFERS_ALLOWED_USER_IDS;}
  });
  await t.test('token account checks enforce owner, program, mint, decimals and state without requiring user SOL',async()=>{
   const valid={owner:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',data:{parsed:{info:{owner:user.address,mint:NETWORK.mint,state:'initialized',tokenAmount:{amount:'123031',decimals:6}}}}};

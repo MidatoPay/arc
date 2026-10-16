@@ -59,8 +59,9 @@ export default function PaymentReports({getAccessToken,onBack}) {
         {check.code && <div>{check.code}</div>}
         {check.missingVariables?.length>0 && <div>Faltan: {check.missingVariables.join(", ")}</div>}
         {check.variables?.length>0 && <div>Revisar: {check.variables.join(", ")}</div>}
-        {check.details?.ageSeconds!=null && <div>Antigüedad de cotización: {check.details.ageSeconds} segundos · sin límite de antigüedad.</div>}
-        {check.details?.publishedHeartbeatSeconds && <div>Heartbeat publicado del feed: {check.details.publishedHeartbeatSeconds} segundos.</div>}
+        {check.details?.ageSeconds!=null && <div>Antigüedad de cotización: {check.details.ageSeconds} segundos · máximo: {check.details.maxAgeSeconds ?? "sin configurar"} segundos</div>}
+        {check.details?.publishedHeartbeatSeconds && <div>Heartbeat publicado del feed: {check.details.publishedHeartbeatSeconds} segundos.
+          {check.details.maxAgeSeconds<check.details.publishedHeartbeatSeconds && " El máximo configurado es menor al heartbeat; puede detener cobros entre actualizaciones normales."}</div>}
       </div>)}
     </div>}
     <form onSubmit={(e)=>{e.preventDefault();if(!exporting)setFilters({...draft});}} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>

@@ -23,13 +23,16 @@ export async function createCharge(userId, input, key, adapters = {}) {
     if (c.user_id !== userId || c.environment !== settings.environment || c.network !== settings.network || c.wallet_address !== input.wallet || c.amount_cents !== amount) throw new PaymentError("idempotency_conflict", 409);
     return c;
   }
-  const {rpc}=paymentQuoteSettings();
+  const {rpc,maxAge}=paymentQuoteSettings();
   const merchant = await (adapters.ensureMerchantPos || ensureMerchantPos)(userId,settings);
   const chargeSettings={...settings,pos:merchant.external_id};
   await (adapters.verifySeller || verifySeller)(chargeSettings);
   let feed;
-  try { feed = await (adapters.fetchQuote || fetchArsQuote)(rpc); }
-  catch (error) { throw new PaymentError(error.message==="chainlink_invalid_round" ? "quote_invalid_round" : "quote_unavailable"); }
+  try { feed = await (adapters.fetchQuote || fetchArsQuote)(rpc,maxAge); }
+  catch (error) {
+    const codes={chainlink_invalid_round:"quote_invalid_round",chainlink_stale_round:"quote_stale"};
+    throw new PaymentError(codes[error.message] || "quote_unavailable");
+  }
   const quote = quoteCharge(input.ars, feed.rate);
   return transaction(async (db) => {
     const owner = await (adapters.getTreasuryAddress || getTreasuryAddress)();

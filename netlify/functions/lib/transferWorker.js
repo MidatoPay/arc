@@ -2,6 +2,7 @@ import {NETWORK} from '../../../src/network.js';
 import {getPaymentDb} from './paymentRuntime.js';
 import {transferRpc,tokenAddress} from './transferChain.js';
 import {unitsDecimal} from './paymentCore.js';
+import {transfersEnabledFor} from './transferAccess.js';
 
 export async function processTransfer(id,adapters={}) {
  const pool=adapters.db || getPaymentDb(),rpc=adapters.rpc || transferRpc,db=await pool.connect();
@@ -49,7 +50,7 @@ export async function processTransfer(id,adapters={}) {
     // One RPC's absence cannot authorize replacement or release ambiguous funds.
     await db.query("UPDATE wallet_transfers SET status='manual_review',last_error='transfer_expired_requires_review',next_attempt_at=now()+interval '1 minute' WHERE id=$1",[id]);
    } else {
-    if(process.env.TRANSFERS_ENABLED==='true' && t.status!=='manual_review' && t.signed_wire)
+    if(transfersEnabledFor(t.user_id) && t.status!=='manual_review' && t.signed_wire)
      await rpc('sendTransaction',[t.signed_wire,{encoding:'base64',skipPreflight:false,preflightCommitment:'confirmed'}]);
     await db.query("UPDATE wallet_transfers SET next_attempt_at=now()+interval '3 seconds' WHERE id=$1",[id]);
    }

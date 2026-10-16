@@ -30,6 +30,7 @@ Valores iniciales del servidor:
 
 ```
 TRANSFERS_ENABLED=false
+TRANSFERS_ALLOWED_USER_IDS=
 TRANSFER_DAILY_SOL_BUDGET=0.05
 TRANSFER_MAX_SOL_COST=0.003
 ```
@@ -38,7 +39,13 @@ El presupuesto reserva el costo superior de cada envío, incluida la renta del A
 
 Estados: `awaiting_signature`, `broadcasting`, `confirmed`, `completed`, `failed`, `manual_review`, `canceled`. Solo una transferencia finalizada con instrucciones verificadas produce el movimiento contable definitivo. Activity muestra pendientes y finalizados sin duplicados; el reconciliador omite firmas gestionadas por el worker. Un error procesado o confirmado sigue esperando finalización. Un wire vencido ausente de un RPC queda en revisión y conserva su reserva USDC: no se autoriza otro pago automáticamente.
 
-El worker retransmite exclusivamente los mismos bytes dentro de su vigencia. Continúa observando finalizaciones aunque `TRANSFERS_ENABLED=false`, pero no transmite nuevas transacciones con el servicio pausado. El dispatch se ejecuta cada minuto; el recibo abierto sigue la misma firma mediante polling. Los errores de tracking se guardan con códigos seguros sin registrar claves ni wires.
+El worker retransmite exclusivamente los mismos bytes dentro de su vigencia. Continúa observando finalizaciones aunque el usuario ya no tenga habilitados los envíos, pero no retransmite para usuarios deshabilitados. El dispatch se ejecuta cada minuto; el recibo abierto sigue la misma firma mediante polling. Los errores de tracking se guardan con códigos seguros sin registrar claves ni wires.
+
+### Validación en producción con acceso limitado
+
+Con `TRANSFERS_ENABLED=false`, configurar `TRANSFERS_ALLOWED_USER_IDS=did:privy:ID_DE_PRUEBA` en el contexto Production de Netlify y desplegar permite enviar únicamente a esos usuarios autenticados (varios IDs separados por coma). No se usan direcciones de wallet, emails ni datos enviados por el cliente para conceder este acceso. La disponibilidad de la API, preparación, autorización de tesorería y worker aplican la misma política. Los límites diarios y de presupuesto también se aplican a estas cuentas.
+
+Así se puede validar un envío real con el acceso general cerrado: iniciar sesión con la cuenta habilitada, revisar la wallet principal y destinatario, firmar un importe pequeño y comprobar firma, finalización y Activity. Cada envío requiere firma del usuario; esta configuración no ejecuta transferencias por sí sola. Antes de probar, verificar RPC mainnet, tesorería y configuración desplegada. Para pausar todos los envíos, mantener `TRANSFERS_ENABLED=false` y vaciar `TRANSFERS_ALLOWED_USER_IDS`; el tracking de operaciones existentes continúa. Después de validar se puede abrir el acceso general con `TRANSFERS_ENABLED=true`.
 
 ## Agenda
 
@@ -48,7 +55,7 @@ La API valida tipos, longitudes, direcciones Solana y alias únicos por usuario.
 
 1. Ejecutar pruebas, build y `npm run functions:check` en devnet y mainnet.
 2. Aplicar `db/migrations/20261016_wallet_transfers.sql` antes de desplegar frontend/Functions (incluida en el runner de migraciones).
-3. Desplegar con `TRANSFERS_ENABLED=false`. Configurar `SOLANA_RPC`, `TREASURY_SECRET_KEY`, las credenciales Privy, `INTERNAL_WORKER_SECRET`, la URL base del sitio y el RPC de Ethereum para el equivalente informativo ARS. El backend mantiene las claves privadas fuera del navegador.
+3. Desplegar con `TRANSFERS_ENABLED=false`. Configurar `SOLANA_RPC`, `TREASURY_SECRET_KEY`, las credenciales Privy, `INTERNAL_WORKER_SECRET`, la URL base del sitio, el RPC de Ethereum y `CHAINLINK_MAX_AGE_SECONDS` para el equivalente informativo ARS. El backend mantiene las claves privadas fuera del navegador.
 4. Revisar inventario de wallets, permisos y mapeos. Verificar la tesorería real de la red; las configuraciones locales anteriores pueden apuntar a otra wallet o a devnet.
-5. Validar en una cuenta de prueba los tres flujos, la firma parcial de Privy, destinatario con/sin ATA, usuario con cero SOL, persistencia tras recarga, cuota diaria y fallos. Las pruebas automatizadas usan claves efímeras y RPC simulado; nunca mueven fondos reales.
+5. Habilitar únicamente la cuenta de prueba mediante `TRANSFERS_ALLOWED_USER_IDS` y validar los tres flujos, la firma parcial de Privy, destinatario con/sin ATA, usuario con cero SOL, persistencia tras recarga, cuota diaria y fallos. Las pruebas automatizadas usan claves efímeras y RPC simulado; nunca mueven fondos reales.
 6. Habilitar solo después de estas comprobaciones. No activar el flag ni fondear la tesorería como parte de una prueba automatizada. Revisar en `wallet_transfers` el consumo de cuota/presupuesto, los códigos `last_error` y la cola de revisión. Una transferencia ambigua se investiga por firma antes de cualquier recuperación administrativa.

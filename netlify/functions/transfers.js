@@ -3,6 +3,7 @@ import {authenticatePayment,getPaymentDb,json,errorResponse,kickWorker} from './
 import {PaymentError} from './lib/paymentCore.js';
 import {createTransfer,submitTransfer,cancelUnsignedTransfer,publicTransfer,transferQuota} from './lib/transferService.js';
 import {processTransfer} from './lib/transferWorker.js';
+import {transfersEnabledFor} from './lib/transferAccess.js';
 
 export function createTransfersHandler(adapters={}) {
  return async event=>{
@@ -23,7 +24,7 @@ export function createTransfersHandler(adapters={}) {
      return json(200,{transfer:publicTransfer(fresh,true),quota:await transferQuota(db,userId)});
     }
     const rows=(await db.query('SELECT * FROM wallet_transfers WHERE user_id=$1 AND network=$2 ORDER BY created_at DESC LIMIT 50',[userId,NETWORK.cluster])).rows;
-    return json(200,{enabled:process.env.TRANSFERS_ENABLED==='true',transfers:rows.map(row=>publicTransfer(row)),quota:await transferQuota(db,userId)});
+    return json(200,{enabled:transfersEnabledFor(userId),transfers:rows.map(row=>publicTransfer(row)),quota:await transferQuota(db,userId)});
    }
    if(event.httpMethod!=='POST')return json(405,{error:'method_not_allowed'});
    let body;try{body=JSON.parse(event.body || '{}');}catch{throw new PaymentError('invalid_json',400);}

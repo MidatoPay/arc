@@ -1,14 +1,16 @@
 import {randomUUID} from 'node:crypto';
 import {isAddress} from '@solana/kit';
 import {NETWORK} from '../../../src/network.js';
-import {getPaymentDb,transaction} from './paymentRuntime.js';
+import {getPaymentDb,transaction,paymentQuoteSettings} from './paymentRuntime.js';
 import {PaymentError,decimalUnits,unitsDecimal} from './paymentCore.js';
 import {resolvePrimaryWallet} from './primaryWallet.js';
 import {transferRpc,sourceBalance,prepareTransfer,validateUserSignature,signSponsoredTransfer} from './transferChain.js';
 import {fetchArsQuote} from '../../../src/priceFeed.js';
+import {assertTransfersEnabled} from './transferAccess.js';
 
-export function assertTransfersEnabled(env=process.env) {
- if(env.TRANSFERS_ENABLED!=='true')throw new PaymentError('transfers_disabled',503);
+export async function transferQuote(adapters={}) {
+ const {rpc,maxAge}=paymentQuoteSettings(adapters.env || process.env);
+ return (await (adapters.fetchQuote || fetchArsQuote)(rpc,maxAge)).rate;
 }
 export function transferLimits(env=process.env) {
  const daily=decimalUnits(env.TRANSFER_DAILY_SOL_BUDGET || '0.05',9),single=decimalUnits(env.TRANSFER_MAX_SOL_COST || '0.003',9);
@@ -48,7 +50,7 @@ async function recoverPreparation(t,adapters,pool) {
  },pool);
 }
 export async function createTransfer(userId,input,key,adapters={}) {
- assertTransfersEnabled();
+ assertTransfersEnabled(userId);
  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(key || ''))throw new PaymentError('invalid_idempotency_key',400);
  if(!input || typeof input.amount!=='string' || !isAddress(input.to || '') || !isAddress(input.from || ''))throw new PaymentError('invalid_transfer',400);
  const raw=decimalUnits(input.amount,6);
@@ -69,7 +71,7 @@ export async function createTransfer(userId,input,key,adapters={}) {
  const prepared=await (adapters.prepare || prepareTransfer)({from:input.from,to:input.to,raw:String(raw),memo});
  if(BigInt(prepared.cost_lamports)>transferLimits().single)throw new PaymentError('transfer_cost_limit',409);
  const contact=(await pool.query('SELECT name FROM contacts WHERE user_id=$1 AND address=$2 ORDER BY created_at LIMIT 1',[userId,input.to])).rows[0];
- const rate=await (adapters.quote || (async()=> (await fetchArsQuote(process.env.ETH_RPC_URL)).rate))();
+ const rate=await (adapters.quote || transferQuote)();
  return transaction(async db=>{
   await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`transfer-create:${network}:${userId}:${key}`]);
   const duplicate=(await db.query('SELECT * FROM wallet_transfers WHERE user_id=$1 AND network=$2 AND idempotency_key=$3',[userId,network,key])).rows[0];
@@ -104,7 +106,7 @@ export async function submitTransfer(userId,id,wire,adapters={}) {
   if(!t)throw new PaymentError('transfer_not_found',404);
   // Recovery does not sign again, consume quota, or depend on the current signer.
   if(t.signature)return t;
-  assertTransfersEnabled();
+  assertTransfersEnabled(userId);
   if(t.status!=='awaiting_signature')throw new PaymentError('transfer_not_signable',409);
   const primary=await (adapters.primary || resolvePrimaryWallet)(userId);
   if(primary.address!==t.from_address)throw new PaymentError('primary_wallet_required',403);
