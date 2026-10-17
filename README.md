@@ -220,6 +220,8 @@ npm run payments:check        # read-only configuration check
 npm run dev:full              # Vite + Functions at http://localhost:8888
 ```
 
+Once the server finishes loading Functions, run `npm run dev:check` in another terminal. It checks that Vite modules are served as JavaScript and that the webhook rejects an unsigned request. `dev:full` limits esbuild memory/concurrency and points background workers to the local server on port 8888. Keep `[dev].framework = "#custom"` in `netlify.toml`: with an explicit command and target port, automatic detection skips the framework and the SPA fallback can return HTML for Vite modules.
+
 Use `.env.production.example` as the checklist for the Netlify **Production** context. Never commit a completed file.
 
 ### 6.3 Environment variables
