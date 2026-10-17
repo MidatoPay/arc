@@ -294,4 +294,3 @@ business-lois/           Letters of intent (Deenex, Supermercado Soler)
 - [`docs/MERCADOPAGO_PRODUCCION.md`](docs/MERCADOPAGO_PRODUCCION.md): operations guide for Mercado Pago → USDC (Spanish).
 - [`docs/USDC_TRANSFERS.md`](docs/USDC_TRANSFERS.md): primary wallet, USDC sends, production pilot and recovery (Spanish).
 - [`SOLANA-RULES.md`](SOLANA-RULES.md): Solana engineering rules.
-- [`AGENTS.md`](AGENTS.md): agent instructions and the reusable development/release skill. `npm run change:preflight` checks local Git readiness without publishing changes.

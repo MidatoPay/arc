@@ -10,7 +10,6 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test --test-concurrency=1 test/*.test.js",
-    "change:preflight": "node .agents/skills/midatopay-dev-release/scripts/preflight.mjs",
     "functions:check": "node scripts/check-functions.js",
     "deps:check": "npm audit --omit=dev --audit-level=high --fetch-retries=0 --fetch-timeout=15000",
     "payments:env": "node scripts/prepare-payments-env.js",
