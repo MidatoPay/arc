@@ -22,9 +22,6 @@ export default defineConfig(({ mode }) => {
       esbuildOptions: { define: { global: "globalThis" } },
     },
     server: {
-      // Generated Functions, logs and local browser profiles are not sources.
-      // Watching these can hit locked Windows cache files and stop Vite.
-      watch: { ignored: ['**/.netlify/**'] },
       proxy: {
         "/wallet": {target:"http://127.0.0.1:9999",changeOrigin:true,rewrite:path=>path.replace(/^\/wallet/,"/.netlify/functions/wallet")},
         "/transfers": {target:"http://127.0.0.1:9999",changeOrigin:true,rewrite:path=>path.replace(/^\/transfers/,"/.netlify/functions/transfers")},
