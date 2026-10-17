@@ -1,0 +1,4 @@
+interface:
+  display_name: "MidatoPay: desarrollo y publicación"
+  short_description: "Desarrollo y despliegues fiables de MidatoPay"
+  default_prompt: "Usá $midatopay-dev-release para desarrollar o publicar este cambio de MidatoPay aplicando las lecciones del repositorio."
