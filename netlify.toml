@@ -7,6 +7,9 @@
   SECRETS_SCAN_OMIT_KEYS = "PAYMENTS_BASE_URL,MP_ENVIRONMENT,PAYMENTS_ENABLED,VITE_SOLANA_CLUSTER,ETH_RPC_URL"
 
 [dev]
+  # With command + targetPort, auto detection skips the framework. Declare it
+  # so the SPA fallback cannot rewrite Vite's virtual JS modules to index.html.
+  framework = "#custom"
   command = "npm run dev -- --host 127.0.0.1 --port 5173"
   targetPort = 5173
   port = 8888
