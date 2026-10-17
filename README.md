@@ -220,8 +220,6 @@ npm run payments:check        # read-only configuration check
 npm run dev:full              # Vite + Functions at http://localhost:8888
 ```
 
-Once the server finishes loading Functions, run `npm run dev:check` in another terminal. It checks that Vite modules are served as JavaScript and that the webhook rejects an unsigned request. `dev:full` limits esbuild memory/concurrency and points background workers to the local server on port 8888. Keep `[dev].framework = "#custom"` in `netlify.toml`: with an explicit command and target port, automatic detection skips the framework and the SPA fallback can return HTML for Vite modules.
-
 Use `.env.production.example` as the checklist for the Netlify **Production** context. Never commit a completed file.
 
 ### 6.3 Environment variables
@@ -294,4 +292,3 @@ business-lois/           Letters of intent (Deenex, Supermercado Soler)
 - [`docs/MERCADOPAGO_PRODUCCION.md`](docs/MERCADOPAGO_PRODUCCION.md): operations guide for Mercado Pago → USDC (Spanish).
 - [`docs/USDC_TRANSFERS.md`](docs/USDC_TRANSFERS.md): primary wallet, USDC sends, production pilot and recovery (Spanish).
 - [`SOLANA-RULES.md`](SOLANA-RULES.md): Solana engineering rules.
-- [`AGENTS.md`](AGENTS.md): agent instructions and the reusable development/release skill. `npm run change:preflight` checks local Git readiness without publishing changes.
