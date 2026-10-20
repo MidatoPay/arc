@@ -3,7 +3,7 @@ export async function listUserActivity(db,userId,network) {
   const {rows}=await db.query(`
     SELECT t.id,t.hash,t.kind,t.direction,
       CASE WHEN c.id IS NOT NULL THEN COALESCE(p.business_name,p.user_name,'Usuario') ELSE t.who END AS who,
-      t.amt,t.fx_rate,t.ars,t.factura,t.block,t.fee,t.memo,t.created_at,
+      t.amt,t.fx_rate,t.ars,t.factura,t.block,t.fee,COALESCE(c.fee_cents::numeric/100,t.fee) AS fee_ars,t.memo,t.created_at,
       c.id AS charge_id,c.order_id,c.provider_status,c.provider_detail,
       COALESCE(c.status,w.status,'confirmed') AS status,t.hash AS signature,true AS settled,c.paid_at,COALESCE(c.last_error,w.last_error) AS last_error,
       CASE WHEN c.id IS NOT NULL THEN 'mercadopago' WHEN w.id IS NOT NULL THEN 'transfer' ELSE 'wallet' END AS source,
@@ -16,7 +16,7 @@ export async function listUserActivity(db,userId,network) {
     UNION ALL
     SELECT c.id,COALESCE(c.signature,'charge:'||c.id::text),'charge_mercadopago','in',COALESCE(p.business_name,p.user_name,'Usuario'),
       c.usdc_raw::numeric/1000000,c.fx_rate,c.amount_cents::numeric/100,c.external_reference,
-      NULL::bigint,NULL::numeric,c.payout_memo,c.created_at,c.id,c.order_id,c.provider_status,c.provider_detail,
+      NULL::bigint,NULL::numeric,c.fee_cents::numeric/100,c.payout_memo,c.created_at,c.id,c.order_id,c.provider_status,c.provider_detail,
       c.status,c.signature,false,c.paid_at,c.last_error,'mercadopago',NULL::uuid
     FROM charges c LEFT JOIN merchant_profiles p ON p.user_id=c.user_id
     WHERE c.user_id=$1 AND c.network=$2 AND NOT EXISTS (

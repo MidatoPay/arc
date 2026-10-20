@@ -23,10 +23,10 @@ export function deliveryPhase(charge, now = Date.now()) {
 
 export function chargeStatusLabel(charge) {
   if (paymentReceived(charge)) return "Pago recibido";
-  return ({ creating: "Creando QR en MIDATOPAY…", awaiting_payment: "Esperando pago",
-    cancel_pending: "Cancelación pendiente de confirmación", expired: "El QR venció",
-    canceled: "Cobro cancelado", refunded: "Pago reembolsado",
-    manual_review: "Este cobro requiere revisión" })[charge?.status] || "Actualizando cobro";
+  return ({ creating: "Generando QR…", awaiting_payment: "Esperando pago",
+    cancel_pending: "Cancelación pendiente", expired: "QR vencido",
+    canceled: "Cobro cancelado", refunded: "Reembolsado",
+    manual_review: "En revisión" })[charge?.status] || "Actualizando…";
 }
 
 export function deliveryNoticeKey(charge, now) {

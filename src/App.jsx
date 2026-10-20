@@ -206,7 +206,7 @@ const btnOutline = {
   fontFamily: "inherit",
 };
 
-function CircleAction({ icon, label, onClick, background }) {
+function CircleAction({ icon, label, onClick, background, labelColor }) {
   return (
     <button
       onClick={onClick}
@@ -226,7 +226,7 @@ function CircleAction({ icon, label, onClick, background }) {
       >
         {icon}
       </div>
-      <span style={{ fontSize: 12, fontWeight: 600, color: C.mut, textAlign: "center", lineHeight: 1.2 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 500, color: labelColor || C.mut, textAlign: "center", lineHeight: 1.2 }}>{label}</span>
     </button>
   );
 }
@@ -234,6 +234,13 @@ function CircleAction({ icon, label, onClick, background }) {
 const IconArrowDown = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconBan = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+    <path d="M7.8 7.8l8.4 8.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </svg>
 );
 
@@ -387,13 +394,27 @@ const IconCopy = ({ size = 18 }) => (
   </svg>
 );
 
-const GRAD_COBRAR = "linear-gradient(180deg, #fe6c1c, #fe6c1c, #fe6c1c, #ffb58d, #ffb58d)";
-const GRAD_CONVERTIR = "radial-gradient(circle at 0% 0%, #ffb58d, #fe6c1c, #fe6c1c, #ffb58d, #fe6c1c)";
-const GRAD_PAGAR = "linear-gradient(180deg, #ffb58d, #ffb58d, #fe6c1c, #fe6c1c, #fe6c1c)";
-const GRAD_ENVIAR = "linear-gradient(180deg, #fe6c1c, #fe6c1c, #e85a10, #ffb58d)";
+const ACTION_COBRAR = "#fe6c1c";
+const ACTION_MUTED = "#16161A";
+const DISPLAY_CURRENCY_KEY = "mp_home_display_currency";
+
+function readDisplayCurrency() {
+  try {
+    return localStorage.getItem(DISPLAY_CURRENCY_KEY) === "ARS" ? "ARS" : "USDC";
+  } catch {
+    return "USDC";
+  }
+}
+
+function moneyParts(amount, locale) {
+  if (amount === null || !Number.isFinite(Number(amount))) return null;
+  const full = fmt(amount, 2, locale);
+  const sep = full.includes(",") ? "," : ".";
+  const [intPart, decPart = "00"] = full.split(sep);
+  return { intPart, decPart, sep };
+}
 
 function NavButton({ active, icon, label, onClick, accent = "#fe6c1c" }) {
-  const glow = accent === "#fe6c1c" ? "rgba(254,108,28,.35)" : "rgba(91,77,183,.35)";
   return (
     <button
       onClick={onClick}
@@ -405,26 +426,24 @@ function NavButton({ active, icon, label, onClick, accent = "#fe6c1c" }) {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 4,
+        gap: 3,
         fontFamily: "inherit",
-        padding: "4px 0 0",
-        color: active ? accent : "#8A8A96",
-        transition: "color .2s ease, transform .15s ease",
-        transform: active ? "translateY(-1px)" : "none",
+        padding: "2px 0 0",
+        color: active ? accent : "#9A9AA3",
+        transition: "color .15s ease",
       }}
     >
       <span
         style={{
           display: "grid",
           placeItems: "center",
-          width: 36,
-          height: 28,
-          filter: active ? `drop-shadow(0 4px 10px ${glow})` : "none",
+          width: 34,
+          height: 26,
         }}
       >
         {icon}
       </span>
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.1 }}>{label}</span>
+      <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: 0.05 }}>{label}</span>
     </button>
   );
 }
@@ -1084,109 +1103,317 @@ function GuestApp({ onExit, initialScan = null }) {
 // ————— Inicio —————
 function Home({
   nombre, address, balance, arsBalance,
-  txs, goCharge, goConvert, goPay, goSend, fxRate, onOpenTransfer,
+  txs, goCharge, goConvert, goPay, goSend, goMovs, fxRate, onOpenTransfer,
 }) {
   const { t, locale } = useLanguage();
   const [oculto, setOculto] = useState(false);
-  // Available y Funds (USDC) en ARS: siempre USDC × cotización Chainlink (ARS por 1 USDC).
+  const [displayCurrency, setDisplayCurrency] = useState(readDisplayCurrency);
+  const [currencySheetOpen, setCurrencySheetOpen] = useState(false);
+  const [currencyToast, setCurrencyToast] = useState(null);
   const usdcInArs = balance === null ? null : usdcBalanceToArs(balance, fxRate);
-  const availableArs = (arsBalance || 0) + (usdcInArs || 0);
+  const showArs = displayCurrency === "ARS";
+  const primaryAmount = showArs ? usdcInArs : balance;
+  const primaryParts = moneyParts(primaryAmount, showArs ? "es-AR" : locale);
+  const primaryPrefix = showArs ? "$" : "U$";
   const pendingUsdc=txs.filter(tx=>tx.source==="mercadopago" && tx.settled===false && paymentReceived(tx))
     .reduce((sum,tx)=>sum+Number(tx.amt || 0),0);
   const initial = (nombre || "?").trim().charAt(0).toUpperCase() || "?";
 
+  useEffect(() => {
+    if (!currencyToast) return undefined;
+    const timer = setTimeout(() => setCurrencyToast(null), 3200);
+    return () => clearTimeout(timer);
+  }, [currencyToast]);
+
+  const selectDisplayCurrency = (code) => {
+    setDisplayCurrency(code);
+    try { localStorage.setItem(DISPLAY_CURRENCY_KEY, code); } catch { /* ignore */ }
+    setCurrencySheetOpen(false);
+    setCurrencyToast(code);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {currencyToast ? (
         <div
-          aria-hidden
+          role="status"
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            background: C.orangeSoft,
-            color: "#fe6c1c",
-            display: "grid",
-            placeItems: "center",
-            fontSize: 18,
-            fontWeight: 700,
-            flexShrink: 0,
-            letterSpacing: 0,
+            minHeight: 44,
+            background: C.green,
+            color: "#fff",
+            borderRadius: 16,
+            padding: "12px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxSizing: "border-box",
           }}
         >
-          {initial}
+          <span
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.92)",
+              color: C.green,
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M5 12.5l5 5L19 7" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{t("home.currencyToastTitle")}</span>
+            <span style={{ display: "block", fontSize: 13, fontWeight: 400, marginTop: 2, opacity: 0.95 }}>
+              {t("home.currencyToastBody", currencyToast)}
+            </span>
+          </span>
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={() => setCurrencyToast(null)}
+            style={{
+              border: 0,
+              background: "transparent",
+              color: "#fff",
+              cursor: "pointer",
+              padding: 4,
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-        <div style={{ fontSize: 21, flex: 1, minWidth: 0, lineHeight: 1.2 }}>
-          <span style={{ fontWeight: 500, color: C.mut }}>{t("home.greetingHi")} </span>
-          <span style={{ fontWeight: 700, color: "#fe6c1c" }}>{nombre}</span>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 44 }}>
+          <div
+            aria-hidden
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: C.orangeSoft,
+              color: "#fe6c1c",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 17,
+              fontWeight: 500,
+              flexShrink: 0,
+              letterSpacing: 0,
+            }}
+          >
+            {initial}
+          </div>
+          <div style={{ fontSize: 20, flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+            <span style={{ fontWeight: 400, color: C.mut }}>{t("home.greetingHi")} </span>
+            <span style={{ fontWeight: 500, color: "#fe6c1c" }}>{nombre}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: C.mut }}>{t("home.available")}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <IconArFlag size={18} />
-            <span style={{ fontSize: 15, fontWeight: 700, color: C.mut }}>ARS</span>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-          <div style={{ fontSize: 38, fontWeight: 700, letterSpacing: -1, color: C.ink }}>
-            {oculto ? "$ ••••••" : `$ ${fmtArs(availableArs)}`}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: C.mut }}>{t("home.totalBalance")}</span>
+            <button
+              onClick={() => setOculto(!oculto)}
+              aria-label={oculto ? "Show" : "Hide"}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: C.mut,
+                display: "grid",
+                placeItems: "center",
+                padding: 2,
+              }}
+            >
+              <IconEye crossed={oculto} />
+            </button>
           </div>
           <button
-            onClick={() => setOculto(!oculto)}
-            aria-label={oculto ? "Show" : "Hide"}
+            type="button"
+            onClick={() => setCurrencySheetOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={currencySheetOpen}
             style={{
-              background: "none",
-              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: 0,
+              border: 0,
+              background: "transparent",
+              padding: "4px 2px",
               cursor: "pointer",
-              color: C.mut,
-              display: "grid",
-              placeItems: "center",
-              padding: 4,
+              font: "inherit",
             }}
           >
-            <IconEye crossed={oculto} />
+            {showArs ? (
+              <IconArFlag size={18} />
+            ) : (
+              <img
+                src="/monedas/usdc.png"
+                alt=""
+                width={18}
+                height={18}
+                style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover", display: "block" }}
+              />
+            )}
+            <span style={{ fontSize: 14, fontWeight: 500, color: C.mut }}>{displayCurrency}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M6 9l6 6 6-6" stroke={C.mut} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         </div>
+        <div
+          style={{
+            marginTop: 6,
+            display: "flex",
+            alignItems: "baseline",
+            fontVariantNumeric: "tabular-nums",
+            letterSpacing: -0.8,
+            lineHeight: 1,
+          }}
+        >
+          {oculto ? (
+            <span style={{ fontSize: 36, fontWeight: 500, color: C.ink }}>{primaryPrefix}••••</span>
+          ) : primaryParts == null ? (
+            <span style={{ fontSize: 36, fontWeight: 500, color: C.ink }}>—</span>
+          ) : (
+            <>
+              <span style={{ fontSize: 36, fontWeight: 500, color: C.ink }}>{primaryPrefix}{primaryParts.intPart}</span>
+              <span style={{ fontSize: 20, fontWeight: 400, color: C.mut, letterSpacing: -0.3 }}>
+                {primaryParts.sep}{primaryParts.decPart}
+              </span>
+            </>
+          )}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 13, fontWeight: 400, color: C.mut }}>
+          {oculto
+            ? "••••"
+            : showArs
+              ? (balance === null ? "—" : t("home.availableInUsdc", fmt(balance, 2, locale)))
+              : (usdcInArs === null ? "—" : t("home.availableInArs", fmtArs(usdcInArs)))}
+        </div>
+        {pendingUsdc > 0 && (
+          <div style={{ marginTop: 8, fontSize: 12, fontWeight: 400, color: C.mut }}>
+            {t("movs.pendingUsdc")}: {oculto ? "••••••" : `${fmt(pendingUsdc, 2, locale)} USDC`}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 4, marginTop: 20 }}>
-          <CircleAction icon={<IconArrowDown size={20} />} label={t("home.actionReceive")} onClick={goCharge} background={GRAD_COBRAR} />
-          <CircleAction icon={<IconSwap size={20} />} label={t("home.actionConvert")} onClick={goConvert} background={GRAD_CONVERTIR} />
-          <CircleAction icon={<IconQrCode size={20} />} label={t("home.actionPay")} onClick={goPay} background={GRAD_PAGAR} />
-          <CircleAction icon={<IconArrowUp size={20} />} label={t("home.actionSend")} onClick={goSend} background={GRAD_ENVIAR} />
+          <CircleAction
+            icon={<IconArrowDown size={20} />}
+            label={t("home.actionReceive")}
+            onClick={goCharge}
+            background={ACTION_COBRAR}
+            labelColor="#fe6c1c"
+          />
+          <CircleAction icon={<IconSwap size={20} />} label={t("home.actionConvert")} onClick={goConvert} background={ACTION_MUTED} />
+          <CircleAction icon={<IconQrCode size={20} />} label={t("home.actionPay")} onClick={goPay} background={ACTION_MUTED} />
+          <CircleAction icon={<IconArrowUp size={20} />} label={t("home.actionSend")} onClick={goSend} background={ACTION_MUTED} />
         </div>
       </Card>
 
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{t("home.fundsTitle")}</span>
-          <a href={explorerAddressUrl(address)} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: C.orange, background: C.orangeSoft, padding: "5px 12px", borderRadius: 20, textDecoration: "none" }}>
-            {t("home.viewAll")}
-          </a>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src="/monedas/usdc.png" alt="USDC" width={38} height={38} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>USDC</div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{usdcInArs === null ? "—" : `$${fmtArs(usdcInArs)}`}</div>
-            <div style={{ fontSize: 14, color: C.mut }}>{balance === null ? "" : `${fmt(balance, 2, locale)} USDC`}</div>
+      {currencySheetOpen && (
+        <div
+          className="mp-overlay"
+          style={{ background: "rgba(16,16,22,.45)", alignItems: "flex-end" }}
+          onClick={() => setCurrencySheetOpen(false)}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("home.currencySheetTitle")}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: C.card,
+              borderRadius: "24px 24px 0 0",
+              padding: "14px 20px 28px",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ width: 42, height: 4, borderRadius: 4, background: C.line, margin: "0 auto 18px" }} />
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.ink }}>{t("home.currencySheetTitle")}</div>
+            <div style={{ fontSize: 13.5, color: C.mut, marginTop: 8, lineHeight: 1.45 }}>{t("home.currencySheetSub")}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 18 }}>
+              {[
+                { code: "ARS", name: t("home.currencyArsName"), icon: <IconArFlag size={36} /> },
+                {
+                  code: "USDC",
+                  name: t("home.currencyUsdcName"),
+                  icon: (
+                    <img
+                      src="/monedas/usdc.png"
+                      alt=""
+                      width={36}
+                      height={36}
+                      style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", display: "block" }}
+                    />
+                  ),
+                },
+              ].map((opt) => {
+                const selected = displayCurrency === opt.code;
+                return (
+                  <button
+                    key={opt.code}
+                    type="button"
+                    onClick={() => selectDisplayCurrency(opt.code)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      width: "100%",
+                      border: 0,
+                      background: selected ? "#F4F4F6" : "transparent",
+                      borderRadius: 14,
+                      padding: "12px 10px",
+                      cursor: "pointer",
+                      font: "inherit",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ flexShrink: 0, display: "grid", placeItems: "center" }}>{opt.icon}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 16, fontWeight: 600, color: C.ink }}>{opt.code}</span>
+                      <span style={{ display: "block", fontSize: 13, color: C.mut, marginTop: 2 }}>{opt.name}</span>
+                    </span>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        border: selected ? `0 solid transparent` : `1.5px solid ${C.line}`,
+                        background: selected ? C.orange : "transparent",
+                        color: "#fff",
+                        display: "grid",
+                        placeItems: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {selected && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                          <path d="M5 12.5l5 5L19 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-        {pendingUsdc>0 && <div style={{marginTop:12,fontSize:13,color:C.mut}}>{t("movs.pendingUsdc")}: {oculto?"••••••":fmt(pendingUsdc,6,locale)} USDC</div>}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-          <img src="/monedas/ars.png" alt="ARS" width={38} height={38} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: C.ink }}>ARS</div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{oculto ? "$ ••••••" : `$ ${fmtArs(arsBalance || 0)}`}</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-          <span style={{ color: C.violet, fontSize: 14 }}>ⓘ</span>
-          <span style={{ fontSize: 13.5, color: C.violet, flex: 1 }}>{t("home.infoDigitalAssets")}</span>
-        </div>
-      </Card>
+      )}
 
       <div
         style={{
@@ -1217,9 +1444,36 @@ function Home({
         </Card>
       )}
 
-      <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, marginTop: 4 }}>{t("home.activityTitle")}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 4 }}>
+        <div style={{ fontSize: 16, fontWeight: 500, color: C.ink }}>{t("home.activityTitle")}</div>
+        {typeof goMovs === "function" && (
+          <button
+            type="button"
+            onClick={goMovs}
+            style={{
+              border: 0,
+              background: "transparent",
+              color: C.orange,
+              font: "inherit",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              padding: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              flexShrink: 0,
+            }}
+          >
+            {t("home.viewMore")}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+      </div>
       {txs.length === 0 ? (
-        <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
+        <Card style={{ fontSize: 14, fontWeight: 400, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
         txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} compact onOpenTransfer={onOpenTransfer} />)
       )}
@@ -2951,6 +3205,8 @@ function TxCard({ tx, compact = false, onOpenTransfer }) {
   const arsEq = tx.ars;
   const pendingCharge=tx.source==="mercadopago" && tx.settled===false;
   const receivedCharge=tx.source==="mercadopago" && paymentReceived(tx);
+  const blockedCharge=tx.source==="mercadopago" && ["canceled","expired","refunded","cancel_pending"].includes(tx.status);
+  const creditedCharge=receivedCharge && !pendingCharge;
   const noticeKey=tx.source==="mercadopago"?deliveryNoticeKey(tx):null;
   const statusKey=activityStatusKey(tx);
   const signature=tx.signature || (!tx.hash?.startsWith("charge:") ? tx.hash : null);
@@ -2963,18 +3219,24 @@ function TxCard({ tx, compact = false, onOpenTransfer }) {
       ? t("movs.charge")
       : tx.who;
 
-  const primary = receivedCharge
-    ? `+${fmtArs(arsEq)} ARS`
+  const primary = blockedCharge
+    ? `${fmtArs(arsEq)} ARS`
+    : creditedCharge
+    ? `+${fmt(tx.amt, 2, locale)} USDC`
+    : receivedCharge
+    ? `+${fmt(tx.amt, 2, locale)} USDC`
     : pendingCharge
-    ? `${t("movs.toReceive")}: ${fmt(tx.amt, 6, locale)} USDC`
+    ? (compact ? `${fmtArs(arsEq)} ARS` : `${t("movs.toReceive")}: ${fmt(tx.amt, 2, locale)} USDC`)
     : isConvert && tx.kind === "convert_ars_usdc"
       ? `+${fmt(tx.amt, 2, locale)} USDC`
       : isConvert && tx.kind === "convert_usdc_ars"
         ? `−${fmt(tx.amt, 2, locale)} USDC`
-        : `${inbound ? "+" : "−"}${fmt(tx.amt, tx.source==='transfer'?6:2, locale)} USDC`;
+        : `${inbound ? "+" : "−"}${fmt(tx.amt, compact ? 2 : (tx.source==='transfer'?6:2), locale)} USDC`;
 
-  const secondary = receivedCharge
-    ? `${t(pendingCharge?"movs.pendingUsdc":"movs.creditedUsdc")}: ${fmt(tx.amt,6,locale)} USDC`
+  const secondary = blockedCharge
+    ? `${fmtArs(arsEq)} ARS`
+    : creditedCharge || receivedCharge
+    ? `${t(pendingCharge?"movs.pendingUsdc":"movs.creditedUsdc")}: ${fmt(tx.amt, 2, locale)} USDC`
     : pendingCharge
     ? `${fmtArs(arsEq)} ARS`
     : isConvert && tx.kind === "convert_ars_usdc"
@@ -2983,81 +3245,145 @@ function TxCard({ tx, compact = false, onOpenTransfer }) {
         ? `+${fmtArs(arsEq)} ARS`
         : `${inbound ? "+" : "−"}${fmtArs(arsEq)} ARS`;
 
-  const iconBg = isConvert ? C.orangeSoft : inbound ? C.orangeSoft : C.violetSoft;
-  const iconColor = isConvert ? "#fe6c1c" : inbound ? C.orange : C.violet;
+  const iconBg = blockedCharge ? "#F0F0F3" : isConvert ? C.orangeSoft : inbound ? C.orangeSoft : C.violetSoft;
+  const iconColor = blockedCharge ? C.mut : isConvert ? "#fe6c1c" : inbound ? C.orange : C.violet;
 
   const time = tx.createdAt
     ? new Date(tx.createdAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
     : "—";
+  const timeShort = tx.createdAt
+    ? `${new Date(tx.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} hs`
+    : "";
 
-  return (
-    <Card style={{ padding: compact ? 16 : 18 }}>
+  const subtitle = statusKey
+    ? t(`movs.${statusKey}`)
+    : isConvert
+      ? t("movs.convert")
+      : inbound
+        ? t("movs.charge")
+        : t("movs.transfer");
+
+  const summaryRow = (
+    <div
+      onClick={compact ? undefined : () => setExpanded((v) => !v)}
+      style={{ display: "flex", alignItems: "center", gap: 12, cursor: compact ? "default" : "pointer" }}
+    >
       <div
-        onClick={compact ? undefined : () => setExpanded((v) => !v)}
-        style={{ display: "flex", alignItems: "center", gap: 13, flexWrap:tx.source==="mercadopago"?"wrap":undefined, cursor: compact ? "default" : "pointer" }}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: "50%",
+          background: iconBg,
+          display: "grid",
+          placeItems: "center",
+          color: iconColor,
+          flexShrink: 0,
+        }}
       >
+        {blockedCharge ? <IconBan size={17} /> : isConvert ? <IconSwap size={17} /> : inbound ? <IconArrowDown size={17} /> : <IconArrowUp size={17} />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            background: iconBg,
-            display: "grid",
-            placeItems: "center",
-            color: iconColor,
-            flexShrink: 0,
+            fontSize: 15,
+            fontWeight: 500,
+            color: C.ink,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          {isConvert ? <IconSwap size={18} /> : inbound ? <IconArrowDown size={18} /> : <IconArrowUp size={18} />}
+          {title}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, whiteSpace:tx.source==="mercadopago"?"normal":"nowrap" }}>{title}</div>
-          {tx.transferId && onOpenTransfer && <button onClick={event=>{event.stopPropagation();onOpenTransfer(tx.transferId);}} style={{font:'inherit',fontSize:12,marginTop:6}}>Ver estado del envío</button>}
-          {statusKey && <div style={{fontSize:12,color:C.mut,marginTop:4}}>{t(`movs.${statusKey}`)}</div>}
-          {noticeKey && <div style={{fontSize:12,color:C.mut,marginTop:6,lineHeight:1.5}}>{t(`movs.${noticeKey}`)}</div>}
-        </div>
-        <div style={{ textAlign: "right", flexShrink: 0, ...(tx.source==="mercadopago"?{flexBasis:"100%"}:{}) }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{primary}</div>
-          <div style={{ fontSize: 13, color: C.mut, marginTop: 2 }}>{secondary}</div>
-          {!compact && signature && (
+        <div style={{ fontSize: 12.5, fontWeight: 400, color: C.mut, marginTop: 3 }}>{subtitle}</div>
+      </div>
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 500, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{primary}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 400, color: C.mut, marginTop: 3 }}>{timeShort || secondary}</div>
+      </div>
+    </div>
+  );
+
+  if (compact) {
+    return <Card style={{ padding: "14px 14px" }}>{summaryRow}</Card>;
+  }
+
+  const detailRows = [
+    creditedCharge || receivedCharge
+      ? [t("movs.creditedUsdc"), `+${fmt(tx.amt, 2, locale)} USDC`]
+      : blockedCharge
+        ? [subtitle, `${fmtArs(arsEq)} ARS`]
+        : pendingCharge
+          ? [t("movs.toReceive"), `${fmt(tx.amt, 2, locale)} USDC`]
+          : isConvert
+            ? [t("movs.convert"), primary]
+            : [inbound ? t("movs.charge") : t("movs.transfer"), primary],
+    Number.isFinite(Number(arsEq)) && !blockedCharge ? [t("success.equals"), `$ ${fmtArs(arsEq)} ARS`] : null,
+    Number.isFinite(Number(tx.feeArs ?? tx.fee)) && !blockedCharge ? ["Comisión", `$ ${fmtArs(tx.feeArs ?? tx.fee)} ARS`] : null,
+    Number.isFinite(Number(tx.fxRate)) && !blockedCharge ? [t("success.exchangeRate"), `$ ${fmtArs(tx.fxRate)} / USDC`] : null,
+    time ? [t("success.time"), time] : null,
+  ].filter(Boolean);
+
+  return (
+    <Card style={{ padding: "14px 14px" }}>
+      {summaryRow}
+      {expanded && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+          {tx.transferId && onOpenTransfer && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenTransfer(tx.transferId);
+              }}
+              style={{
+                font: "inherit",
+                fontSize: 12.5,
+                fontWeight: 500,
+                color: C.orange,
+                background: "none",
+                border: 0,
+                padding: 0,
+                marginBottom: 10,
+                cursor: "pointer",
+              }}
+            >
+              Ver estado del envío
+            </button>
+          )}
+          <div style={{ display: "grid", gap: 8 }}>
+            {detailRows.map(([label, value]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+                <span style={{ color: C.mut, fontWeight: 400 }}>{label}</span>
+                <span style={{ color: C.ink, fontWeight: 500, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}</span>
+              </div>
+            ))}
+          </div>
+          {signature && (
             <a
               href={explorerTxUrl(signature)}
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
               style={{
-                display: "inline-block",
-                marginTop: 8,
+                marginTop: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: C.orange,
                 textDecoration: "none",
-                fontFamily: "inherit",
-                fontSize: 12,
-                fontWeight: 700,
-                color: C.ink,
-                background: C.card,
-                border: `1.5px solid ${C.line}`,
-                borderRadius: 8,
-                padding: "5px 10px",
+                fontSize: 13,
+                fontWeight: 500,
               }}
             >
-              Solana Explorer ↗
+              Ver onchain
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M14 5h5v5M10 14L19 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </a>
           )}
         </div>
-      </div>
-
-      {!compact && expanded && (
-        pendingCharge ? <div style={{marginTop:12,fontSize:13,color:C.mut,overflowWrap:"anywhere"}}>
-          {tx.factura}<br/>{tx.orderId}<br/>{time}
-        </div> : <TxDetail
-          usdc={tx.amt}
-          ars={tx.ars}
-          fx={tx.fxRate}
-          fee={tx.fee}
-          block={tx.block}
-          factura={tx.factura}
-          hash={tx.hash}
-          time={time}
-        />
       )}
     </Card>
   );
@@ -3068,14 +3394,14 @@ function Movimientos({ txs, address, onOpenTransfer }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("movs.title")}</h2>
-        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: -0.3 }}>{t("movs.title")}</h2>
+        <p style={{ fontSize: 13.5, fontWeight: 400, color: C.mut, marginTop: 6 }}>
           {txs.length === 0 ? t("movs.countEmpty") : t("movs.countN", txs.length)}
         </p>
       </div>
 
       {txs.length === 0 ? (
-        <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
+        <Card style={{ fontSize: 14, fontWeight: 400, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
       ) : (
         txs.map((tx) => <TxCard key={tx.hash} tx={tx} onOpenTransfer={onOpenTransfer} />)
       )}
@@ -3909,10 +4235,13 @@ function AppInner() {
     setVoiceKick((n) => n + 1);
   };
 
-  const shell = (children, { pad = true, nav = true } = {}) => (
+  const shell = (children, { pad = true, nav = true, fill = false } = {}) => (
     <div className="mp-stage">
       <div className={`mp-device${nav ? "" : " mp-no-nav"}`}>
-        <div className="mp-scroll" style={{ padding: pad ? "22px 18px 24px" : 0 }}>
+        <div
+          className={`mp-scroll${fill ? " mp-scroll-fill" : ""}`}
+          style={{ padding: pad ? "22px 18px 24px" : 0 }}
+        >
           {ready && authenticated && address && solanaWalletsReady && !wallet && (
             <Card style={{ marginBottom: 16, padding: 16, border: `1px solid ${C.red}` }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("home.walletUnavailableTitle")}</div>
@@ -4045,6 +4374,7 @@ function AppInner() {
           goConvert={() => setTab("convert")}
           goPay={() => { setPayFullscreen(true); setTab("pay"); }}
           goSend={() => setTab("send")}
+          goMovs={() => setTab("movs")}
           fxRate={fxRate}
         />
       )}
@@ -4076,7 +4406,6 @@ function AppInner() {
       {tab === "charge" && (
         <MercadoPagoCharge
           key={`${user.id}:${address}`}
-          merchantName={merchantName}
           address={address}
           userId={user.id}
           getAccessToken={getAccessToken}
@@ -4084,6 +4413,7 @@ function AppInner() {
           onPaymentReceived={handleChargePaymentReceived}
           chargeRequest={pendingCharge}
           onChargeRequestConsumed={() => setPendingCharge(null)}
+          onBack={() => setTab("home")}
         />
       )}
       {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>Las conversiones independientes todavía no están disponibles. Cobrá con MIDATOPAY para recibir USDC.</Card>}
@@ -4127,7 +4457,11 @@ function AppInner() {
         />
       )}
     </>,
-    { pad: !(tab === "pay" && payFullscreen), nav: !(tab === "pay" && payFullscreen) }
+    {
+      pad: !(tab === "pay" && payFullscreen) && tab !== "charge",
+      nav: !(tab === "pay" && payFullscreen) && tab !== "charge",
+      fill: tab === "charge",
+    }
   );
 }
 

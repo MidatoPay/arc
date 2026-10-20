@@ -42,6 +42,7 @@ function toWire(tx) {
     factura: tx.factura ?? null,
     block: tx.block ?? null,
     fee: tx.fee ?? null,
+    fee_ars: tx.feeArs ?? tx.fee ?? null,
     memo: tx.memo ?? null,
   };
 }
@@ -58,6 +59,8 @@ function fromWire(row) {
     factura: row.factura,
     block: row.block !== null && row.block !== undefined ? Number(row.block) : null,
     fee: row.fee !== null && row.fee !== undefined ? Number(row.fee) : null,
+    feeArs: row.fee_ars !== null && row.fee_ars !== undefined ? Number(row.fee_ars)
+      : (row.fee !== null && row.fee !== undefined ? Number(row.fee) : null),
     memo: row.memo,
     createdAt: row.created_at,
     paidAt: row.paid_at || null,
