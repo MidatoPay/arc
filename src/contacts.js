@@ -1,4 +1,3 @@
-import {securityFetch as fetch} from './securitySession.js';
 import { isAddress } from "@solana/kit";
 
 // Cliente HTTP de la agenda de contactos, con cache stale-while-revalidate

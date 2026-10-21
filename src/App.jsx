@@ -46,8 +46,6 @@ import { LanguageProvider, useLanguage, speechLangFor } from "./i18n.jsx";
 import { transferErrorText } from "./errorText.js";
 import LanguageSelect from "./LanguageSelect.jsx";
 import ProfileScreen from "./ProfileScreen.jsx";
-import SecurityGate from './SecurityGate.jsx';
-import {securityFetch as fetch,nativeSecurityOperation} from './securitySession.js';
 import {
   loadContacts,
   addContact,
@@ -2160,11 +2158,6 @@ function Voice({
       rec.interimResults = !isSafari;
       rec.continuous = !chained;
       rec.maxAlternatives = 1;
-      // Exempt only the permission request, ending when capture actually starts.
-      let permissionDone;
-      const permission=new Promise(resolve=>{permissionDone=resolve;});
-      nativeSecurityOperation(()=>permission);
-      rec.onstart=()=>permissionDone();
       rec.onresult = (e) => {
         if (s.completed) return;
         s.segment = joinSpeechResults(e.results);
@@ -2177,7 +2170,6 @@ function Voice({
         armSession(s);
       };
       rec.onerror = (e) => {
-        permissionDone();
         // "no-speech" y "aborted" los resuelve onend; al terminar, cualquier error cierra con lo oído.
         if (s.completed || e.error === "no-speech" || e.error === "aborted") return;
         if (s.finishing) return completeSession(s);
@@ -2190,7 +2182,6 @@ function Voice({
         setPhase("error");
       };
       rec.onend = () => {
-        permissionDone();
         if (s.completed) return;
         if (s.finishing) return completeSession(s);
         // El navegador cortó solo: seguimos escuchando hasta la pausa propia o el tope.
@@ -2206,7 +2197,7 @@ function Voice({
           completeSession(s);
         }
       };
-      try {rec.start();}catch(error){permissionDone();throw error;}
+      rec.start();
     };
     try {
       sessionRef.current = s;
@@ -3436,15 +3427,10 @@ function AppInner() {
   );
 }
 
-function LoginScreen() {
-  const {ready,login}=usePrivy();
-  return <AuthEntry onLogin={login} ready={ready} />;
-}
-
 export default function App() {
   return (
     <LanguageProvider>
-      <SecurityGate loginScreen={<LoginScreen />}><AppInner /></SecurityGate>
+      <AppInner />
     </LanguageProvider>
   );
 }
