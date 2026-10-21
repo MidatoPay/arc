@@ -1,13 +1,13 @@
 import {
   armarMemo,
   estimateUsdcTransfer,
-  getUsdcBalance,
   nuevaFactura,
   sendUsdc,
 } from "./solana.js";
 import { arsToUsdc, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
 import { payoutArsToUser } from "./fiatRail.js";
 import { SOLANA } from "./chain.js";
+import { getWalletBalance } from './walletBalance.js';
 import {
   getTreasuryAddressAsync,
   getTreasuryBalance,
@@ -135,9 +135,9 @@ export async function runConvertUsdcToArs({ wallet, signAndSendTransaction, usdc
   };
 }
 
-export async function refreshPairBalances(userAddress) {
+export async function refreshPairBalances(userAddress,options) {
   const [userUsdc, treasuryUsdc, treasuryAddress] = await Promise.all([
-    getUsdcBalance(userAddress),
+    getWalletBalance(userAddress,options),
     getTreasuryBalance(),
     getTreasuryAddressAsync(),
   ]);

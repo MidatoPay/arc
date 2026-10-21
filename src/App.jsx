@@ -5,7 +5,9 @@ import { isAddress } from "@solana/kit";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
 import {primarySolanaWallet} from './primaryWallet.js';
-import {useSponsoredTransfers,transferApi} from './transfers.js';
+import {setRpcSession} from './rpcSession.js';
+import {startVisibleRefresh} from './visibleRefresh.js';
+import {useSponsoredTransfers,transferApi,exactUsdc} from './transfers.js';
 import TransferApproval from './TransferApproval.jsx';
 import TransferReceipt from './TransferReceipt.jsx';
 import { useMerchantProfile } from "./merchantProfile.js";
@@ -38,6 +40,7 @@ import {
   getTreasuryBalance,
   isTreasuryConfigured,
   refreshTreasuryStatus,
+  setTreasurySession,
 } from "./treasury.js";
 import { LanguageProvider, useLanguage, speechLangFor } from "./i18n.jsx";
 import { transferErrorText } from "./errorText.js";
@@ -761,9 +764,7 @@ function GuestApp({ onExit, initialScan = null }) {
   }, []);
 
   useEffect(() => {
-    refreshTreasury();
-    const id = setInterval(refreshTreasury, 45_000);
-    return () => clearInterval(id);
+    return startVisibleRefresh(refreshTreasury);
   }, [refreshTreasury]);
 
   const availableArs = treasuryUsdc == null ? null : usdcBalanceToArs(treasuryUsdc, fxRate);
@@ -2738,6 +2739,12 @@ function Success({ receipt, onClose, hideFx = false }) {
 function AppInner() {
   const { t, locale } = useLanguage();
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
+  useEffect(() => {
+    const userId=ready && authenticated ? user?.id : null;
+    const clearTreasury=setTreasurySession(userId,getAccessToken);
+    const clearRpc=setRpcSession(userId,getAccessToken);
+    return ()=>{clearTreasury();clearRpc();};
+  }, [ready, authenticated, user?.id, getAccessToken]);
   const merchantProfile = useMerchantProfile(authenticated ? user?.id : null,getAccessToken);
   const { ready: walletInfrastructureReady } = useEvmWallets();
   const { ready: solanaWalletsReady, wallets } = useWallets();
@@ -2859,8 +2866,14 @@ function AppInner() {
   }, [walletDebugSignature]);
   const [treasuryAddress, setTreasuryAddress] = useState(() => getTreasuryAddress());
   useEffect(() => {
-    refreshTreasuryStatus().then((st) => setTreasuryAddress(st.address));
-  }, []);
+    let canceled = false;
+    setTreasuryAddress(null);
+    setTreasuryBalance(null);
+    if (ready && authenticated && user?.id) {
+      refreshTreasuryStatus().then((st) => { if (!canceled) setTreasuryAddress(st.address); });
+    }
+    return () => { canceled = true; };
+  }, [ready, authenticated, user?.id, getAccessToken]);
   const email = user?.email?.address || user?.phone?.number || "";
   const nombre = merchantProfile.profile?.userName || userDisplayName(user);
   const merchantName = merchantDisplayName(merchantProfile.profile?.businessName,nombre);
@@ -2974,34 +2987,33 @@ function AppInner() {
       const rate = await getArsPerUsdc();
       if (alive) setFxRate(rate);
     };
-    loadFx();
-    const id = setInterval(loadFx, 60_000);
+    const stop = startVisibleRefresh(loadFx,{intervalMs:60000});
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, []);
 
-  const refreshBalances = useCallback(async () => {
+  const balanceSession=useRef('');
+  const balanceRequest=useRef(0);
+  balanceSession.current=`${user?.id || ''}:${address}`;
+  const refreshBalances = useCallback(async ({fresh=false}={}) => {
     if (!address) return;
+    const session=`${user?.id || ''}:${address}`;
+    const request=++balanceRequest.current;
     try {
-      const [{ userUsdc, treasuryUsdc }, rate] = await Promise.all([
-        refreshPairBalances(address),
-        getArsPerUsdc(),
-      ]);
+      const { userUsdc, treasuryUsdc } = await refreshPairBalances(address,{fresh});
+      if(balanceSession.current!==session || request!==balanceRequest.current)return;
       setBalance(userUsdc);
       setTreasuryBalance(treasuryUsdc);
-      setFxRate(rate);
     } catch {
       /* el RPC puede limitar consultas */
     }
-  }, [address]);
+  }, [address,user?.id]);
 
   useEffect(() => {
     if (!address) return;
-    refreshBalances();
-    const id = setInterval(refreshBalances, 45000);
-    return () => clearInterval(id);
+    return startVisibleRefresh(refreshBalances);
   }, [address, refreshBalances]);
 
   const pendingBalanceUpdates=useRef({userId:null,ids:new Set()});
@@ -3009,7 +3021,7 @@ function AppInner() {
     const previous=pendingBalanceUpdates.current;
     const finalized=previous.userId===user?.id && txs.some(tx=>tx.source==="mercadopago" && tx.settled===true && previous.ids.has(tx.chargeId));
     pendingBalanceUpdates.current={userId:user?.id,ids:new Set(txs.filter(tx=>tx.source==="mercadopago" && tx.settled===false).map(tx=>tx.chargeId))};
-    if(finalized)refreshBalances();
+    if(finalized)refreshBalances({fresh:true});
   },[txs,user?.id,refreshBalances]);
 
   const applyArsDelta = useCallback(
@@ -3052,7 +3064,7 @@ function AppInner() {
 
   const handleChargeDelivered = useCallback(async () => {
     await handleChargePaymentReceived();
-    await refreshBalances();
+    await refreshBalances({fresh:true});
   }, [handleChargePaymentReceived, refreshBalances]);
 
   const handleConvertArsUsdc = useCallback(
@@ -3079,7 +3091,7 @@ function AppInner() {
         kind: "convert_ars_usdc",
         direction: "in",
       });
-      await refreshBalances();
+      await refreshBalances({fresh:true});
       return result;
     },
     [address, arsBalance, applyArsDelta, pushTx, refreshBalances, t, getAccessToken]
@@ -3123,7 +3135,7 @@ function AppInner() {
         kind: "convert_usdc_ars",
         direction: "out",
       });
-      await refreshBalances();
+      await refreshBalances({fresh:true});
       return result;
     },
     [wallet, address, signAndSendTransaction, balance, applyArsDelta, pushTx, refreshBalances, t, walletDebugSignature]
@@ -3282,7 +3294,7 @@ function AppInner() {
 
   if (receipt?.transfer) return shell(<TransferReceipt key={receipt.transfer.id} transfer={receipt.transfer} getAccessToken={getAccessToken}
     onUpdate={transfer=>{if(['completed','failed'].includes(transfer.status)){
-      refreshBalances();getAccessToken().then(token=>loadTransactions(user.id,token)).then(fresh=>{
+      refreshBalances({fresh:true});getAccessToken().then(token=>loadTransactions(user.id,token)).then(fresh=>{
         if(currentContactOwner.current===user.id)setTxs(previous=>mergeByHash(fresh,previous));
       }).catch(()=>{});
     }}}

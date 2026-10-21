@@ -62,6 +62,16 @@ The app also includes:
 
 Users listed in `PAYMENTS_ADMIN_USER_IDS` open **More → Operations and commissions**. There they see the history of every merchant, with filters, totals and CSV export.
 
+`GET /treasury` requires a valid Privy access token. Signed-in merchants receive the configuration and destination address needed by the app; only users in `PAYMENTS_ADMIN_USER_IDS` receive the treasury balance. Responses use `Cache-Control: private, no-store`. The frontend requests the status after login and clears it when the session changes. Charge creation and settlement read treasury liquidity directly on the server.
+
+### RPC traffic and read caches
+
+- `GET /quote` serves a validated Chainlink display quote. It uses Netlify Durable CDN caching for up to 60 seconds, bounded by the feed's remaining freshness. Errors and display fallbacks are never cached at the CDN. Browsers deduplicate quote requests and no longer call Ethereum to display prices. Charge creation still obtains and validates its own strict quote.
+- `GET /balance` authenticates with Privy and selects the session's saved primary wallet server-side. Snapshot responses stay private (`no-store`); the internal Netlify Cache API shares snapshots by network and wallet for 10 seconds. Administrator treasury balance reads use the same internal cache. Neither authorization decisions nor transaction/liquidity validation use these snapshots.
+- The UI refreshes balances on entry, on return to a visible tab, and after operations. A visible-tab fallback runs every two minutes to detect external wallet changes; periodic display requests stop while hidden. Post-operation reads bypass cached balance snapshots. This uses application events and bounded polling, not a permanently running chain subscription service.
+- Both RPC proxies require a current Privy token, bound bodies to 64 KiB and batches to 10, and allow only SDK methods needed by the app. Ethereum calls are restricted to the configured Chainlink contract/selectors. Native Function routes apply Netlify rate limits (RPC: 300/IP/min; Ethereum, quote and balance: 120/IP/min); the default direct function URLs are disabled by these custom routes. Each warm RPC instance also limits authenticated users to 120 RPC operations/minute. Shared IP limits can affect multiple users behind the same NAT; tune them from observed production traffic.
+- Netlify Dev does not persist the platform Cache API/CDN entries. A bounded in-memory cache supplies local deduplication/TTL behavior; tests simulate shared storage across handler instances. In production, inspect `Cache-Status` and the deploy logs to verify CDN hits and applied rate-limit rules. CDN and Cache API caches are scoped to a deploy; Cache API storage is regional. No migration or new secret is required. Deploy frontend and backend together.
+
 ---
 
 ## 2. Architecture

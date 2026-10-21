@@ -4,7 +4,6 @@ import {
   compileTransaction,
   createKeyPairSignerFromBytes,
   createNoopSigner,
-  createSolanaRpc,
   getBase64EncodedWireTransaction,
   getSignatureFromTransaction,
   getTransactionEncoder,
@@ -26,9 +25,9 @@ import {
 } from "@solana-program/token";
 import { getAddMemoInstruction } from "@solana-program/memo";
 import bs58 from "bs58";
-import { RPC_PROXY, SOLANA, USDC_MINT, USDC_DECIMALS } from "./chain.js";
+import { createAppRpc, SOLANA, USDC_MINT, USDC_DECIMALS } from "./chain.js";
 
-export const rpc = createSolanaRpc(RPC_PROXY);
+export const rpc = createAppRpc();
 
 export { isAddress };
 

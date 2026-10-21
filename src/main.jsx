@@ -9,9 +9,9 @@ if (typeof window !== "undefined") {
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { PrivyProvider } from "@privy-io/react-auth";
-import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
+import { createSolanaRpcSubscriptions } from "@solana/kit";
 import App from "./App.jsx";
-import { RPC_PROXY, WSS_URL, SOLANA } from "./chain.js";
+import { createAppRpc, WSS_URL, SOLANA } from "./chain.js";
 
 const APP_ID = import.meta.env.VITE_PRIVY_APP_ID || "";
 
@@ -69,7 +69,7 @@ VITE_PRIVY_APP_ID=tu_app_id
   );
 }
 
-const solanaRpc = createSolanaRpc(RPC_PROXY);
+const solanaRpc = createAppRpc();
 const solanaRpcSubscriptions = createSolanaRpcSubscriptions(WSS_URL);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
