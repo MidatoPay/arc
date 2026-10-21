@@ -1,5 +1,4 @@
 import pg from "pg";
-import { authenticateIdentity, requireUnlock } from './securityAuth.js';
 import { PrivyClient } from "@privy-io/server-auth";
 import { timingSafeEqual } from "node:crypto";
 import { NETWORK } from "../../../src/network.js";
@@ -29,9 +28,11 @@ export function getPaymentPrivy() {
   return privy ??= new PrivyClient(process.env.VITE_PRIVY_APP_ID, process.env.PRIVY_APP_SECRET);
 }
 export async function authenticatePayment(event) {
-  const identity=await authenticateIdentity(event);
-  await requireUnlock(event,identity);
-  return identity.userId;
+  const token = (event.headers?.authorization || event.headers?.Authorization || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) throw new PaymentError("unauthorized", 401);
+  const client=getPaymentPrivy();
+  try { return (await client.verifyAuthToken(token)).userId; }
+  catch { throw new PaymentError("unauthorized", 401); }
 }
 export async function assertWalletOwned(userId, wallet) {
   const user = await getPaymentPrivy().getUser(userId);

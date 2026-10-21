@@ -1,4 +1,3 @@
-import { authenticatePayment } from './lib/paymentRuntime.js';
 // API de la recaudadora: consulta autenticada + payouts firmados server-side.
 // TREASURY_SECRET_KEY vive solo acá (sin prefijo VITE_).
 
@@ -14,7 +13,13 @@ import {
   sendTreasuryPayout,
 } from "./lib/treasuryPayout.js";
 
-
+let privy;
+function getPrivy() {
+  if (!privy) {
+    privy = new PrivyClient(process.env.VITE_PRIVY_APP_ID, process.env.PRIVY_APP_SECRET);
+  }
+  return privy;
+}
 
 function json(statusCode, body) {
   return {
@@ -28,8 +33,15 @@ function json(statusCode, body) {
 }
 
 async function authenticate(event) {
-  try { return await authenticatePayment(event); }
-  catch { return null; }
+  const authHeader = event.headers?.authorization || event.headers?.Authorization || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  try {
+    const claims = await getPrivy().verifyAuthToken(token);
+    return claims.userId;
+  } catch {
+    return null;
+  }
 }
 
 export function createTreasuryHandler(adapters = {}) {
