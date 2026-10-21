@@ -59,8 +59,18 @@
       }
       .mp-scroll::-webkit-scrollbar { width: 0; }
       .mp-device.mp-no-nav .mp-scroll { margin-bottom: 0; }
+      /* Pantallas aisladas (Cobrar): el hijo ocupa todo el alto del scroll. */
+      .mp-scroll.mp-scroll-fill {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .mp-scroll.mp-scroll-fill > * {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
 
-      /* Barra inferior glass + FAB cromado naranja */
+      /* Barra inferior minimalista + FAB sólido */
       @property --fab-angle {
         syntax: "<angle>";
         initial-value: 0deg;
@@ -68,121 +78,63 @@
       }
       .mp-nav {
         position: absolute;
-        left: 10px;
-        right: 10px;
-        bottom: 10px;
-        background: linear-gradient(
-          180deg,
-          rgba(255, 255, 255, 0.88) 0%,
-          rgba(255, 248, 242, 0.72) 48%,
-          rgba(255, 236, 224, 0.78) 100%
-        );
-        backdrop-filter: blur(22px) saturate(1.55);
-        -webkit-backdrop-filter: blur(22px) saturate(1.55);
-        border: 1px solid rgba(255, 181, 141, 0.45);
-        border-radius: 26px;
-        padding: 10px 12px 12px;
+        left: 14px;
+        right: 14px;
+        bottom: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(22, 22, 26, 0.06);
+        border-radius: 22px;
+        padding: 8px 10px 10px;
         display: flex;
         align-items: center;
         overflow: visible;
-        box-shadow:
-          0 12px 40px rgba(254, 108, 28, 0.12),
-          0 2px 0 rgba(255, 255, 255, 0.82) inset,
-          0 -1px 0 rgba(254, 108, 28, 0.08) inset;
+        box-shadow: 0 8px 28px rgba(22, 22, 26, 0.08);
       }
       .mp-nav::before {
-        content: "";
-        position: absolute;
-        left: 8%;
-        right: 8%;
-        top: 1px;
-        height: 1px;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          rgba(255, 255, 255, 0.7) 50%,
-          transparent 100%
-        );
-        pointer-events: none;
-        z-index: 1;
+        display: none;
       }
       .mp-fab {
         position: absolute;
         left: 50%;
-        transform: translate(-50%, -28px);
-        width: 64px;
-        height: 64px;
+        transform: translate(-50%, -22px);
+        width: 56px;
+        height: 56px;
         border-radius: 50%;
-        background:
-          radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 40%),
-          conic-gradient(
-            from var(--fab-angle),
-            #ffd0b2 0deg,
-            #ffb58d 70deg,
-            #fe6c1c 150deg,
-            #e85a10 220deg,
-            #fe6c1c 290deg,
-            #ffb58d 330deg,
-            #ffd0b2 360deg
-          );
-        border: 1.5px solid rgba(255, 255, 255, 0.55);
+        background: #fe6c1c;
+        border: 0;
         color: #fff;
         cursor: pointer;
         display: grid;
         place-items: center;
         overflow: hidden;
         z-index: 3;
-        box-shadow:
-          0 14px 34px rgba(254, 108, 28, 0.42),
-          0 2px 0 rgba(255, 255, 255, 0.45) inset,
-          0 -6px 14px rgba(180, 55, 0, 0.22) inset;
-        animation: mp-fab-spin 7s linear infinite;
-        transition: transform .18s ease;
+        box-shadow: 0 8px 20px rgba(254, 108, 28, 0.28);
+        animation: none;
+        transition: transform .15s ease, box-shadow .15s ease;
       }
       .mp-fab-shine {
         display: none;
       }
       .mp-fab:active {
-        transform: translate(-50%, -28px) scale(.94);
+        transform: translate(-50%, -22px) scale(.96);
       }
       .mp-fab.is-listening {
         box-shadow:
-          0 18px 48px rgba(254, 108, 28, 0.5),
-          0 0 0 6px rgba(254, 108, 28, 0.14),
-          0 2px 0 rgba(255, 255, 255, 0.5) inset,
-          0 -8px 18px rgba(180, 55, 0, 0.22) inset;
+          0 8px 22px rgba(254, 108, 28, 0.32),
+          0 0 0 4px rgba(254, 108, 28, 0.12);
+        animation: mp-fab-pulse 1.6s ease-out infinite;
       }
       /* Cliente externo: paleta morada (no MidatoPay) */
       .mp-guest .mp-nav {
-        background: linear-gradient(
-          180deg,
-          rgba(255, 255, 255, 0.9) 0%,
-          rgba(246, 244, 252, 0.78) 48%,
-          rgba(238, 235, 248, 0.82) 100%
-        );
-        border: 1px solid rgba(91, 77, 183, 0.28);
-        box-shadow:
-          0 12px 40px rgba(91, 77, 183, 0.12),
-          0 2px 0 rgba(255, 255, 255, 0.82) inset,
-          0 -1px 0 rgba(91, 77, 183, 0.08) inset;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(22, 22, 26, 0.06);
+        box-shadow: 0 8px 28px rgba(22, 22, 26, 0.08);
       }
       .mp-guest .mp-fab {
-        background:
-          radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 40%),
-          conic-gradient(
-            from var(--fab-angle),
-            #b7afe0 0deg,
-            #8b7fd4 70deg,
-            #5b4db7 150deg,
-            #4338a0 220deg,
-            #5b4db7 290deg,
-            #8b7fd4 330deg,
-            #b7afe0 360deg
-          );
-        box-shadow:
-          0 14px 34px rgba(91, 77, 183, 0.42),
-          0 2px 0 rgba(255, 255, 255, 0.45) inset,
-          0 -6px 14px rgba(50, 40, 120, 0.28) inset;
+        background: #5b4db7;
+        box-shadow: 0 8px 20px rgba(91, 77, 183, 0.28);
       }
       .mp-guest-scan {
         position: relative;
@@ -691,19 +643,54 @@
         to { opacity: 1; transform: translateY(0); }
       }
 
+      /* Hoja del micrófono: blanca, cubre la pantalla y deja la botonera (con el mic) por encima. */
       .mp-voice-sheet {
         position: absolute;
-        inset: 0 0 128px 0;
+        inset: 0;
         z-index: 35;
         display: flex;
         flex-direction: column;
-        justify-content: flex-end;
-        padding: 18px 18px 8px;
-        background: rgba(255, 255, 255, 0.78);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        padding: 16px 20px calc(var(--mp-nav-space) + 14px);
+        background: #fff;
         overflow-y: auto;
+        animation: mp-voice-in .2s ease-out;
       }
+      .mp-device.mp-voice-open .mp-nav { z-index: 36; }
+      .mp-voice-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+      .mp-voice-close {
+        width: 36px; height: 36px; border-radius: 50%; border: 0; background: #F2F2F5; color: #16161A;
+        font: inherit; font-size: 22px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+      }
+      .mp-voice-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 8px 4px 16px; }
+      .mp-voice-status {
+        display: flex; align-items: center; gap: 8px; min-height: 20px; margin-bottom: 14px;
+        font-size: 14px; font-weight: 500; color: #7A7A85;
+      }
+      .mp-voice-status.is-listening { color: #fe6c1c; }
+      .mp-voice-status.is-error { color: #E4483D; }
+      .mp-voice-dot { width: 8px; height: 8px; border-radius: 50%; background: #fe6c1c; animation: mp-voice-dot 1.2s ease-in-out infinite; }
+      .mp-voice-text {
+        margin: 0; font-size: 26px; font-weight: 500; line-height: 1.3; letter-spacing: -0.4px;
+        color: #16161A; overflow-wrap: anywhere;
+      }
+      .mp-voice-text.is-placeholder { color: #B4B4BC; }
+      .mp-voice-text.is-error { font-size: 19px; line-height: 1.45; letter-spacing: 0; }
+      .mp-voice-examples { margin-top: 26px; font-size: 13px; color: #7A7A85; }
+      .mp-voice-examples p { margin: 8px 0 0; font-size: 16px; color: #3A3A42; }
+      .mp-voice-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 76px; justify-content: flex-end; }
+      .mp-voice-hint { font-size: 13px; color: #7A7A85; text-align: center; min-height: 18px; }
+      .mp-voice-retry {
+        display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 12px 20px;
+        background: #fe6c1c; color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+      }
+      .mp-voice-wave { display: flex; align-items: center; gap: 5px; height: 40px; }
+      .mp-voice-wave span {
+        width: 5px; border-radius: 3px; background: #fe6c1c; transform: scaleY(.3);
+        animation: mp-voice-bar-soft 1.2s ease-in-out infinite;
+      }
+      .mp-voice-wave.is-speaking span { animation: mp-voice-bar-loud .5s ease-in-out infinite; }
+      .mp-voice-wave.is-thinking span { background: #C9C9D1; animation-duration: 1.5s; }
+      .mp-voice-wave.is-idle span { background: #E2E2E8; animation: none; transform: scaleY(.18); }
 
       /* Orbe cromado grande (pantalla voz) */
       .mp-chrome-orb {
@@ -758,6 +745,16 @@
           0 1px 0 rgba(255, 255, 255, 0.8) inset;
       }
 
+      .mp-qr-skeleton {
+        background: linear-gradient(90deg, #F0F0F3 0%, #F8F8FA 45%, #F0F0F3 90%);
+        background-size: 200% 100%;
+        animation: mp-qr-skel 1.15s ease-in-out infinite;
+      }
+      @keyframes mp-qr-skel {
+        0% { background-position: 100% 0; }
+        100% { background-position: -100% 0; }
+      }
+
       @keyframes mp-fab-spin {
         to { --fab-angle: 360deg; }
       }
@@ -765,10 +762,34 @@
         0% { transform: scale(1); opacity: 0.45; }
         100% { transform: scale(1.7); opacity: 0; }
       }
+      @keyframes mp-voice-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes mp-voice-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .35; }
+      }
+      @keyframes mp-voice-bar-soft {
+        0%, 100% { transform: scaleY(.3); }
+        50% { transform: scaleY(.55); }
+      }
+      @keyframes mp-voice-bar-loud {
+        0%, 100% { transform: scaleY(.4); }
+        50% { transform: scaleY(1); }
+      }
+      @keyframes mp-fab-pulse {
+        0% { box-shadow: 0 8px 22px rgba(254, 108, 28, 0.32), 0 0 0 0 rgba(254, 108, 28, 0.35); }
+        100% { box-shadow: 0 8px 22px rgba(254, 108, 28, 0.32), 0 0 0 16px rgba(254, 108, 28, 0); }
+      }
 
       @media (prefers-reduced-motion: reduce) {
         .mp-fab,
-        .mp-chrome-orb { animation: none; }
+        .mp-fab.is-listening,
+        .mp-chrome-orb,
+        .mp-voice-sheet,
+        .mp-voice-dot { animation: none; }
+        .mp-voice-wave span { animation: none !important; transform: scaleY(.5); }
       }
 
       /* Overlays dentro del marco */

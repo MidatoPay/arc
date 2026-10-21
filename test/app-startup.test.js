@@ -42,5 +42,6 @@ for(const session of [
 
 test('authenticated startup with no synchronized primary wallet shows recovery instead of crashing',()=>{
  setSession({ready:true,authenticated:true,user:{id:'did:privy:startup',linkedAccounts:[]}});
- assert.match(renderToStaticMarkup(createElement(App)),/Sincronizar wallet principal/);
+ // The button is localized; with no saved language the app starts in English.
+ assert.match(renderToStaticMarkup(createElement(App)),/Sincronizar wallet principal|Sync primary wallet/);
 });
