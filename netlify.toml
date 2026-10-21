@@ -35,6 +35,18 @@
   schedule = "* * * * *"
 
 [[redirects]]
+  from = "/security/*"
+  to = "/.netlify/functions/security/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/security"
+  to = "/.netlify/functions/security"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/wallet"
   to = "/.netlify/functions/wallet"
   status = 200
