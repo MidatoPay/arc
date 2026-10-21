@@ -38,10 +38,12 @@
     "@electric-sql/pglite": "^0.5.9",
     "@vitejs/plugin-react": "^6.0.5",
     "netlify-cli": "^27.1.0",
+    "react-test-renderer": "18.3.1",
     "vite": "^8.2.0"
   },
   "overrides": {
     "axios": "1.20.0",
+    "follow-redirects": "1.16.1",
     "proxy-addr": "2.0.8",
     "@fastify/busboy": "3.2.2",
     "image-size": "2.0.3",

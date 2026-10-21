@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { build } from "esbuild";
+import { act, create } from "react-test-renderer";
 import { paymentReceived,deliveryPhase,deliveryNoticeKey,chargeStatusLabel,canStartNewCharge } from "../src/chargeStatus.js";
 import { activityStatusKey } from "../src/transactions.js";
 
@@ -72,25 +73,87 @@ const compiled=await build({entryPoints:[fileURLToPath(new URL("../src/ChargeSum
 const loaded={exports:{}};
 new Function("require","module","exports",compiled.outputFiles[0].text)(createRequire(import.meta.url),loaded,loaded.exports);
 const ChargeSummary=loaded.exports.default;
-const render=charge=>renderToStaticMarkup(createElement(ChargeSummary,{charge,qr:"data:image/png;base64,qr",busy:false,now,t:key=>key}));
+const render=charge=>renderToStaticMarkup(createElement(ChargeSummary,{charge,qr:"data:image/png;base64,qr",busy:false,now}));
 
-test("paid charge renders success, new-charge action and pending USDC without its payable QR or cancellation action",()=>{
-  const html=render(base);
-  assert.match(html,/Pago recibido/);assert.match(html,/Nuevo cobro/);
-  assert.match(html,/USDC pendientes de acreditación/);assert.match(html,/movs.chargeDeliveryEstimate/);
-  assert.doesNotMatch(html,/<img|Cancelar cobro|Vence:|USDC acreditados:/);
-  const unpaid=render({...base,status:"awaiting_payment",providerStatus:"created",providerDetail:"created"});
-  assert.match(unpaid,/<img/);assert.match(unpaid,/Cancelar cobro/);
-  assert.doesNotMatch(unpaid,/Nuevo cobro|Pago recibido|movs.chargeDeliveryEstimate/);
+test("received payments retain the QR and a disabled processing action until USDC delivery",()=>{
+  for(const status of ["paid","delivery_pending","broadcasting","confirmed"]){
+    const html=render({...base,status});
+    assert.match(html,/Escanear y pagar/);
+    assert.match(html,/<img[^>]+alt="QR de pago"/);
+    assert.match(html,/<button[^>]+disabled=""[^>]+aria-busy="true"[^>]*>[\s\S]*?Procesando pago<\/button>/);
+    assert.doesNotMatch(html,/Cancelar cobro|Cobrar de nuevo|Cobro exitoso|El dinero ya está en tu cuenta/);
+  }
 });
 
-test("delayed, reviewed and finalized screens retain the correct distinction between payment and delivery",()=>{
-  const delayed=render({...base,paidAt:new Date(now-180000).toISOString()});
-  assert.match(delayed,/Pago recibido/);assert.match(delayed,/movs.chargeDeliveryDelayedNotice/);
-  assert.doesNotMatch(delayed,/requiere revisión/);
-  const reviewed=render({...base,status:"manual_review",lastError:"solana_expired_requires_review"});
-  assert.match(reviewed,/Pago recibido/);assert.match(reviewed,/movs.chargeDeliveryReviewNotice/);
-  const delivered=render({...base,status:"delivered"});
-  assert.match(delivered,/USDC acreditados:/);assert.match(delivered,/Nuevo cobro/);
-  assert.doesNotMatch(delivered,/pendientes de acreditación|movs.chargeDeliveryEstimate|<img/);
+test("unpaid charges show the QR and cancellation without claiming payment success",()=>{
+  const unpaid=render({...base,status:"awaiting_payment",providerStatus:"created",providerDetail:"created"});
+  assert.match(unpaid,/<img[^>]+alt="QR de pago"/);assert.match(unpaid,/Cancelar cobro/);
+  assert.doesNotMatch(unpaid,/Procesando pago|Cobrar de nuevo|Cobro exitoso|aria-busy="true"/);
+});
+
+test("delayed and received payments under review remain processing without claiming delivery",()=>{
+  for(const charge of [
+    {...base,paidAt:new Date(now-180000).toISOString()},
+    {...base,status:"manual_review",lastError:"solana_expired_requires_review"},
+  ]){
+    const html=render(charge);
+    assert.match(html,/Procesando pago/);
+    assert.match(html,/<img[^>]+alt="QR de pago"/);
+    assert.doesNotMatch(html,/Cobro exitoso|El dinero ya está en tu cuenta|Cobrar de nuevo|Cancelar cobro/);
+  }
+  const unpaidReview=render({...base,status:"manual_review",providerStatus:null,providerDetail:null});
+  assert.match(unpaidReview,/En revisión/);
+  assert.doesNotMatch(unpaidReview,/Procesando pago|Cobro exitoso|QR de pago/);
+});
+
+test("finalized delivery initially renders the success splash without the QR or processing action",()=>{
+  // Static rendering covers the initial splash; effects and its three-second timer do not run here.
+  for(const charge of [{...base,status:"delivered"},{...base,status:"confirmed",settled:true}]){
+    const html=render(charge);
+    assert.match(html,/class="mp-overlay"/);
+    assert.match(html,/role="status" aria-label="Cobro exitoso"/);
+    assert.doesNotMatch(html,/QR de pago|Procesando pago|Cancelar cobro|aria-busy="true"/);
+  }
+});
+
+test("USDC delivery shows a three-second success splash, then the receipt and new-charge action",t=>{
+  t.mock.timers.enable({apis:["setTimeout"]});
+  let renderer,resetCalls=0;
+  const splashChanges=[];
+  const onSplashChange=value=>splashChanges.push(value);
+  const element=charge=>createElement(ChargeSummary,{
+    charge,qr:"data:image/png;base64,qr",busy:false,now,
+    onReset:()=>resetCalls++,onSplashChange,
+  });
+  t.after(()=>{if(renderer)act(()=>renderer.unmount());});
+
+  act(()=>{renderer=create(element(base));});
+  assert.match(JSON.stringify(renderer.toJSON()),/Procesando pago/);
+  assert.equal(renderer.root.findAllByProps({alt:"QR de pago"}).length,1);
+
+  act(()=>renderer.update(element({...base,status:"delivered",settled:true})));
+  assert.equal(renderer.root.findByProps({role:"status"}).props["aria-label"],"Cobro exitoso");
+  assert.equal(renderer.root.findAllByType("button").length,0);
+  assert.equal(renderer.root.findAllByProps({alt:"QR de pago"}).length,0);
+  assert.equal(splashChanges.at(-1),true);
+
+  act(()=>t.mock.timers.tick(2999));
+  assert.equal(renderer.root.findAllByProps({role:"status"}).length,1);
+  act(()=>t.mock.timers.tick(1));
+  assert.equal(renderer.root.findAllByProps({role:"status"}).length,0);
+  assert.equal(splashChanges.at(-1),false);
+  assert.match(JSON.stringify(renderer.toJSON()),/Cobro exitoso/);
+  assert.match(JSON.stringify(renderer.toJSON()),/El dinero ya está en tu cuenta/);
+  assert.equal(renderer.root.findAllByProps({alt:"QR de pago"}).length,0);
+  const newCharge=renderer.root.findAllByType("button").find(button=>button.children.join("")==="Cobrar de nuevo");
+  assert.ok(newCharge);
+  assert.equal(newCharge.props.disabled,false);
+  act(()=>newCharge.props.onClick());
+  assert.equal(resetCalls,1);
+
+  act(()=>renderer.update(element({...base,id:"next-charge",status:"awaiting_payment",
+    providerStatus:"created",providerDetail:"created",paidAt:null})));
+  act(()=>t.mock.timers.tick(10000));
+  assert.equal(renderer.root.findAllByProps({alt:"QR de pago"}).length,1);
+  assert.doesNotMatch(JSON.stringify(renderer.toJSON()),/Cobro exitoso|Procesando pago|Cobrar de nuevo/);
 });
