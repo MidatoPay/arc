@@ -1,5 +1,6 @@
-import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
+import { createSolanaRpc, createSolanaRpcFromTransport, createDefaultRpcTransport, createSolanaRpcSubscriptions } from "@solana/kit";
 import { NETWORK } from "./network.js";
+import { rpcAccessToken } from './rpcSession.js';
 
 // Lecturas van por el proxy local de Vite/Netlify (ver vite.config.js) para
 // evitar CORS del navegador contra el RPC de Solana.
@@ -32,7 +33,16 @@ export function explorerTxUrl(signature) {
 }
 
 export function createAppRpc() {
-  return createSolanaRpc(RPC_PROXY);
+  if(typeof window==='undefined')return createSolanaRpc(RPC_PROXY);
+  let previousToken,transport;
+  return createSolanaRpcFromTransport(async request=>{
+    const token=await rpcAccessToken();
+    if(previousToken!==token) {
+      previousToken=token;
+      transport=createDefaultRpcTransport({url:RPC_PROXY,headers:{Authorization:`Bearer ${token}`}});
+    }
+    return transport(request);
+  });
 }
 
 export function createAppRpcSubscriptions() {

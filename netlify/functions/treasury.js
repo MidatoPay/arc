@@ -1,9 +1,11 @@
-// API de la recaudadora: status público + payouts firmados server-side.
+// API de la recaudadora: consulta autenticada + payouts firmados server-side.
 // TREASURY_SECRET_KEY vive solo acá (sin prefijo VITE_).
 
 import { PrivyClient } from "@privy-io/server-auth";
 import { isAddress } from "@solana/kit";
 import { NETWORK } from "../../src/network.js";
+import { isPaymentAdmin } from './lib/paymentReporting.js';
+import { createReadCache } from './lib/readCache.js';
 import {
   getTreasuryAddress,
   getTreasuryBalance,
@@ -22,7 +24,7 @@ function getPrivy() {
 function json(statusCode, body) {
   return {
     statusCode,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store", "Vary": "Authorization" },
     // @solana/kit a veces devuelve BigInt (slot/amount); JSON no los serializa.
     body: JSON.stringify(body, (_key, value) =>
       typeof value === "bigint" ? Number(value) : value
@@ -42,19 +44,25 @@ async function authenticate(event) {
   }
 }
 
-export const handler = async (event) => {
+export function createTreasuryHandler(adapters = {}) {
+const read=adapters.read || createReadCache();
+return async (event) => {
   const method = event.httpMethod || event.method || "GET";
 
   if (method === "GET") {
     try {
-      const configured = isTreasuryConfigured();
+      const userId = await (adapters.authenticate || authenticate)(event);
+      if (!userId) return json(401, { error: "unauthorized" });
+      const configured = (adapters.isConfigured || isTreasuryConfigured)();
       if (!configured) {
         return json(200, { configured: false, address: null, balance: null });
       }
-      const [address, balance] = await Promise.all([getTreasuryAddress(), getTreasuryBalance()]);
+      const admin = (adapters.isAdmin || isPaymentAdmin)(userId);
+      const address=await (adapters.getAddress || getTreasuryAddress)();
+      const balance=admin ? await read(`treasury:${NETWORK.cluster}:${address}`,10000,adapters.getBalance || getTreasuryBalance) : null;
       return json(200, { configured: true, address, balance });
     } catch (err) {
-      return json(500, { error: String(err?.message || err) });
+      return json(503, { error: "treasury_unavailable" });
     }
   }
 
@@ -100,3 +108,5 @@ export const handler = async (event) => {
 
   return json(405, { error: "method_not_allowed" });
 };
+}
+export const handler = createTreasuryHandler();

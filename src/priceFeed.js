@@ -2,14 +2,13 @@ import { ethers } from "ethers";
 
 // Chainlink USD/ARS Reference Price Feed — Ethereum Mainnet
 // https://data.chain.link/feeds/ethereum/mainnet/usd-ars
-export const CHAINLINK_USD_ARS_FEED = "0xBb65fa58BDb7d33e4a3D1A40a7A9BD99E746367b";
+import { CHAINLINK_USD_ARS_FEED } from './chainlinkConfig.js';
+export { CHAINLINK_USD_ARS_FEED, CHAINLINK_USD_ARS_HEARTBEAT_SECONDS, FALLBACK_FX_ARS_USD } from './chainlinkConfig.js';
 // Published catalog metadata, verified 2026-10-14. Informational: the enforced
 // limit comes from CHAINLINK_MAX_AGE_SECONDS (recommended 90000 = heartbeat + 1 h).
 // https://reference-data-directory.vercel.app/feeds-mainnet.json
-export const CHAINLINK_USD_ARS_HEARTBEAT_SECONDS = 86400;
 
 // Fallback off-chain si el RPC de Ethereum no responde.
-export const FALLBACK_FX_ARS_USD = 1650;
 
 // Lecturas van por el proxy local (/eth-rpc) para evitar CORS del navegador
 // contra el RPC de Ethereum (mismo patrón que /rpc → Solana).
@@ -68,9 +67,11 @@ export async function fetchArsPerUsd(rpcUrl = ETH_RPC_PROXY) {
     batchMaxCount: 1,
   });
   const feed = new ethers.Contract(CHAINLINK_USD_ARS_FEED, AGGREGATOR_ABI, provider);
-  const [answer, decimals] = await Promise.all([feed.latestAnswer(), feed.decimals()]);
-  if (answer <= 0n) throw new Error("Chainlink latestAnswer inválido");
-  const rate = Number(ethers.formatUnits(answer, decimals));
-  if (!Number.isFinite(rate) || rate <= 0) throw new Error("Chainlink rate inválido");
-  return rate;
+  try {
+    const [answer, decimals] = await Promise.all([feed.latestAnswer(), feed.decimals()]);
+    if (answer <= 0n) throw new Error("Chainlink latestAnswer inválido");
+    const rate = Number(ethers.formatUnits(answer, decimals));
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error("Chainlink rate inválido");
+    return rate;
+  } finally { provider.destroy(); }
 }

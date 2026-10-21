@@ -1,7 +1,7 @@
 import { zipFunctions } from "@netlify/zip-it-and-ship-it";
 import { resolve,sep } from "node:path";
 import { spawnSync } from "node:child_process";
-import { writeFile,mkdir,mkdtemp,rm } from "node:fs/promises";
+import { readFile,writeFile,mkdir,mkdtemp,rm } from "node:fs/promises";
 Object.assign(process.env,{
  MP_ENVIRONMENT:process.env.VITE_SOLANA_CLUSTER==="mainnet-beta"?"production":"test",
  MP_ACCESS_TOKEN:"offline-check-token",MP_USER_ID:"123",MP_WEBHOOK_SECRET:"offline-check-webhook",
@@ -20,25 +20,49 @@ const functions=await zipFunctions("netlify/functions",output,{
  config:{"*":{nodeBundler:"esbuild"}},archiveFormat:"none"
 });
 const entries=[];
-for(const name of ["wallet","contacts","treasury-export-access","transfers","transfers-worker-background","charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background"]) {
+for(const name of ['rpc','eth-rpc','balance','quote']) {
+ const fn=functions.find(entry=>entry.name===name);
+ if(fn?.runtimeAPIVersion!==2 || !fn.trafficRules || !fn.routes?.some(route=>route.pattern==='/'+name))throw new Error(`Missing packaged rate limit for ${name}`);
+}
+for(const name of ["wallet","contacts","balance","quote","rpc","eth-rpc","treasury","treasury-export-access","transfers","transfers-worker-background","charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background"]) {
  const entry=functions.find(fn=>fn.name===name);
  if(!entry)throw new Error(`Missing packaged function: ${name}`);
- // Netlify's runtime loads these bundles as CJS, outside this repo's type=module.
- await writeFile(resolve(entry.path,"package.json"),JSON.stringify({type:"commonjs"}));
- entries.push({name,path:resolve(entry.path,`${name}.js`)});
+ await writeFile(resolve(entry.path,"package.json"),JSON.stringify({type:entry.runtimeAPIVersion===2?'module':'commonjs'}));
+ let source=resolve(entry.path,entry.entryFilename || `${name}.js`);
+ if(entry.runtimeAPIVersion===2) {
+  // The generated AWS entry point requires the Lambda runtime. Smoke-test the
+  // packaged application module referenced by it, using real Request/Response.
+  const wrapper=await readFile(source,'utf8');
+  const match=/getLambdaHandler\(\s*['"]([^'"]+)['"]/.exec(wrapper);
+  if(!match)throw new Error(`Missing packaged fetch handler for ${name}`);
+  source=resolve(entry.path,match[1]);
+ }
+ entries.push({name,path:source,v2:entry.runtimeAPIVersion===2});
 }
-// Exit the child before cleanup: Windows locks loaded native addons until exit.
+// Functions run in isolated Lambda processes. Keep smoke checks isolated too,
+// particularly when mixing CJS and native ESM dependency graphs.
+for(const entry of entries) {
 const smoke=spawnSync(process.execPath,["--input-type=commonjs","-e",`
  globalThis.fetch=async()=>{throw new Error("Network access is forbidden in the Functions check");};
  (async()=>{
-  for(const {name,path} of JSON.parse(process.argv[1])) {
-   const module=require(path),handler=module.handler || module.default?.handler;
-   const result=await handler({path:"/.netlify/functions/"+name,httpMethod:name==="mercadopago-webhook"?"POST":"GET",headers:{},body:"{}"});
-   if(![400,401,403,405].includes(result.statusCode))throw new Error("Authentication check failed: "+name);
+  for(const {name,path,v2} of JSON.parse(process.argv[1])) {
+   console.log('Checking '+name);
+   const method=["mercadopago-webhook","quote"].includes(name)?"POST":"GET";
+   let status;
+   if(v2) {
+    const module=await import(require('node:url').pathToFileURL(path).href);
+    const result=await module.default(new Request('https://example.invalid/.netlify/functions/'+name,{method,body:method==='POST'?'{}':undefined}));
+    status=result.status;
+   }else {
+    const module=require(path),handler=module.handler || module.default?.handler;
+    status=(await handler({path:"/.netlify/functions/"+name,httpMethod:method,headers:{},body:"{}"})).statusCode;
+   }
+   if(![400,401,403,405].includes(status))throw new Error("Authentication check failed: "+name);
   }
- })().catch(()=>{process.exitCode=1;});
-`,JSON.stringify(entries)],{encoding:"utf8",timeout:30000});
-if(smoke.status!==0)throw new Error(`Packaged Functions smoke check failed (exit ${smoke.status ?? smoke.error?.code}).`);
+ })().then(()=>process.exit(0)).catch(error=>{console.error(error.message);process.exit(1);});
+`,JSON.stringify([entry])],{encoding:"utf8",stdio:'inherit',timeout:60000});
+if(smoke.status!==0)throw new Error(`Packaged Functions smoke check failed (exit ${smoke.status ?? smoke.error?.code}): ${smoke.stderr?.trim() || smoke.stdout?.trim().split('\n').slice(-3).join(', ') || 'No diagnostic output'}`);
+}
 console.log(`Packaged ${functions.length} Functions; protected endpoints reject unauthenticated requests.`);
 } finally {
  // Remove only the unique directory created by this invocation, inside .netlify.

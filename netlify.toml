@@ -94,19 +94,7 @@
   status = 200
   force = true
 
-# Reemplaza al proxy /rpc de Vite (solo existe en dev) por una function
-# que hace de puente al RPC real, igual que vite.config.js.
-[[redirects]]
-  from = "/rpc"
-  to = "/.netlify/functions/rpc"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/eth-rpc"
-  to = "/.netlify/functions/eth-rpc"
-  status = 200
-  force = true
+# /rpc, /eth-rpc, /quote and /balance use native Function routes and rate limits.
 
 # API de la agenda de contactos (Postgres vía Aiven, ver netlify/functions/contacts.js).
 [[redirects]]

@@ -1,27 +1,5 @@
-// Proxy al RPC de Solana Devnet — replica en producción lo que vite.config.js
-// hace en desarrollo (evitar bloqueos CORS del navegador contra el RPC).
-// Target configurable desde el dashboard de Netlify con VITE_SOLANA_RPC.
-import { NETWORK } from "../../src/network.js";
-const TARGET = process.env.SOLANA_RPC || process.env.VITE_SOLANA_RPC || NETWORK.rpc;
-
-export const handler = async (event) => {
-  try {
-    const res = await fetch(TARGET, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: event.body,
-    });
-    const text = await res.text();
-    return {
-      statusCode: res.status,
-      headers: { "Content-Type": "application/json" },
-      body: text,
-    };
-  } catch (err) {
-    return {
-      statusCode: 502,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: String(err?.message || err) }),
-    };
-  }
-};
+import { NETWORK } from '../../src/network.js';
+import { createRpcHandler } from './lib/rpcProxy.js';
+import { asFetchHandler } from './lib/fetchAdapter.js';
+export default asFetchHandler(createRpcHandler({chain:'solana',target:process.env.SOLANA_RPC || process.env.VITE_SOLANA_RPC || NETWORK.rpc}));
+export const config={path:'/rpc',rateLimit:{windowLimit:300,windowSize:60,aggregateBy:['ip','domain']}};

@@ -1,11 +1,25 @@
 /**
  * Cliente HTTP de la recaudadora.
  * La secret key vive solo en la Netlify Function (`TREASURY_SECRET_KEY`).
- * El browser solo ve address/balance públicos y pide payouts autenticados.
+ * Las consultas y payouts requieren una sesión de Privy.
  */
 
 let _status = { configured: false, address: null, balance: null };
 let _statusPromise = null;
+let _session = null;
+
+export function setTreasurySession(userId, getAccessToken) {
+  const session = userId ? { userId, getAccessToken } : null;
+  _session = session;
+  _status = { configured: false, address: null, balance: null };
+  _statusPromise = null;
+  return () => {
+    if (_session !== session) return;
+    _session = null;
+    _status = { configured: false, address: null, balance: null };
+    _statusPromise = null;
+  };
+}
 
 async function api(path, token, options = {}) {
   const res = await fetch(path, {
@@ -26,10 +40,17 @@ async function api(path, token, options = {}) {
   return body;
 }
 
-/** Refresca configured/address/balance desde GET /treasury (público). */
+/** Consulta autenticada; el servidor entrega saldo solo a administradores. */
 export async function refreshTreasuryStatus() {
-  _statusPromise = api("/treasury")
+  const session = _session;
+  if (!session) return { configured: false, address: null, balance: null };
+  _statusPromise = Promise.resolve().then(async () => {
+    const token = await session.getAccessToken();
+    if (!token || _session !== session) throw new Error('unauthorized');
+    return api("/treasury", token, { cache: "no-store" });
+  })
     .then((body) => {
+      if (_session !== session) return { configured: false, address: null, balance: null };
       _status = {
         configured: Boolean(body.configured),
         address: body.address || null,
@@ -38,6 +59,7 @@ export async function refreshTreasuryStatus() {
       return _status;
     })
     .catch(() => {
+      if (_session !== session) return { configured: false, address: null, balance: null };
       _status = { configured: false, address: null, balance: null };
       return _status;
     });
@@ -45,7 +67,7 @@ export async function refreshTreasuryStatus() {
 }
 
 function ensureStatus() {
-  if (!_statusPromise) refreshTreasuryStatus();
+  if (!_statusPromise) return refreshTreasuryStatus();
   return _statusPromise;
 }
 
@@ -83,6 +105,3 @@ export async function sendTreasuryPayout(token, { to, usdc, kind, ars, fxRate, f
   });
   return payout;
 }
-
-// Hidrata address/configured al cargar el módulo (UI sync).
-ensureStatus();
