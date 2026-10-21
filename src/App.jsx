@@ -4,18 +4,20 @@ import { useWallets, useSignTransaction, useSignAndSendTransaction } from "@priv
 import { isAddress } from "@solana/kit";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
-import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
-import BusinessProfile from "./BusinessProfile.jsx";
 import {primarySolanaWallet} from './primaryWallet.js';
-import {useSponsoredTransfers,transferApi,exactUsdc} from './transfers.js';
+import {useSponsoredTransfers,transferApi} from './transfers.js';
 import TransferApproval from './TransferApproval.jsx';
 import TransferReceipt from './TransferReceipt.jsx';
 import { useMerchantProfile } from "./merchantProfile.js";
 import { userDisplayName, merchantDisplayName } from "./merchantIdentity.js";
 import { reportsApi } from "./paymentReports.js";
 import { chargeApi } from "./charges.js";
-import { paymentReceived, deliveryNoticeKey } from "./chargeStatus.js";
-import jsQR from "jsqr";
+import { paymentReceived } from "./chargeStatus.js";
+import Movimientos, { TxCard } from "./Movimientos.jsx";
+import PayScan from "./PayScan.jsx";
+import SendScreen from "./SendScreen.jsx";
+import ContactsScreen from "./ContactsScreen.jsx";
+import QrScanner from "./QrScanner.jsx";
 import { SOLANA, explorerAddressUrl, explorerTxUrl } from "./chain.js";
 import {
   armarMemo,
@@ -37,20 +39,20 @@ import {
   isTreasuryConfigured,
   refreshTreasuryStatus,
 } from "./treasury.js";
-import { LanguageProvider, useLanguage, STACK_EN, STACK_ES } from "./i18n.jsx";
+import { LanguageProvider, useLanguage, speechLangFor } from "./i18n.jsx";
+import { transferErrorText } from "./errorText.js";
+import LanguageSelect from "./LanguageSelect.jsx";
+import ProfileScreen from "./ProfileScreen.jsx";
 import {
   loadContacts,
   addContact,
   updateContact,
   removeContact,
   findByAlias,
-  resolveRecipient,
   recipientCandidates,
-  searchContacts,
-  validateContact,
 } from "./contacts.js";
-import { loadTransactions, addTransaction, mergeByHash, activityStatusKey, activityRefreshInterval } from "./transactions.js";
-import { parsePayUrl, slugifyAlias } from "./payQr.js";
+import { loadTransactions, addTransaction, mergeByHash, activityRefreshInterval } from "./transactions.js";
+import { parsePayUrl } from "./payQr.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Solana — Pagos por voz
@@ -126,6 +128,7 @@ function usdcBalanceToArs(usdcAmount, arsPerUsdc) {
 }
 
 function localParse(text, lang) {
+  if (lang === "zh") return localParseZh(text);
   const t = text.toLowerCase();
   const chargeRe = lang === "en" ? /(charge|collect)/ : /(cobr)/;
   const sendRe = lang === "en" ? /(send|transfer|pay)/ : /(envi|mand|transfer|pag)/;
@@ -144,6 +147,22 @@ function localParse(text, lang) {
   const m = t.match(recRe);
   if (m) recipient = m[1];
   return { intent, amount, currency, recipient };
+}
+
+/**
+ * Respaldo local en chino (sin Anthropic): "收款 5000 比索" → cobro; "给 katy 转 5 美元/USDC" → envío.
+ * El alias del destinatario va después de 给/转给/发给; los montos son dígitos arábigos.
+ */
+function localParseZh(text) {
+  const t = String(text).toLowerCase().replace(/\s+/g, " ");
+  const intent = /(收款|收钱|收费|收)/.test(t) ? "charge" : /(转账|转给|发给|发送|付款|支付|付|转|给|汇)/.test(t) ? "send" : "unknown";
+  if (intent === "unknown") return { intent };
+  const numMatch = t.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+  const amount = numMatch ? parseFloat(numMatch[1]) : null;
+  const currency = /(比索|ars|peso)/.test(t) ? "ARS" : /(美元|美金|usdc|刀)/.test(t) ? "USDC" : intent === "charge" ? "ARS" : "USDC";
+  if (intent === "charge") return { intent, amount, currency, recipient: null };
+  const m = t.match(/(?:转给|发给|付给|给)\s*([a-z0-9áéíóúñ\u4e00-\u9fff]+?)(?=\s|\d|转|发|付|$)/);
+  return { intent, amount, currency, recipient: m ? m[1] : null };
 }
 
 async function claudeParse(text, lang, aliases, token) {
@@ -237,13 +256,6 @@ const IconArrowDown = ({ size = 22 }) => (
   </svg>
 );
 
-const IconBan = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-    <path d="M7.8 7.8l8.4 8.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-
 const IconArrowUp = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -289,12 +301,6 @@ const IconActivity = ({ size = 22 }) => (
   </svg>
 );
 
-const IconStack = ({ size = 22 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <rect x="4" y="5" width="7" height="14" rx="1.6" stroke="currentColor" strokeWidth="1.8" />
-    <rect x="13" y="5" width="7" height="14" rx="1.6" stroke="currentColor" strokeWidth="1.8" />
-  </svg>
-);
 
 const IconContacts = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -319,37 +325,10 @@ const IconMic = ({ size = 26 }) => (
   </svg>
 );
 
-const IconFaucet = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <path d="M8 4h8M12 4v3M7 10h10a2 2 0 0 1 2 2v2H5v-2a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    <path d="M12 14v3.5a2.5 2.5 0 0 0 5 0V16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-  </svg>
-);
-
-const IconSearch = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-    <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-  </svg>
-);
-
-const IconGlobe = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-    <path d="M3 12h18M12 3c2.8 2.6 4.2 5.7 4.2 9s-1.4 6.4-4.2 9c-2.8-2.6-4.2-5.7-4.2-9S9.2 5.6 12 3Z" stroke="currentColor" strokeWidth="1.8" />
-  </svg>
-);
-
 const IconLogout = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     <path d="M14 8l4 4-4 4M18 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const IconChevron = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -473,47 +452,9 @@ function Logo({ size = 44 }) {
   return <Mark size={size} />;
 }
 
-// ————— Selector de idioma —————
-function LangToggle({ style, variant = "default" }) {
-  const { lang, setLang } = useLanguage();
-  const subtle = variant === "subtle";
-  const pill = (id, label) => ({
-    background: lang === id
-      ? (subtle ? "rgba(255,255,255,0.18)" : C.ink)
-      : "transparent",
-    color: lang === id
-      ? "#fff"
-      : (subtle ? "rgba(255,255,255,0.55)" : C.mut),
-    border: "none",
-    borderRadius: 20,
-    padding: subtle ? "5px 10px" : "6px 13px",
-    fontSize: subtle ? 11.5 : 12.5,
-    fontWeight: 700,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  });
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: 2,
-        background: subtle ? "rgba(0,0,0,0.28)" : C.bg,
-        borderRadius: 22,
-        padding: subtle ? 2 : 3,
-        border: subtle ? "1px solid rgba(255,255,255,0.18)" : "none",
-        backdropFilter: subtle ? "blur(8px)" : undefined,
-        WebkitBackdropFilter: subtle ? "blur(8px)" : undefined,
-        ...style,
-      }}
-    >
-      <button onClick={() => setLang("en")} style={pill("en")} aria-pressed={lang === "en"}>
-        EN
-      </button>
-      <button onClick={() => setLang("es")} style={pill("es")} aria-pressed={lang === "es"}>
-        ES
-      </button>
-    </div>
-  );
+// ————— Selector de idioma (onboarding): mismo desplegable que Perfil —————
+function LangToggle({ variant = "default" }) {
+  return <LanguageSelect variant={variant} id={`mp-language-${variant}`} />;
 }
 
 // ————— Login —————
@@ -1173,7 +1114,7 @@ function Home({
           </span>
           <button
             type="button"
-            aria-label="Cerrar"
+            aria-label={t("app.close")}
             onClick={() => setCurrencyToast(null)}
             style={{
               border: 0,
@@ -1224,7 +1165,7 @@ function Home({
             <span style={{ fontSize: 14, fontWeight: 500, color: C.mut }}>{t("home.totalBalance")}</span>
             <button
               onClick={() => setOculto(!oculto)}
-              aria-label={oculto ? "Show" : "Hide"}
+              aria-label={oculto ? t("app.showBalance") : t("app.hideBalance")}
               style={{
                 background: "none",
                 border: "none",
@@ -1316,7 +1257,6 @@ function Home({
             background={ACTION_COBRAR}
             labelColor="#fe6c1c"
           />
-          <CircleAction icon={<IconSwap size={20} />} label={t("home.actionConvert")} onClick={goConvert} background={ACTION_MUTED} />
           <CircleAction icon={<IconQrCode size={20} />} label={t("home.actionPay")} onClick={goPay} background={ACTION_MUTED} />
           <CircleAction icon={<IconArrowUp size={20} />} label={t("home.actionSend")} onClick={goSend} background={ACTION_MUTED} />
         </div>
@@ -1475,7 +1415,7 @@ function Home({
       {txs.length === 0 ? (
         <Card style={{ fontSize: 14, fontWeight: 400, color: C.mut, lineHeight: 1.55 }}>{t("home.activityEmpty")}</Card>
       ) : (
-        txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} compact onOpenTransfer={onOpenTransfer} />)
+        txs.slice(0, 5).map((tx) => <TxCard key={tx.hash} tx={tx} />)
       )}
     </div>
   );
@@ -1597,534 +1537,6 @@ function useGasEstimate({ enabled, from, to, usdc, memo, estimateFn }) {
   }, [enabled, from, to, usdc, memo, estimateFn, tick]);
 
   return { estimate, loading, error, retry };
-}
-
-/** Escaneo de QR por cámara (getUserMedia + jsQR sobre frames de <video>). */
-function QrScanner({ onDecode, onCameraError, fill = false, torchOn = false }) {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const rafRef = useRef(null);
-  const streamRef = useRef(null);
-  const [streamReady, setStreamReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setStreamReady(false);
-
-    const tick = () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(frame.data, frame.width, frame.height);
-      if (code?.data) {
-        onDecode(code.data);
-        return;
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
-      .then((stream) => {
-        if (cancelled) {
-          stream.getTracks().forEach((tr) => tr.stop());
-          return;
-        }
-        streamRef.current = stream;
-        setStreamReady(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-        rafRef.current = requestAnimationFrame(tick);
-      })
-      .catch((e) => onCameraError(String(e?.message || e)));
-
-    return () => {
-      cancelled = true;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      streamRef.current?.getTracks().forEach((tr) => tr.stop());
-      streamRef.current = null;
-      setStreamReady(false);
-    };
-  }, [onDecode, onCameraError]);
-
-  useEffect(() => {
-    if (!streamReady) return;
-    const track = streamRef.current?.getVideoTracks?.()[0];
-    if (!track) return;
-    track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {});
-  }, [torchOn, streamReady]);
-
-  return (
-    <div
-      style={
-        fill
-          ? { position: "absolute", inset: 0, background: "#000", overflow: "hidden" }
-          : { position: "relative", borderRadius: 16, overflow: "hidden", background: "#000" }
-      }
-    >
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        style={
-          fill
-            ? { width: "100%", height: "100%", objectFit: "cover", display: "block" }
-            : { width: "100%", display: "block" }
-        }
-      />
-      <canvas ref={canvasRef} style={{ display: "none" }} />
-    </div>
-  );
-}
-
-// ————— Pagar (alias o address, sin mic; + escaneo QR) —————
-// ————— Enviar (alias / address → USDC) —————
-function Send({ address, balance, fxRate, contacts, onPay, onDone }) {
-  const { t, locale } = useLanguage();
-  const [recipient, setRecipient] = useState("");
-  const [amount, setAmount] = useState("");
-  const [phase, setPhase] = useState("form");
-  const [errMsg, setErrMsg] = useState("");
-
-  const n = Number(String(amount).replace(',','.'));
-  const contact=useMemo(()=>resolveRecipient(contacts,recipient),[recipient,contacts]);
-
-  const suggestions = useMemo(() => {
-    const q = recipient.trim();
-    if (!q || contact) return [];
-    return searchContacts(contacts, q).filter(c=>isAddress(c.addr || '')).slice(0, 5);
-  }, [recipient, contacts, contact]);
-
-  const usdc = Number.isFinite(n) && n > 0 ? n : null;
-  const canSubmit = Boolean(contact && usdc != null && usdc > 0 && address);
-
-  const submit = async () => {
-    setErrMsg("");
-    setPhase("working");
-    try {
-      if (!contact) throw new Error(t("pay.recipientInvalid"));
-      if (usdc == null || usdc <= 0) throw new Error(t("pay.amountTooLow"));
-      if (balance !== null && usdc > balance) {
-        throw new Error(t("voice.insufficientBalance", fmt(usdc, 2, locale), fmt(balance, 2, locale)));
-      }
-      const parsed = {
-        amount: n,
-        currency: "USDC",
-        usdcText:exactUsdc(amount),
-        usdc,
-        fxRate,
-        contact,
-        factura: nuevaFactura(),
-        kind: "pay",
-      };
-      const result = await onPay(parsed);
-      onDone({
-        ...result,
-        parsed,
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
-      });
-    } catch (e) {
-      setErrMsg(String(e?.message || e));
-      setPhase("error");
-    }
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("send.title")}</h2>
-
-      <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <label style={{ display: "block" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{t("pay.recipientLabel")}</div>
-          <input
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            placeholder={t("pay.recipientPlaceholder")}
-            autoComplete="off"
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              background: C.card,
-              border: `1px solid ${C.line}`,
-              borderRadius: 14,
-              padding: "14px 16px",
-              fontSize: 16,
-              fontWeight: 600,
-              color: C.ink,
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-        </label>
-
-        {contact && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              background: C.card,
-              border: `1px solid ${C.line}`,
-              borderRadius: 14,
-              padding: "12px 14px",
-            }}
-          >
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: "50%",
-                background: C.orangeSoft,
-                display: "grid",
-                placeItems: "center",
-                color: "#fe6c1c",
-                fontWeight: 700,
-                flexShrink: 0,
-              }}
-            >
-              {(contact.name || "?").slice(0, 1).toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{contact.name}</div>
-              <div style={{ fontSize: 12.5, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(contact.addr)}</div>
-            </div>
-            {contact.alias && contact.alias !== "addr" && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#fe6c1c" }}>@{contact.alias}</span>
-            )}
-          </div>
-        )}
-
-        {!contact && suggestions.length > 0 && (
-          <div style={{ display: "grid", gap: 6 }}>
-            {suggestions.map((c) => (
-              <button
-                key={c.id || c.alias}
-                type="button"
-                onClick={() => setRecipient(c.alias)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  textAlign: "left",
-                  background: C.card,
-                  border: `1px solid ${C.line}`,
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: C.mut }}>@{c.alias}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <AmountField
-          label={t("pay.amountUsdc")}
-          value={amount}
-          onChange={setAmount}
-          placeholder="1"
-          suffix="USDC"
-          logo="/monedas/usdc.png"
-        />
-
-        <button type="button" disabled={balance===null || balance<=0 || phase==='working'} onClick={()=>setAmount(Number(balance).toFixed(6))}>Enviar todo</button>
-        <small>Hasta 6 decimales. MidatoPay cubre el costo en SOL. Máximo 2 envíos por día.</small>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
-          <span style={{ color: C.mut }}>{t("pay.youSend")}</span>
-          <span style={{ fontWeight: 700, color: C.ink }}>
-            {usdc != null ? `${fmt(usdc, 6, locale)} USDC` : "—"}
-          </span>
-        </div>
-      </Card>
-
-      {(phase === "error" || errMsg) && phase !== "working" && (
-        <Card style={{ background: "#FDECEA", color: C.red, fontSize: 14, lineHeight: 1.5 }}>{errMsg}</Card>
-      )}
-
-      <button
-        onClick={submit}
-        disabled={phase === "working" || !canSubmit}
-        style={{
-          ...btnOrange,
-          background: C.orange,
-          boxShadow: "none",
-          opacity: phase === "working" || !canSubmit ? 0.5 : 1,
-        }}
-      >
-        {phase === "working" ? t("pay.working") : t("send.cta")}
-      </button>
-
-      <p style={{fontSize:13,color:C.mut}}>La confirmación mostrará el destinatario completo y el importe exacto. El costo de red lo cubre MidatoPay.</p>
-    </div>
-  );
-}
-
-// ————— Pagar (escaneo QR P2P, UI tipo guest en naranja) —————
-function PayScan({
-  address, balance, fxRate, contacts, onPay, onDone, onSaveContact,
-  scanRequest, onScanRequestConsumed, onBack, onFullscreenChange,
-}) {
-  const { t, locale } = useLanguage();
-  const [view, setView] = useState(scanRequest ? "confirm" : "scan"); // scan | link | invalid | confirm
-  const [qr, setQr] = useState(scanRequest);
-  const [scanErr, setScanErr] = useState("");
-  const [manualLink, setManualLink] = useState("");
-  const [phase, setPhase] = useState("form");
-  const [errMsg, setErrMsg] = useState("");
-  const [torchOn, setTorchOn] = useState(false);
-  const [savePrompt, setSavePrompt] = useState(false);
-
-  const fullscreen = view === "scan" || view === "link" || view === "invalid";
-
-  useEffect(() => {
-    onFullscreenChange?.(fullscreen);
-  }, [fullscreen, onFullscreenChange]);
-
-  useEffect(() => {
-    if (!scanRequest) return;
-    setQr(scanRequest);
-    setView("confirm");
-    onScanRequestConsumed();
-  }, [scanRequest, onScanRequestConsumed]);
-
-  const openScan = () => {
-    setView("scan");
-    setQr(null);
-    setScanErr("");
-    setErrMsg("");
-    setPhase("form");
-    setManualLink("");
-    setTorchOn(false);
-    setSavePrompt(false);
-  };
-
-  const applyDecoded = (raw) => {
-    const parsed = parsePayUrl(raw);
-    if (!parsed) {
-      setScanErr("invalid");
-      setView("invalid");
-      setQr(null);
-      return;
-    }
-    if (parsed.addr === address) {
-      setScanErr(t("pay.selfPay"));
-      setView("invalid");
-      setQr(null);
-      return;
-    }
-    setScanErr("");
-    setQr(parsed);
-    setPhase("form");
-    setErrMsg("");
-    setView("confirm");
-  };
-
-  const qrUsdc = qr ? Math.floor(qr.ars / fxRate * 1000000) / 1000000 : null;
-  const merchantName = guestMerchantName(qr?.who);
-  const qrContact = qr ? { name: merchantName || qr.who || short(qr.addr), alias: "qr", addr: qr.addr } : null;
-  const knownContact = qr ? contacts.find((c) => c.addr === qr.addr) : null;
-
-  const submitQr = async () => {
-    setErrMsg("");
-    setPhase("working");
-    try {
-      if (qrUsdc == null || qrUsdc <= 0) throw new Error(t("pay.amountTooLow"));
-      if (balance !== null && qrUsdc > balance) {
-        throw new Error(t("voice.insufficientBalance", fmt(qrUsdc, 2, locale), fmt(balance, 2, locale)));
-      }
-      const parsed = {
-        amount: qr.ars,
-        currency: "ARS",
-        usdc: qrUsdc,
-        fxRate,
-        contact: qrContact,
-        factura: qr.factura || nuevaFactura(),
-        kind: "charge_p2p",
-      };
-      const result = await onPay(parsed);
-      onDone({
-        ...result,
-        direction: "out",
-        parsed,
-        ts: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
-      });
-      if (!knownContact) setSavePrompt(true);
-    } catch (e) {
-      setErrMsg(String(e?.message || e));
-      setPhase("error");
-    }
-  };
-
-  const saveContact = async () => {
-    setSavePrompt(false);
-    try {
-      await onSaveContact({
-        name: qr.who || short(qr.addr),
-        alias: slugifyAlias(qr.who) || qr.addr.slice(2, 8).toLowerCase(),
-        addr: qr.addr,
-        note: "",
-      });
-    } catch {
-      /* ignore */
-    }
-  };
-
-  if (view === "invalid") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "28px 22px 28px", boxSizing: "border-box", background: C.card }}>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 12 }}>
-          <div style={{ width: 88, height: 88, borderRadius: 22, background: "#FDECEA", display: "grid", placeItems: "center", color: C.red }}>
-            <IconQrCode size={44} />
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, marginTop: 8 }}>
-            {scanErr && scanErr !== "invalid" ? scanErr : t("guest.invalidTitle")}
-          </div>
-          <div style={{ fontSize: 15, color: C.mut, lineHeight: 1.45, maxWidth: 280 }}>{t("guest.invalidBody")}</div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button type="button" onClick={openScan} style={{ ...btnOrange, background: C.ink, boxShadow: "none" }}>
-            {t("guest.scanAgain")}
-          </button>
-          <button type="button" onClick={onBack} style={{ ...btnOutline, borderColor: C.line, color: C.ink, background: C.bg }}>
-            {t("guest.goHome")}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === "link") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "22px 22px 28px", boxSizing: "border-box", background: C.card }}>
-        <button type="button" onClick={openScan} aria-label={t("guest.backHome")} style={{ alignSelf: "flex-start", width: 40, height: 40, borderRadius: "50%", border: "none", background: C.bg, color: C.ink, fontSize: 26, lineHeight: 1, cursor: "pointer", fontFamily: "inherit", marginBottom: 18 }}>
-          ‹
-        </button>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: "0 0 8px", letterSpacing: -0.4 }}>{t("guest.useLinkTitle")}</h2>
-        <p style={{ fontSize: 15, color: C.mut, lineHeight: 1.45, margin: "0 0 20px" }}>{t("guest.useLinkBody")}</p>
-        <textarea
-          value={manualLink}
-          onChange={(e) => setManualLink(e.target.value)}
-          placeholder={t("pay.scanLinkPlaceholder")}
-          rows={4}
-          style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 16, padding: "14px 16px", fontSize: 15, fontFamily: "inherit", outline: "none", resize: "vertical", color: C.ink, background: C.bg }}
-        />
-        <div style={{ marginTop: "auto", paddingTop: 24, display: "flex", flexDirection: "column", gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => applyDecoded(manualLink)}
-            disabled={!manualLink.trim()}
-            style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: manualLink.trim() ? 1 : 0.5 }}
-          >
-            {t("guest.useLinkCta")}
-          </button>
-          <button type="button" onClick={openScan} style={{ ...btnOutline, border: "none", color: C.mut }}>
-            {t("guest.scanAgain")}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === "scan") {
-    return (
-      <div className="mp-guest-scan mp-pay-scan">
-        <div className="mp-guest-scan-top">
-          <button type="button" onClick={onBack} className="mp-guest-scan-iconbtn" aria-label={t("guest.backHome")}>‹</button>
-        </div>
-        {!scanErr.startsWith("CAMERA:") ? (
-          <div className="mp-guest-scan-stage">
-            <QrScanner
-              fill
-              torchOn={torchOn}
-              onDecode={applyDecoded}
-              onCameraError={() => setScanErr("CAMERA:" + t("pay.scanCameraError"))}
-            />
-            <div className="mp-guest-scan-frame" aria-hidden />
-            <div className="mp-guest-scan-laser" aria-hidden />
-          </div>
-        ) : (
-          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, color: "#fff", textAlign: "center", background: "#0b0b0d" }}>
-            {scanErr.replace(/^CAMERA:/, "")}
-          </div>
-        )}
-        <div className="mp-guest-scan-bottom">
-          <button
-            type="button"
-            onClick={() => setTorchOn((v) => !v)}
-            className={`mp-guest-scan-flash${torchOn ? " is-on" : ""}`}
-            aria-label={t("guest.flash")}
-            aria-pressed={torchOn}
-          >
-            <IconFlash size={24} />
-          </button>
-          <button type="button" onClick={() => { setView("link"); setManualLink(""); }} style={{ ...btnOrange, background: "#fff", color: C.ink, boxShadow: "none" }}>
-            {t("guest.useLink")}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // confirm
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("pay.title")}</h2>
-      <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ fontSize: 13, color: C.mut }}>{t("guest.payToLabel")}</div>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: C.ink }}>{t("guest.merchant")}</div>
-          {merchantName ? (
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#fe6c1c", marginTop: 2, letterSpacing: -0.3 }}>{merchantName}</div>
-          ) : null}
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, marginTop: 6 }}>
-          <span style={{ color: C.mut }}>{t("guest.youPay")}</span>
-          <span style={{ fontWeight: 700, color: C.ink }}>$ {fmtArs(qr.ars)}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: C.mut }}>
-          <span>{t("pay.youSend")}</span>
-          <span>{qrUsdc != null ? `≈ ${fmt(qrUsdc, 2, locale)} USDC` : "—"}</span>
-        </div>
-        {(phase === "error" || errMsg) && phase !== "working" && (
-          <div style={{ padding: "12px 14px", background: "#FDECEA", color: C.red, borderRadius: 12, fontSize: 13.5, lineHeight: 1.5 }}>{errMsg}</div>
-        )}
-        <button
-          onClick={submitQr}
-          disabled={phase === "working"}
-          style={{ ...btnOrange, background: C.orange, boxShadow: "none", opacity: phase === "working" ? 0.5 : 1 }}
-        >
-          {phase === "working" ? t("pay.working") : t("pay.confirmPayCta")}
-        </button>
-        <button onClick={openScan} style={{ ...btnOutline, border: "none", color: C.mut }}>{t("guest.scanAgain")}</button>
-      </Card>
-
-      {savePrompt && qr && (
-        <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{t("qr.saveContactTitle")}</div>
-          <div style={{ fontSize: 13.5, color: C.mut }}>{t("qr.saveContactBody", qr.who || short(qr.addr))}</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={saveContact} style={{ ...btnOrange, background: C.orange, boxShadow: "none" }}>{t("qr.saveContactYes")}</button>
-            <button onClick={() => setSavePrompt(false)} style={btnOutline}>{t("qr.saveContactNo")}</button>
-          </div>
-        </Card>
-      )}
-    </div>
-  );
 }
 
 // ————— Convertir (ARS ↔ USDC) —————
@@ -2519,6 +1931,41 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
 }
 
 // ————— Voz —————
+// El comando termina tras una pausa real del usuario, no con el corte rápido del navegador.
+const VOICE_SILENCE_MS = 2500; // pausa después de hablar que cierra el comando
+const VOICE_NO_SPEECH_MS = 10000; // sin voz: deja de escuchar a los 10 s
+const VOICE_MAX_MS = 45000; // tope de seguridad por escucha
+const VOICE_FINISH_GRACE_MS = 1200; // espera el resultado final del navegador al terminar
+const VOICE_MAX_RESTARTS = 15; // reinicios cuando el navegador corta solo (Safari, Android)
+
+/** Une los resultados de una escucha. En Chrome Android el modo continuo repite el texto anterior. */
+function joinSpeechResults(results) {
+  const parts = [];
+  for (const result of Array.from(results || [])) {
+    const text = String(result?.[0]?.transcript || "").trim();
+    if (!text) continue;
+    const prev = parts[parts.length - 1]?.toLowerCase();
+    if (prev && text.toLowerCase().startsWith(prev)) parts[parts.length - 1] = text;
+    else if (!prev || !prev.endsWith(text.toLowerCase())) parts.push(text);
+  }
+  return parts.join(" ");
+}
+
+/** Ondas de voz: solo presentación (el reconocimiento del navegador no expone el volumen). */
+function VoiceWave({ mode }) {
+  return (
+    <div className={`mp-voice-wave is-${mode}`} aria-hidden="true">
+      {[0.4, 0.65, 0.9, 1, 0.9, 0.65, 0.4].map((h, i) => (
+        <span key={i} style={{ height: `${h * 100}%`, animationDelay: `${i * 0.09}s` }} />
+      ))}
+    </div>
+  );
+}
+
+const IconStop = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor" /></svg>
+);
+
 function Voice({
   sendPayment,
   balance,
@@ -2534,14 +1981,20 @@ function Voice({
   overlay = false,
   onClose,
 }) {
-  const { t, lang, locale } = useLanguage();
+  const langCtx = useLanguage();
+  const { t, lang, locale } = langCtx;
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
   const [parsed, setParsed] = useState(null);
   const [errMsg, setErrMsg] = useState("");
   const [manual, setManual] = useState("");
   const [claudeConfigured, setClaudeConfigured] = useState(null);
-  const recRef = useRef(null);
+  const [speaking, setSpeaking] = useState(false); // hubo voz hace instantes: ondas más altas
+  const [notice, setNotice] = useState(""); // aviso suave en reposo (p. ej. "No te escuché")
+  const sessionRef = useRef(null); // escucha en curso: { rec, committed, segment, timer, ... }
+  const speakingTimer = useRef(null);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
   const supported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   useEffect(() => {
@@ -2615,58 +2068,161 @@ function Voice({
     [balance, fxRate, lang, locale, t, contacts, onCharge, getAccessToken]
   );
 
-  const stopListen = useCallback(() => {
+  const analyzeRef = useRef(analyze);
+  analyzeRef.current = analyze;
+
+  // Cierra la escucha con lo oído: lo interpreta, o vuelve a reposo si no hubo voz.
+  const completeSession = useCallback((s) => {
+    if (!s || s.completed) return;
+    s.completed = true;
+    clearTimeout(s.timer);
+    if (sessionRef.current === s) sessionRef.current = null;
+    setSpeaking(false);
+    const text = s.text().trim();
+    if (text) analyzeRef.current(text);
+    else {
+      setTranscript("");
+      setNotice(t("voice.noSpeechHeard"));
+      setPhase("idle");
+    }
+  }, [t]);
+
+  // Terminar ahora (pausa o botón): pide al navegador el resultado final y espera un instante.
+  const finish = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s || s.finishing) return;
+    s.finishing = true;
+    clearTimeout(s.timer);
+    setSpeaking(false);
+    setPhase("parsing");
     try {
-      recRef.current?.stop();
+      s.rec?.stop();
+    } catch {
+      completeSession(s);
+      return;
+    }
+    s.timer = setTimeout(() => completeSession(s), VOICE_FINISH_GRACE_MS);
+  }, [completeSession]);
+
+  // Cancelar (cerrar, cambiar de pestaña): descarta lo oído sin interpretarlo.
+  const cancel = useCallback(() => {
+    const s = sessionRef.current;
+    sessionRef.current = null;
+    setSpeaking(false);
+    if (!s) return;
+    s.completed = true;
+    clearTimeout(s.timer);
+    try {
+      s.rec?.abort();
     } catch {}
-    setPhase((p) => (p === "listening" ? "idle" : p));
+    setPhase("idle");
   }, []);
 
+  // Programa el cierre: tras la pausa si ya habló, o a los 10 s si todavía no dijo nada.
+  const armSession = useCallback((s) => {
+    clearTimeout(s.timer);
+    const now = Date.now(), elapsed = now - s.startedAt;
+    const wait = s.text() ? VOICE_SILENCE_MS - (now - s.lastAt) : VOICE_NO_SPEECH_MS - elapsed;
+    s.timer = setTimeout(() => {
+      if (sessionRef.current === s) finish();
+    }, Math.max(0, Math.min(wait, VOICE_MAX_MS - elapsed)));
+  }, [finish]);
+
   const listen = useCallback(() => {
+    if (phaseRef.current === "parsing" || phaseRef.current === "sending") return;
+    cancel();
     setErrMsg("");
+    setNotice("");
     setTranscript("");
     if (!supported) {
       setErrMsg(t("voice.micUnsupported"));
       setPhase("error");
       return;
     }
-    try {
-      try {
-        recRef.current?.stop();
-      } catch {}
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const ua = navigator.userAgent;
+    const isSafari = /^((?!chrome|android|crios|edg).)*safari/i.test(ua);
+    // WebKit (Safari, iOS) corta y entrega en cada pausa: encadenamos escuchas cortas.
+    const chained = isSafari || /iP(hone|ad|od)/i.test(ua);
+    const s = {
+      rec: null, committed: "", segment: "", startedAt: Date.now(), lastAt: 0, timer: null,
+      restarts: 0, finishing: false, completed: false,
+      text() { return [this.committed, this.segment].filter(Boolean).join(" "); },
+    };
+    const start = () => {
       const rec = new SR();
-      recRef.current = rec;
-      const isSafari = /^((?!chrome|android|crios|edg).)*safari/i.test(navigator.userAgent);
-      rec.lang = lang === "en" ? "en-US" : "es-AR";
+      s.rec = rec;
+      s.segment = "";
+      rec.lang = speechLangFor(lang);
       rec.interimResults = !isSafari;
-      rec.continuous = false;
+      rec.continuous = !chained;
       rec.maxAlternatives = 1;
       rec.onresult = (e) => {
-        const txt = Array.from(e.results).map((r) => r[0].transcript).join(" ");
-        setTranscript(txt);
-        if (e.results[e.results.length - 1].isFinal) {
-          rec.stop();
-          analyze(txt);
-        }
-      };
-      rec.onnomatch = () => {
-        setErrMsg(t("voice.noSpeechMatch"));
-        setPhase("error");
+        if (s.completed) return;
+        s.segment = joinSpeechResults(e.results);
+        s.lastAt = Date.now();
+        setTranscript(s.text());
+        if (s.finishing) return;
+        setSpeaking(true);
+        clearTimeout(speakingTimer.current);
+        speakingTimer.current = setTimeout(() => setSpeaking(false), 700);
+        armSession(s);
       };
       rec.onerror = (e) => {
+        // "no-speech" y "aborted" los resuelve onend; al terminar, cualquier error cierra con lo oído.
+        if (s.completed || e.error === "no-speech" || e.error === "aborted") return;
+        if (s.finishing) return completeSession(s);
+        s.completed = true;
+        clearTimeout(s.timer);
+        if (sessionRef.current === s) sessionRef.current = null;
+        setSpeaking(false);
         const msgs = t("voice.micErrors");
         setErrMsg(msgs[e.error] || t("voice.micErrGeneric", e.error));
         setPhase("error");
       };
-      rec.onend = () => setPhase((p) => (p === "listening" ? "idle" : p));
+      rec.onend = () => {
+        if (s.completed) return;
+        if (s.finishing) return completeSession(s);
+        // El navegador cortó solo: seguimos escuchando hasta la pausa propia o el tope.
+        s.committed = s.text();
+        s.segment = "";
+        const now = Date.now();
+        const quiet = s.committed ? now - s.lastAt >= VOICE_SILENCE_MS : now - s.startedAt >= VOICE_NO_SPEECH_MS;
+        if (quiet || now - s.startedAt >= VOICE_MAX_MS || s.restarts >= VOICE_MAX_RESTARTS) return completeSession(s);
+        s.restarts += 1;
+        try {
+          start();
+        } catch {
+          completeSession(s);
+        }
+      };
       rec.start();
+    };
+    try {
+      sessionRef.current = s;
+      start();
+      armSession(s);
       setPhase("listening");
     } catch {
+      sessionRef.current = null;
+      s.completed = true;
       setErrMsg(t("voice.micUnavailable"));
       setPhase("error");
     }
-  }, [analyze, lang, supported, t]);
+  }, [armSession, cancel, completeSession, lang, supported, t]);
+
+  // Al desmontar (cerrar la hoja) se corta la escucha sin interpretar.
+  useEffect(() => () => {
+    const s = sessionRef.current;
+    sessionRef.current = null;
+    clearTimeout(speakingTimer.current);
+    if (!s) return;
+    s.completed = true;
+    clearTimeout(s.timer);
+    try {
+      s.rec?.abort();
+    } catch {}
+  }, []);
 
   useEffect(() => {
     onListeningChange?.(phase === "listening");
@@ -2677,16 +2233,17 @@ function Voice({
     if (!voiceApiRef) return undefined;
     voiceApiRef.current = {
       listen,
-      stop: stopListen,
+      stop: cancel,
+      finish,
       toggle: () => {
-        if (phase === "listening") stopListen();
+        if (phaseRef.current === "listening") finish();
         else listen();
       },
     };
     return () => {
       voiceApiRef.current = null;
     };
-  }, [voiceApiRef, listen, stopListen, phase]);
+  }, [voiceApiRef, listen, cancel, finish]);
 
   useEffect(() => {
     if (!voiceKick) return undefined;
@@ -2702,7 +2259,10 @@ function Voice({
       onDone({ ...r, parsed });
     } catch (err) {
       const m = String(err?.message || err);
-      if (m.includes("limit reached") || m.includes("-32011") || m.includes("429")) {
+      if (err?.code) {
+        // Errores del motor de envíos con código: texto traducido.
+        setErrMsg(transferErrorText(langCtx, err));
+      } else if (m.includes("limit reached") || m.includes("-32011") || m.includes("429")) {
         setErrMsg(t("voice.rpcLimited"));
       } else if (m.includes("insufficient funds")) {
         setErrMsg(t("voice.insufficientFundsOnchain"));
@@ -2720,80 +2280,59 @@ function Voice({
     setParsed(null);
     setTranscript("");
     setErrMsg("");
+    setNotice("");
   };
 
   const active = phase === "listening";
 
-  // Overlay FAB: solo estado de escucha + transcript (sin segunda pantalla / segundo mic).
-  if (overlay && (phase === "idle" || phase === "listening" || phase === "parsing")) {
+  // Hoja del micrófono: lo que se oye en grande, ondas sobre el botón y el mic de abajo para terminar.
+  if (overlay && (phase === "idle" || phase === "listening" || phase === "parsing" || phase === "error")) {
+    const heard = transcript.trim();
+    const alias = contacts.find((c) => c.alias)?.alias || "katy";
+    const status = { listening: t("voice.listening"), parsing: t("voice.thinking"), error: t("voice.errorTitle"), idle: notice }[phase];
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1, justifyContent: "flex-end" }}>
+      <div className="mp-voice-panel">
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           {onClose && (
-            <button
-              type="button"
-              onClick={() => {
-                stopListen();
-                onClose();
-              }}
-              aria-label={t("voice.cancel")}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                border: `1px solid ${C.line}`,
-                background: C.bg,
-                color: C.ink,
-                cursor: "pointer",
-                fontSize: 20,
-                lineHeight: 1,
-                fontFamily: "inherit",
-              }}
-            >
+            <button type="button" className="mp-voice-close" aria-label={t("voice.close")}
+              onClick={() => { cancel(); onClose(); }}>
               ×
             </button>
           )}
         </div>
-        <Card style={{ padding: "28px 22px 32px", textAlign: "center" }}>
-          <div style={{ position: "relative", height: 28, marginBottom: 8 }}>
-            {active && [0, 1, 2].map((i) => (
-              <div
-                key={i}
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  width: 18,
-                  height: 18,
-                  marginLeft: -9,
-                  marginTop: -9,
-                  borderRadius: "50%",
-                  border: "1.5px solid rgba(254, 108, 28, 0.45)",
-                  animation: `mp-voice-ring 2.2s ${i * 0.65}s ease-out infinite`,
-                }}
-              />
-            ))}
+        <div className="mp-voice-body" aria-live="polite">
+          <div className={`mp-voice-status is-${phase}`}>
+            {phase === "listening" && <span className="mp-voice-dot" aria-hidden="true" />}
+            {status}
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: phase === "parsing" ? "#fe6c1c" : C.ink }}>
-            {phase === "parsing" ? t("voice.parsing", transcript) : t("voice.listening")}
-          </div>
-          <div
-            style={{
-              marginTop: 16,
-              minHeight: 72,
-              fontSize: 20,
-              fontWeight: 600,
-              color: transcript ? C.ink : C.mut,
-              lineHeight: 1.4,
-              wordBreak: "break-word",
-            }}
-          >
-            {phase === "parsing" ? null : (transcript || t("voice.listeningPlaceholder"))}
-          </div>
-          <div style={{ fontSize: 13, color: C.mut, marginTop: 12 }}>
-            {active ? t("voice.fabListeningHint") : t("voice.listeningHint")}
-          </div>
-        </Card>
+          {phase === "error" ? (
+            <p className="mp-voice-text is-error">{errMsg}</p>
+          ) : heard ? (
+            <p className="mp-voice-text" style={{ fontSize: heard.length > 70 ? 21 : 26 }}>{heard}</p>
+          ) : (
+            <>
+              <p className="mp-voice-text is-placeholder">{t("voice.promptTitle")}</p>
+              <div className="mp-voice-examples">
+                <div>{t("voice.examplesTitle")}</div>
+                <p>“{t("voice.exampleSend", alias)}”</p>
+                <p>“{t("voice.exampleCharge")}”</p>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="mp-voice-foot">
+          {phase === "error" ? (
+            <button type="button" className="mp-voice-retry" onClick={listen}>
+              <IconMic size={18} />
+              {t("voice.speakAgain")}
+            </button>
+          ) : (
+            <>
+              <VoiceWave mode={phase === "parsing" ? "thinking" : phase === "idle" ? "idle" : speaking ? "speaking" : "listening"} />
+              <div className="mp-voice-hint">{phase === "listening" ? t("voice.doneHint") : phase === "idle" ? t("voice.tapToSpeak") : "\u00a0"}</div>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -2809,7 +2348,7 @@ function Voice({
           <button
             type="button"
             onClick={() => {
-              stopListen();
+              cancel();
               onClose();
             }}
             aria-label={t("voice.cancel")}
@@ -2849,7 +2388,7 @@ function Voice({
                 />
               ))}
               <button
-                onClick={active ? stopListen : listen}
+                onClick={active ? finish : listen}
                 className={`mp-chrome-orb${active ? " is-listening" : ""}`}
                 disabled={phase === "parsing"}
                 aria-label={active ? t("voice.listening") : t("nav.voiceAria")}
@@ -2935,13 +2474,13 @@ function Voice({
       )}
 
       {phase==='choose_recipient' && parsed && <Card>
-        <h3>{lang==='en'?'Choose the recipient':'Elegí el destinatario'}</h3>
-        <p>{lang==='en'?'Several contacts have that name. No transfer has been sent.':'Hay varios contactos con ese nombre. Todavía no se envió la transferencia.'}</p>
+        <h3>{t("app.chooseRecipientTitle")}</h3>
+        <p>{t("app.chooseRecipientBody")}</p>
         {parsed.recipients.map(contact=><button key={contact.id || contact.alias} onClick={()=>{setParsed(previous=>({...previous,contact}));setPhase('confirm');}}
           style={{display:'block',width:'100%',textAlign:'left',padding:14,marginBottom:8,font:'inherit',overflowWrap:'anywhere'}}>
           {contact.name} · @{contact.alias}<br/>{contact.addr}
         </button>)}
-        <button onClick={reset}>Cancelar</button>
+        <button onClick={reset}>{t("voice.cancel")}</button>
       </Card>}
       {phase === "confirm" && parsed && (
         <>
@@ -2982,7 +2521,7 @@ function Voice({
                 </div>
               ))}
             </div>
-            <p style={{fontSize:13,color:C.mut}}>Costo para vos: 0 SOL. MidatoPay cubre la red. Máximo 2 envíos diarios.</p>
+            <p style={{fontSize:13,color:C.mut}}>{t("app.voiceCostNote")}</p>
           </Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button
@@ -3149,7 +2688,7 @@ function Success({ receipt, onClose, hideFx = false }) {
       <Card>
         <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.35 }}>{summary()}</div>
         {kind === "charge_mercadopago" && <div style={{marginTop:12,fontSize:13,overflowWrap:"anywhere"}}>
-          Orden Mercado Pago: {receipt.orderId}<br/>Comisión de conversión: $ {receipt.feeArs} ARS (0,5%)
+          {t("app.mpOrder", receipt.orderId)}<br/>{t("app.mpFee", receipt.feeArs)}
         </div>}
         {kind === "convert_usdc_ars" && (
           <div style={{ marginTop: 12, padding: "12px 14px", background: C.orangeSoft, borderRadius: 12, fontSize: 14, color: "#fe6c1c", lineHeight: 1.45, display: "flex", alignItems: "center", gap: 8 }}>
@@ -3191,618 +2730,6 @@ function Success({ receipt, onClose, hideFx = false }) {
         </button>
         <button onClick={() => onClose("home")} style={btnOutline}>{t("success.backHome")}</button>
       </div>
-    </div>
-  );
-}
-
-// ————— Movimientos —————
-/** Card de movimiento — home (compact) y pantalla Movimientos. */
-function TxCard({ tx, compact = false, onOpenTransfer }) {
-  const { t, locale } = useLanguage();
-  const [expanded, setExpanded] = useState(false);
-  const inbound = tx.direction === "in";
-  const isConvert = tx.kind === "convert_ars_usdc" || tx.kind === "convert_usdc_ars";
-  const arsEq = tx.ars;
-  const pendingCharge=tx.source==="mercadopago" && tx.settled===false;
-  const receivedCharge=tx.source==="mercadopago" && paymentReceived(tx);
-  const blockedCharge=tx.source==="mercadopago" && ["canceled","expired","refunded","cancel_pending"].includes(tx.status);
-  const creditedCharge=receivedCharge && !pendingCharge;
-  const noticeKey=tx.source==="mercadopago"?deliveryNoticeKey(tx):null;
-  const statusKey=activityStatusKey(tx);
-  const signature=tx.signature || (!tx.hash?.startsWith("charge:") ? tx.hash : null);
-
-  const title = tx.source==="mercadopago" ? tx.who : isConvert
-    ? tx.kind === "convert_ars_usdc"
-      ? "ARS → USDC"
-      : "USDC → ARS"
-    : tx.kind === "charge" || tx.kind === "charge_mercadopago" || (tx.kind === "charge_p2p" && inbound)
-      ? t("movs.charge")
-      : tx.who;
-
-  const primary = blockedCharge
-    ? `${fmtArs(arsEq)} ARS`
-    : creditedCharge
-    ? `+${fmt(tx.amt, 2, locale)} USDC`
-    : receivedCharge
-    ? `+${fmt(tx.amt, 2, locale)} USDC`
-    : pendingCharge
-    ? (compact ? `${fmtArs(arsEq)} ARS` : `${t("movs.toReceive")}: ${fmt(tx.amt, 2, locale)} USDC`)
-    : isConvert && tx.kind === "convert_ars_usdc"
-      ? `+${fmt(tx.amt, 2, locale)} USDC`
-      : isConvert && tx.kind === "convert_usdc_ars"
-        ? `−${fmt(tx.amt, 2, locale)} USDC`
-        : `${inbound ? "+" : "−"}${fmt(tx.amt, compact ? 2 : (tx.source==='transfer'?6:2), locale)} USDC`;
-
-  const secondary = blockedCharge
-    ? `${fmtArs(arsEq)} ARS`
-    : creditedCharge || receivedCharge
-    ? `${t(pendingCharge?"movs.pendingUsdc":"movs.creditedUsdc")}: ${fmt(tx.amt, 2, locale)} USDC`
-    : pendingCharge
-    ? `${fmtArs(arsEq)} ARS`
-    : isConvert && tx.kind === "convert_ars_usdc"
-      ? `−${fmtArs(arsEq)} ARS`
-      : isConvert && tx.kind === "convert_usdc_ars"
-        ? `+${fmtArs(arsEq)} ARS`
-        : `${inbound ? "+" : "−"}${fmtArs(arsEq)} ARS`;
-
-  const iconBg = blockedCharge ? "#F0F0F3" : isConvert ? C.orangeSoft : inbound ? C.orangeSoft : C.violetSoft;
-  const iconColor = blockedCharge ? C.mut : isConvert ? "#fe6c1c" : inbound ? C.orange : C.violet;
-
-  const time = tx.createdAt
-    ? new Date(tx.createdAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
-    : "—";
-  const timeShort = tx.createdAt
-    ? `${new Date(tx.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} hs`
-    : "";
-
-  const subtitle = statusKey
-    ? t(`movs.${statusKey}`)
-    : isConvert
-      ? t("movs.convert")
-      : inbound
-        ? t("movs.charge")
-        : t("movs.transfer");
-
-  const summaryRow = (
-    <div
-      onClick={compact ? undefined : () => setExpanded((v) => !v)}
-      style={{ display: "flex", alignItems: "center", gap: 12, cursor: compact ? "default" : "pointer" }}
-    >
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: "50%",
-          background: iconBg,
-          display: "grid",
-          placeItems: "center",
-          color: iconColor,
-          flexShrink: 0,
-        }}
-      >
-        {blockedCharge ? <IconBan size={17} /> : isConvert ? <IconSwap size={17} /> : inbound ? <IconArrowDown size={17} /> : <IconArrowUp size={17} />}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 500,
-            color: C.ink,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {title}
-        </div>
-        <div style={{ fontSize: 12.5, fontWeight: 400, color: C.mut, marginTop: 3 }}>{subtitle}</div>
-      </div>
-      <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 500, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{primary}</div>
-        <div style={{ fontSize: 12.5, fontWeight: 400, color: C.mut, marginTop: 3 }}>{timeShort || secondary}</div>
-      </div>
-    </div>
-  );
-
-  if (compact) {
-    return <Card style={{ padding: "14px 14px" }}>{summaryRow}</Card>;
-  }
-
-  const detailRows = [
-    creditedCharge || receivedCharge
-      ? [t("movs.creditedUsdc"), `+${fmt(tx.amt, 2, locale)} USDC`]
-      : blockedCharge
-        ? [subtitle, `${fmtArs(arsEq)} ARS`]
-        : pendingCharge
-          ? [t("movs.toReceive"), `${fmt(tx.amt, 2, locale)} USDC`]
-          : isConvert
-            ? [t("movs.convert"), primary]
-            : [inbound ? t("movs.charge") : t("movs.transfer"), primary],
-    Number.isFinite(Number(arsEq)) && !blockedCharge ? [t("success.equals"), `$ ${fmtArs(arsEq)} ARS`] : null,
-    Number.isFinite(Number(tx.feeArs ?? tx.fee)) && !blockedCharge ? ["Comisión", `$ ${fmtArs(tx.feeArs ?? tx.fee)} ARS`] : null,
-    Number.isFinite(Number(tx.fxRate)) && !blockedCharge ? [t("success.exchangeRate"), `$ ${fmtArs(tx.fxRate)} / USDC`] : null,
-    time ? [t("success.time"), time] : null,
-  ].filter(Boolean);
-
-  return (
-    <Card style={{ padding: "14px 14px" }}>
-      {summaryRow}
-      {expanded && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
-          {tx.transferId && onOpenTransfer && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenTransfer(tx.transferId);
-              }}
-              style={{
-                font: "inherit",
-                fontSize: 12.5,
-                fontWeight: 500,
-                color: C.orange,
-                background: "none",
-                border: 0,
-                padding: 0,
-                marginBottom: 10,
-                cursor: "pointer",
-              }}
-            >
-              Ver estado del envío
-            </button>
-          )}
-          <div style={{ display: "grid", gap: 8 }}>
-            {detailRows.map(([label, value]) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
-                <span style={{ color: C.mut, fontWeight: 400 }}>{label}</span>
-                <span style={{ color: C.ink, fontWeight: 500, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}</span>
-              </div>
-            ))}
-          </div>
-          {signature && (
-            <a
-              href={explorerTxUrl(signature)}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                marginTop: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                color: C.orange,
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-              Ver onchain
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d="M14 5h5v5M10 14L19 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </a>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function Movimientos({ txs, address, onOpenTransfer }) {
-  const { t } = useLanguage();
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div>
-        <h2 style={{ fontSize: 24, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: -0.3 }}>{t("movs.title")}</h2>
-        <p style={{ fontSize: 13.5, fontWeight: 400, color: C.mut, marginTop: 6 }}>
-          {txs.length === 0 ? t("movs.countEmpty") : t("movs.countN", txs.length)}
-        </p>
-      </div>
-
-      {txs.length === 0 ? (
-        <Card style={{ fontSize: 14, fontWeight: 400, color: C.mut, lineHeight: 1.55 }}>{t("movs.emptyBody")}</Card>
-      ) : (
-        txs.map((tx) => <TxCard key={tx.hash} tx={tx} onOpenTransfer={onOpenTransfer} />)
-      )}
-
-      <a
-        href={explorerAddressUrl(address)}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          ...btnOutline,
-          textDecoration: "none",
-          textAlign: "center",
-          display: "block",
-          border: `1.5px solid ${C.line}`,
-          color: C.ink,
-          background: C.card,
-        }}
-      >
-        {t("movs.viewFullHistory")}
-      </a>
-    </div>
-  );
-}
-
-// ————— Más (menú) —————
-function Mas({ email, address, nombre, onLogout, goStack, goReports, privyId, treasuryAddress, merchantProfile, treasuryExportAccess }) {
-  const { t, lang, setLang } = useLanguage();
-  const [confirmar, setConfirmar] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const copyAddress = async () => {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {}
-  };
-
-  const Fila = ({ icon, titulo, sub, onClick, href, danger }) => {
-    const inner = (
-      <>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            background: danger ? "#FDECEA" : C.orangeSoft,
-            display: "grid",
-            placeItems: "center",
-            color: danger ? C.red : "#fe6c1c",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 600, color: danger ? C.red : C.ink }}>{titulo}</div>
-          {sub && <div style={{ fontSize: 12.5, color: C.mut, marginTop: 1 }}>{sub}</div>}
-        </div>
-        <span style={{ color: C.mut, display: "grid", placeItems: "center" }}><IconChevron /></span>
-      </>
-    );
-    const style = { display: "flex", alignItems: "center", gap: 13, padding: "14px 0", background: "none", border: "none", width: "100%", cursor: "pointer", textAlign: "left", fontFamily: "inherit", textDecoration: "none" };
-    return href ? (
-      <a href={href} target="_blank" rel="noreferrer" style={style}>{inner}</a>
-    ) : (
-      <button onClick={onClick} style={style}>{inner}</button>
-    );
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("mas.title")}</h2>
-
-      <Card style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.orangeSoft, display: "grid", placeItems: "center", color: "#fe6c1c", fontSize: 20, fontWeight: 700 }}>
-          {(nombre || "?").slice(0, 1).toUpperCase()}
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{nombre}</div>
-          <div style={{ fontSize: 13, color: C.mut, overflow: "hidden", textOverflow: "ellipsis" }}>{email || t("mas.noEmailAccount")}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-            <span style={{ fontSize: 12, color: C.mut, fontFamily: "ui-monospace, monospace" }}>{short(address)}</span>
-            <button
-              onClick={copyAddress}
-              style={{
-                background: C.card,
-                border: "none",
-                borderRadius: 20,
-                padding: "4px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#fe6c1c",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                flexShrink: 0,
-              }}
-            >
-              {copied ? t("home.copied") : t("home.copy")}
-            </button>
-          </div>
-        </div>
-      </Card>
-
-      <Card><BusinessProfile profile={merchantProfile.profile} error={merchantProfile.error}
-        onSave={merchantProfile.save} onRetry={merchantProfile.retry} /></Card>
-
-      <TreasuryWalletExport key={privyId} treasuryAddress={treasuryExportAccess?.address} authorized={treasuryExportAccess?.authorized===true} />
-
-      <Card style={{ padding: "4px 20px" }}>
-        {goReports && <Fila icon={<IconSearch />} titulo="Operaciones y comisiones" sub="Historial de todos los comercios" onClick={goReports} />}
-        <Fila icon={<IconStack size={20} />} titulo={t("mas.stackTitle")} sub={t("mas.stackSub")} onClick={goStack} />
-        <div style={{ height: 1, background: C.line }} />
-        {SOLANA.cluster === "devnet" && <Fila icon={<IconFaucet />} titulo={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={SOLANA.faucet} />}
-        <div style={{ height: 1, background: C.line }} />
-        <Fila icon={<IconSearch />} titulo={t("mas.explorerTitle")} sub={t("mas.explorerSub")} href={explorerAddressUrl(address)} />
-      </Card>
-
-      <Card style={{ padding: "4px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 0" }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.orangeSoft, display: "grid", placeItems: "center", color: "#fe6c1c" }}>
-            <IconGlobe />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{t("mas.languageTitle")}</div>
-            <div style={{ fontSize: 12.5, color: C.mut, marginTop: 1 }}>{lang === "en" ? "English" : "Español"}</div>
-          </div>
-          <LangToggle />
-        </div>
-      </Card>
-
-      <Card style={{ padding: "4px 20px" }}>
-        <Fila icon={<IconLogout />} titulo={t("mas.logoutTitle")} danger onClick={() => setConfirmar(true)} />
-      </Card>
-
-      {privyId && <div style={{fontSize:12,color:C.mut,overflowWrap:"anywhere"}}>ID de usuario: {privyId}</div>}
-      <p style={{ fontSize: 11.5, color: C.mut, textAlign: "center", lineHeight: 1.6 }}>
-        {t("mas.footerLine1")}
-        <br />
-        {t("mas.footerLine2")}
-      </p>
-
-      {confirmar && (
-        <div className="mp-overlay" style={{ background: "rgba(16,16,22,.45)", alignItems: "flex-end" }} onClick={() => setConfirmar(false)}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: C.card, borderRadius: "24px 24px 0 0", padding: "26px 22px 30px", width: "100%" }}
-          >
-            <div style={{ width: 42, height: 4, borderRadius: 4, background: C.line, margin: "0 auto 20px" }} />
-            <div style={{ fontSize: 19, fontWeight: 700, color: C.ink }}>{t("mas.logoutConfirmTitle")}</div>
-            <div style={{ fontSize: 14.5, color: C.mut, marginTop: 8, lineHeight: 1.5 }}>{t("mas.logoutConfirmBody")}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 22 }}>
-              <button onClick={onLogout} style={{ ...btnOrange, background: C.red }}>{t("mas.logoutConfirmBtn")}</button>
-              <button onClick={() => setConfirmar(false)} style={{ ...btnOutline, border: `1.5px solid ${C.line}`, color: C.ink }}>{t("mas.cancel")}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ————— Stack —————
-function Stack() {
-  const { t, lang } = useLanguage();
-  const STACK = lang === "en" ? STACK_EN : STACK_ES;
-  const activos = STACK.filter((s) => s.on);
-  const road = STACK.filter((s) => !s.on);
-
-  const Item = ({ s }) => (
-    <Card style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 6 }}>
-        <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.on ? C.green : C.line, flexShrink: 0 }} />
-        <span style={{ fontSize: 15.5, fontWeight: 700, color: C.ink }}>{s.name}</span>
-        <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.mut }}>{s.by}</span>
-      </div>
-      <div style={{ fontSize: 13.5, color: C.mut, lineHeight: 1.5 }}>{s.role}</div>
-    </Card>
-  );
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("stackScreen.title")}</h2>
-        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("stackScreen.subtitle")}</p>
-      </div>
-
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginTop: 4 }}>{t("stackScreen.implemented")}</div>
-      {activos.map((s) => <Item key={s.name} s={s} />)}
-
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.mut, marginTop: 10 }}>{t("stackScreen.roadmap")}</div>
-      {road.map((s) => <Item key={s.name} s={s} />)}
-    </div>
-  );
-}
-
-function errorMessage(t, field, reason) {
-  if (field === "alias" && reason === "duplicate") return t("agenda.errors.aliasDuplicate");
-  return t(`agenda.errors.${field}`);
-}
-
-// ————— Agenda —————
-function ContactsScreen({ contacts, onAdd, onUpdate, onRemove, loadError, onRetry }) {
-  const { t } = useLanguage();
-  const [query, setQuery] = useState("");
-  const [form, setForm] = useState(null); // null = cerrado; { } = nuevo o edición
-  const [errors, setErrors] = useState({});
-  const [copiedId, setCopiedId] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  const visible = searchContacts(contacts, query);
-  const editingId = form?.id || null;
-
-  const openNew = () => { setForm({ name: "", alias: "", addr: "", note: "" }); setErrors({}); };
-  const openEdit = (c) => { setForm({ ...c }); setErrors({}); };
-  const close = () => { setForm(null); setErrors({}); };
-
-  const save = async () => {
-    const check = validateContact(form, contacts, editingId);
-    if (!check.valid) {
-      setErrors(check.errors);
-      return;
-    }
-    setSaving(true);
-    try {
-      if (editingId) await onUpdate(editingId, form);
-      else await onAdd(form);
-      close();
-    } catch (err) {
-      setErrors(err?.code === "alias_duplicate" ? { alias: "duplicate" } : { server: true });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const del = async () => {
-    if (!editingId) return;
-    setSaving(true);
-    try {
-      await onRemove(editingId);
-      close();
-    } catch {
-      setErrors({ server: true });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const copy = async (c) => {
-    try {
-      await navigator.clipboard.writeText(c.addr);
-      setCopiedId(c.id);
-      setTimeout(() => setCopiedId(null), 1500);
-    } catch {}
-  };
-
-  const field = (key, label, placeholder) => (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: C.mut, marginBottom: 8 }}>{label}</div>
-      <input
-        value={form[key]}
-        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-        placeholder={placeholder}
-        style={{
-          width: "100%",
-          background: errors[key] ? "#FDECEA" : C.card,
-          border: errors[key] ? `1.5px solid ${C.red}` : `1px solid ${C.line}`,
-          borderRadius: 14,
-          padding: "14px 16px",
-          fontSize: 15,
-          color: C.ink,
-          outline: "none",
-          fontFamily: "inherit",
-          boxSizing: "border-box",
-        }}
-      />
-      {errors[key] && <div style={{ fontSize: 12.5, color: C.red, marginTop: 6 }}>{errorMessage(t, key, errors[key])}</div>}
-    </label>
-  );
-
-  const primaryBtn = {
-    ...btnOrange,
-    background: "linear-gradient(180deg, #ffb58d, #fe6c1c)",
-    boxShadow: "0 10px 22px rgba(254,108,28,.28)",
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 style={{ fontSize: 26, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: -0.4 }}>{t("agenda.title")}</h2>
-        <p style={{ fontSize: 14.5, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("agenda.subtitle")}</p>
-      </div>
-
-      {loadError && <Card><div role="alert">{loadError}</div><button onClick={onRetry}>Volver a cargar</button></Card>}
-      {!form && (
-        <>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("agenda.searchPlaceholder")}
-            style={{
-              background: C.bg,
-              border: `1px solid ${C.line}`,
-              borderRadius: 14,
-              padding: "13px 16px",
-              fontSize: 15,
-              color: C.ink,
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-
-          <button onClick={openNew} style={primaryBtn}>{t("agenda.addButton")}</button>
-
-          {visible.length === 0 ? (
-            <Card style={{ fontSize: 14, color: C.mut, lineHeight: 1.55 }}>
-              <div style={{ fontWeight: 700, color: C.ink, marginBottom: 6 }}>{t("agenda.emptyTitle")}</div>
-              {t("agenda.emptyBody")}
-            </Card>
-          ) : (
-            visible.map((c) => (
-              <Card key={c.id} style={{ padding: 16, display: "flex", alignItems: "center", gap: 13 }}>
-                <button
-                  onClick={() => openEdit(c)}
-                  style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 13, flex: 1, minWidth: 0, textAlign: "left", fontFamily: "inherit", padding: 0 }}
-                >
-                  <span
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: "50%",
-                      background: C.orangeSoft,
-                      display: "grid",
-                      placeItems: "center",
-                      color: "#fe6c1c",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {c.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 15.5, fontWeight: 600, color: C.ink }}>{c.name}</div>
-                    <div style={{ fontSize: 13, color: C.mut }}>@{c.alias} · {short(c.addr)}</div>
-                  </span>
-                </button>
-                <button
-                  onClick={() => copy(c)}
-                  style={{
-                    background: C.card,
-                    border: "none",
-                    borderRadius: 20,
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "#fe6c1c",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    flexShrink: 0,
-                  }}
-                >
-                  {copiedId === c.id ? t("agenda.copied") : t("agenda.copy")}
-                </button>
-              </Card>
-            ))
-          )}
-        </>
-      )}
-
-      {form && (
-        <Card style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {errors.server && (
-            <div style={{ background: "#FDECEA", borderRadius: 12, padding: "12px 14px", fontSize: 13.5, color: C.red }}>
-              {t("agenda.errors.server")}
-            </div>
-          )}
-          {field("name", t("agenda.form.nameLabel"), t("agenda.form.namePlaceholder"))}
-          {field("alias", t("agenda.form.aliasLabel"), t("agenda.form.aliasPlaceholder"))}
-          {field("addr", t("agenda.form.addressLabel"), t("agenda.form.addressPlaceholder"))}
-          {field("note", t("agenda.form.noteLabel"), t("agenda.form.notePlaceholder"))}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
-            <button onClick={save} disabled={saving} style={{ ...primaryBtn, opacity: saving ? 0.6 : 1 }}>
-              {editingId ? t("agenda.form.save") : t("agenda.form.saveNew")}
-            </button>
-            <button onClick={close} disabled={saving} style={{ ...btnOutline, border: "none", color: C.mut }}>
-              {t("agenda.form.cancel")}
-            </button>
-            {editingId && (
-              <button
-                onClick={del}
-                disabled={saving}
-                style={{ ...btnOutline, border: `1.5px solid ${C.red}`, color: C.red }}
-              >
-                {t("agenda.form.delete")}
-              </button>
-            )}
-          </div>
-        </Card>
-      )}
     </div>
   );
 }
@@ -3893,7 +2820,7 @@ function AppInner() {
     let canceled=false;setPrimaryRecord(null);setWalletError('');
     if(authenticated && user?.id)transferApi('/wallet',getAccessToken)
       .then(({wallet:record})=>{if(!canceled)setPrimaryRecord({userId:user.id,...record});})
-      .catch(()=>{if(!canceled)setWalletError('No se pudo verificar la wallet principal. Sincronizá tu sesión.');});
+      .catch(()=>{if(!canceled)setWalletError(t('app.walletVerifyError'));});
     return()=>{canceled=true;};
   },[authenticated,user?.id,getAccessToken,primaryRevision,linkedSolanaAddress]);
   const address=authenticated && user?.id && primaryRecord &&
@@ -3938,7 +2865,6 @@ function AppInner() {
   const nombre = merchantProfile.profile?.userName || userDisplayName(user);
   const merchantName = merchantDisplayName(merchantProfile.profile?.businessName,nombre);
   const openTransfer=async id=>{try{const {transfer}=await transferApi(`/transfers/${id}`,getAccessToken);setReceipt({transfer});}catch(error){setWalletError(error.message);}};
-  const activityTxs = txs.map(tx => tx.source === "mercadopago" ? {...tx,who:merchantName} : tx);
 
   useEffect(() => {
     setArsBalance(loadArsBalance(address));
@@ -3950,6 +2876,10 @@ function AppInner() {
   const currentContactOwner=useRef(user?.id);currentContactOwner.current=user?.id;
   const contactsRef = useRef(contacts);
   contactsRef.current = contacts;
+  // Envíos a una wallet que después se agendó: se muestran con el nombre del contacto.
+  const contactByAddr = new Map(contacts.filter(c => c.addr && c.name).map(c => [c.addr, c.name]));
+  const activityTxs = txs.map(tx => tx.source === "mercadopago" ? {...tx,who:merchantName}
+    : contactByAddr.has(String(tx.who || "").trim()) ? {...tx,who:contactByAddr.get(String(tx.who).trim())} : tx);
 
   useEffect(() => {
     if (!user?.id) {
@@ -3966,7 +2896,7 @@ function AppInner() {
       .then((fresh) => {
         if (!cancelled) setContacts(fresh);
       })
-      .catch(() => {if(!cancelled)setContactsError('No se pudo actualizar la agenda. Los contactos visibles pueden estar desactualizados.');});
+      .catch(() => {if(!cancelled)setContactsError(t('app.contactsLoadError'));});
     return () => {
       cancelled = true;
     };
@@ -4127,7 +3057,7 @@ function AppInner() {
 
   const handleConvertArsUsdc = useCallback(
     async (arsAmount) => {
-      if (SOLANA.cluster !== "devnet") throw new Error("Conversión de prueba deshabilitada");
+      if (SOLANA.cluster !== "devnet") throw new Error(t("app.convertDisabled"));
       const token = await getAccessToken();
       const result = await runConvertArsToUsdc({
         token,
@@ -4157,7 +3087,7 @@ function AppInner() {
 
   const handleConvertUsdcArs = useCallback(
     async (usdcAmount) => {
-      if (SOLANA.cluster !== "devnet") throw new Error("Conversión de prueba deshabilitada");
+      if (SOLANA.cluster !== "devnet") throw new Error(t("app.convertDisabled"));
       if (!wallet || wallet.address !== address) {
         console.error("[MidatoPay wallet] Conversión bloqueada: falta wallet conectada con la dirección vinculada", walletDebug);
         throw new Error(t("home.walletUnavailable"));
@@ -4223,8 +3153,9 @@ function AppInner() {
   };
   const openVoiceListen = () => {
     setReceipt(null);
+    // Escuchando: el mismo botón termina y procesa lo dicho (cerrar es la × de la hoja).
     if (voiceOpen && voiceListening) {
-      closeVoice();
+      voiceApiRef.current?.finish?.();
       return;
     }
     if (voiceOpen && voiceApiRef.current) {
@@ -4237,7 +3168,7 @@ function AppInner() {
 
   const shell = (children, { pad = true, nav = true, fill = false } = {}) => (
     <div className="mp-stage">
-      <div className={`mp-device${nav ? "" : " mp-no-nav"}`}>
+      <div className={`mp-device${nav ? "" : " mp-no-nav"}${voiceOpen ? " mp-voice-open" : ""}`}>
         <div
           className={`mp-scroll${fill ? " mp-scroll-fill" : ""}`}
           style={{ padding: pad ? "22px 18px 24px" : 0 }}
@@ -4251,10 +3182,21 @@ function AppInner() {
               </button>
             </Card>
           )}
-          {transferEngine.recovery && <Card style={{marginBottom:12}}>
-            <p>Hay una operación pendiente de recuperar.</p>
-            <button onClick={async()=>{try{const transfer=await transferEngine.recover();if(transfer && !transfer.unsigned)setReceipt({transfer});else await transferEngine.discardUnsigned();}catch(e){setWalletError(e.message);}}}>Recuperar o descartar preparación sin enviar</button>
-          </Card>}
+          {/* Envío interrumpido de una sesión anterior. Mientras hay una aprobación en curso no se muestra:
+              ese mismo registro es el envío que se está firmando ahora. */}
+          {transferEngine.recovery && !transferEngine.approval && (
+            <div role="status" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12, background: "#FFF3E6", borderRadius: 18, padding: "12px 14px", margin: pad ? "0 0 14px" : "12px 18px 0" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{t("transferRecovery.title")}</div>
+                <div style={{ fontSize: 12.5, color: C.mut, marginTop: 2, lineHeight: 1.4 }}>{t("transferRecovery.body")}</div>
+              </div>
+              <button type="button"
+                onClick={async()=>{try{const transfer=await transferEngine.recover();if(transfer && !transfer.unsigned)setReceipt({transfer});else await transferEngine.discardUnsigned();}catch(e){setWalletError(e.message);}}}
+                style={{ border: 0, borderRadius: 999, background: "#fff", color: "#fe6c1c", font: "inherit", fontSize: 13, fontWeight: 600, padding: "8px 14px", cursor: "pointer", flexShrink: 0 }}>
+                {t("transferRecovery.cta")}
+              </button>
+            </div>
+          )}
           {children}
           <TransferApproval engine={{...transferEngine,network:SOLANA.cluster}} />
         </div>
@@ -4294,10 +3236,10 @@ function AppInner() {
             <button
               onClick={openVoiceListen}
               className={`mp-fab${voiceListening ? " is-listening" : ""}`}
-              aria-label={voiceListening ? t("voice.listening") : t("nav.voiceAria")}
+              aria-label={voiceListening ? t("voice.stopAria") : t("nav.voiceAria")}
             >
               <span className="mp-fab-shine" aria-hidden />
-              <IconMic />
+              {voiceListening ? <IconStop size={22} /> : <IconMic />}
             </button>
           </nav>
         )}
@@ -4328,7 +3270,7 @@ function AppInner() {
       <Card style={{ textAlign: "center", padding: 40, marginTop: 40 }}>
         <div style={{ fontSize: 17, fontWeight: 700 }}>{t("home.creatingTitle")}</div>
         <div style={{ fontSize: 14, color: C.mut, marginTop: 8 }}>{t("home.creatingBody")}</div>
-        <button onClick={()=>setPrimaryRevision(value=>value+1)} style={{...btnOutline,marginTop:16}}>Sincronizar wallet principal</button>
+        <button onClick={()=>setPrimaryRevision(value=>value+1)} style={{...btnOutline,marginTop:16}}>{t("app.syncWallet")}</button>
         {walletError && (
           <div style={{ fontSize: 13, color: C.red, marginTop: 16, lineHeight: 1.5, wordBreak: "break-word" }}>
             {walletError}
@@ -4344,7 +3286,8 @@ function AppInner() {
         if(currentContactOwner.current===user.id)setTxs(previous=>mergeByHash(fresh,previous));
       }).catch(()=>{});
     }}}
-    onClose={dest=>{setReceipt(null);setPayFullscreen(false);setTab(dest);}} />);
+    onClose={dest=>{setReceipt(null);setPayFullscreen(false);setTab(dest);}} />,
+    { pad: false, nav: false, fill: true });
   if (receipt) {
     return shell(
       <Success
@@ -4386,7 +3329,6 @@ function AppInner() {
           contacts={contacts}
           onPay={sendPayment}
           onDone={setReceipt}
-          onSaveContact={handleAddContact}
           scanRequest={pendingScan}
           onScanRequestConsumed={() => setPendingScan(null)}
           onBack={() => { setPayFullscreen(false); setTab("home"); }}
@@ -4394,13 +3336,14 @@ function AppInner() {
         />
       )}
       {tab === "send" && (
-        <Send
+        <SendScreen
           address={address}
           balance={balance}
           fxRate={fxRate}
           contacts={contacts}
           onPay={sendPayment}
           onDone={setReceipt}
+          onBack={() => setTab("home")}
         />
       )}
       {tab === "charge" && (
@@ -4416,7 +3359,7 @@ function AppInner() {
           onBack={() => setTab("home")}
         />
       )}
-      {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>Las conversiones independientes todavía no están disponibles. Cobrá con MIDATOPAY para recibir USDC.</Card>}
+      {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>{t("app.convertUnavailable")}</Card>}
       {tab === "convert" && SOLANA.cluster === "devnet" && (
         <Convert
           address={address}
@@ -4428,9 +3371,17 @@ function AppInner() {
           onDone={setReceipt}
         />
       )}
-      {tab === "movs" && <Movimientos txs={activityTxs} address={address} onOpenTransfer={openTransfer} />}
+      {tab === "movs" && (
+        <Movimientos
+          txs={activityTxs}
+          address={address}
+          onOpenTransfer={openTransfer}
+          onNewCharge={() => setTab("charge")}
+          onNewSend={() => setTab("send")}
+          onNewPay={() => { setPayFullscreen(true); setTab("pay"); }}
+        />
+      )}
       {tab === "reports" && paymentAdmin && <PaymentReports getAccessToken={getAccessToken} onBack={()=>setTab("mas")} />}
-      {tab === "stack" && <Stack />}
       {tab === "agenda" && (
         <ContactsScreen
           contacts={contacts}
@@ -4442,7 +3393,7 @@ function AppInner() {
         />
       )}
       {tab === "mas" && (
-        <Mas
+        <ProfileScreen
           key={user.id}
           merchantProfile={merchantProfile}
           treasuryExportAccess={treasuryExportAccess?.userId===user.id?treasuryExportAccess:null}
@@ -4450,17 +3401,16 @@ function AppInner() {
           address={address}
           nombre={nombre}
           onLogout={async () => { await logout(); setTab("home"); setTxs([]); setBalance(null); setTreasuryBalance(null); }}
-          goStack={() => setTab("stack")}
           goReports={paymentAdmin?()=>setTab("reports"):undefined}
           privyId={user.id}
-          treasuryAddress={treasuryAddress}
         />
       )}
     </>,
     {
-      pad: !(tab === "pay" && payFullscreen) && tab !== "charge",
-      nav: !(tab === "pay" && payFullscreen) && tab !== "charge",
-      fill: tab === "charge",
+      // Cobrar, Pagar y Enviar son pantallas aisladas: sin barra inferior y ocupando todo el alto.
+      pad: !(tab === "pay" && payFullscreen) && tab !== "charge" && tab !== "send",
+      nav: !(tab === "pay" && payFullscreen) && tab !== "charge" && tab !== "send",
+      fill: tab === "charge" || tab === "send" || (tab === "pay" && payFullscreen),
     }
   );
 }

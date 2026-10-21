@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { paymentReceived, canStartNewCharge } from "./chargeStatus.js";
 import { explorerTxUrl } from "./chain.js";
+import { useOptionalLanguage } from "./i18n.jsx";
 
 const INK = "#16161A";
 const MUT = "#7A7A85";
@@ -14,8 +15,8 @@ function fmtArs(n) {
   return Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtUsdc(n) {
-  return Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtUsdc(n, locale = "es-AR") {
+  return Number(n).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function IconChevron({ open }) {
@@ -60,6 +61,7 @@ function isDelivered(charge) {
 }
 
 export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, errorMessage, now, onSplashChange }) {
+  const { t, locale } = useOptionalLanguage();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [splash, setSplash] = useState(true);
   const received = paymentReceived(charge);
@@ -101,7 +103,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
         className="mp-overlay"
         style={{ background: GREEN, flexDirection: "column" }}
         role="status"
-        aria-label="Cobro exitoso"
+        aria-label={t("mpCharge.successTitle")}
       >
         <div
           style={{
@@ -188,10 +190,10 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
 
           <div>
             <div style={{ fontSize: 26, fontWeight: 700, color: INK, letterSpacing: -0.45 }}>
-              Cobro exitoso
+              {t("mpCharge.successTitle")}
             </div>
             <div style={{ marginTop: 8, fontSize: 14, fontWeight: 500, color: MUT, lineHeight: 1.35 }}>
-              El dinero ya está en tu cuenta.
+              {t("mpCharge.successBody")}
             </div>
           </div>
 
@@ -210,9 +212,9 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
               gap: 14,
             }}
           >
-            {amountRow("/monedas/ars.png", "Cobraste", `$ ${fmtArs(charge.ars)} ARS`)}
+            {amountRow("/monedas/ars.png", t("mpCharge.youCharged"), `$ ${fmtArs(charge.ars)} ARS`)}
             <div style={{ height: 1, background: LINE }} />
-            {amountRow("/monedas/usdc.png", "Recibiste", `${fmtUsdc(charge.usdc)} USDC`)}
+            {amountRow("/monedas/usdc.png", t("mpCharge.youReceived"), `${fmtUsdc(charge.usdc, locale)} USDC`)}
           </div>
 
           <button
@@ -234,7 +236,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
               marginTop: 2,
             }}
           >
-            {detailsOpen ? "Ocultar detalles" : "Ver detalles"}
+            {detailsOpen ? t("mpCharge.hideDetails") : t("mpCharge.showDetails")}
             <IconChevron open={detailsOpen} />
           </button>
 
@@ -256,11 +258,11 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span>Comisión</span>
+                <span>{t("mpCharge.fee")}</span>
                 <span style={{ color: INK, fontWeight: 600 }}>$ {fmtArs(charge.feeArs)} ARS</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span>Tipo de cambio</span>
+                <span>{t("mpCharge.exchangeRate")}</span>
                 <span style={{ color: INK, fontWeight: 600 }}>$ {fmtArs(charge.fxRate)} / USDC</span>
               </div>
               {explorerUrl ? (
@@ -281,14 +283,14 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
                     borderTop: `1px solid ${LINE}`,
                   }}
                 >
-                  <span>Ver onchain</span>
+                  <span>{t("mpCharge.viewOnchain")}</span>
                   <span style={{ color: ORANGE, display: "grid", placeItems: "center" }}>
                     <IconExternal />
                   </span>
                 </a>
               ) : (
                 <div style={{ fontSize: 13, color: MUT, paddingTop: 4, borderTop: `1px solid ${LINE}` }}>
-                  La firma onchain todavía no está disponible.
+                  {t("mpCharge.signaturePending")}
                 </div>
               )}
             </div>
@@ -309,7 +311,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
               boxShadow: busy ? "none" : "0 8px 20px rgba(255,90,0,0.28)",
             }}
           >
-            Cobrar de nuevo
+            {t("mpCharge.chargeAgain")}
           </button>
         )}
       </div>
@@ -317,14 +319,14 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
   }
 
   const title = showQr || creating || processing
-    ? "Escanear y pagar"
+    ? t("mpCharge.scanAndPay")
     : expired
-      ? "QR vencido"
+      ? t("mpCharge.qrExpired")
       : charge.status === "refunded"
-        ? "Reembolsado"
+        ? t("mpCharge.refunded")
         : charge.status === "manual_review" && !received
-          ? "En revisión"
-          : "Actualizando…";
+          ? t("mpCharge.inReview")
+          : t("mpCharge.updating");
 
   const qrSize = detailsOpen ? 148 : 236;
 
@@ -376,7 +378,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
             src={qr}
             width={qrSize}
             height={qrSize}
-            alt="QR de pago"
+            alt={t("mpCharge.qrAlt")}
             style={{
               display: "block",
               width: qrSize,
@@ -392,7 +394,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
           <div
             className="mp-qr-skeleton"
             role="status"
-            aria-label="Cargando QR"
+            aria-label={t("mpCharge.qrLoading")}
             style={{
               width: qrSize,
               height: qrSize,
@@ -403,7 +405,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
         )}
 
         {!showQr && !creating && expired && (
-          <div style={{ fontSize: 14, color: "#E4483D", fontWeight: 600 }}>Este QR ya no está vigente</div>
+          <div style={{ fontSize: 14, color: "#E4483D", fontWeight: 600 }}>{t("mpCharge.qrNoLongerValid")}</div>
         )}
 
         {(showQr || creating) && (
@@ -426,7 +428,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
                 padding: "4px 8px",
               }}
             >
-              {detailsOpen ? "Ocultar detalles" : "Ver detalles"}
+              {detailsOpen ? t("mpCharge.hideDetails") : t("mpCharge.showDetails")}
               <IconChevron open={detailsOpen} />
             </button>
 
@@ -446,22 +448,22 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <span>Comisión</span>
+                  <span>{t("mpCharge.fee")}</span>
                   <span style={{ color: INK, fontWeight: 600 }}>$ {fmtArs(charge.feeArs)} ARS</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <span>Tipo de cambio</span>
+                  <span>{t("mpCharge.exchangeRate")}</span>
                   <span style={{ color: INK, fontWeight: 600 }}>$ {fmtArs(charge.fxRate)} / USDC</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <span>Vas a recibir</span>
-                  <span style={{ color: INK, fontWeight: 700 }}>{fmtUsdc(charge.usdc)} USDC</span>
+                  <span>{t("mpCharge.youWillReceive")}</span>
+                  <span style={{ color: INK, fontWeight: 700 }}>{fmtUsdc(charge.usdc, locale)} USDC</span>
                 </div>
                 {charge.expiresAt && (
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 4, borderTop: `1px solid ${LINE}` }}>
-                    <span>Vence</span>
+                    <span>{t("mpCharge.expires")}</span>
                     <span style={{ color: expired ? "#E4483D" : INK, fontWeight: 600 }}>
-                      {new Date(charge.expiresAt).toLocaleString("es-AR", {
+                      {new Date(charge.expiresAt).toLocaleString(locale, {
                         day: "2-digit",
                         month: "2-digit",
                         hour: "2-digit",
@@ -501,7 +503,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
             }}
           >
             <IconSpinner />
-            Procesando pago
+            {t("mpCharge.processing")}
           </button>
         )}
         {showCancel && (
@@ -525,10 +527,10 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
             {busy ? (
               <>
                 <IconSpinner />
-                Cancelando…
+                {t("mpCharge.canceling")}
               </>
             ) : (
-              "Cancelar cobro"
+              t("mpCharge.cancelCharge")
             )}
           </button>
         )}
@@ -539,7 +541,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
             onClick={onReset}
             style={{ ...button, background: ORANGE, color: "white", opacity: busy ? 0.6 : 1 }}
           >
-            Cobrar de nuevo
+            {t("mpCharge.chargeAgain")}
           </button>
         )}
       </div>

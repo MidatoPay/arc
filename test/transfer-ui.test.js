@@ -20,9 +20,11 @@ test('receipts never present pending, failed or ambiguous broadcasts as complete
  }
  assert.match(renderToStaticMarkup(createElement(Receipt,{transfer:{...transfer,status:'completed'}})),/USDC enviados/);
 });
-test('approval shows full addresses, exact amount, zero user cost, network and daily quota',()=>{
+test('approval shows the full recipient address, exact amount, zero user cost, network and daily quota',()=>{
  const html=renderToStaticMarkup(createElement(Approval,{engine:{approval:{input:{from:transfer.from,to:transfer.to,amount:transfer.usdc},recipient:'Ana'},network:'mainnet-beta',info:{quota:{remaining:1}}}}));
- for(const content of ['primary-address','recipient-address','0.000001','0 SOL','mainnet-beta','Disponibles: 1','Confirmar y firmar'])assert.ok(html.includes(content));
+ // Exact amount in Argentine format (no rounding) and the network shown as Solana Mainnet.
+ // The source is always the user's primary wallet (enforced server-side), so the sheet omits it.
+ for(const content of ['recipient-address','0,000001','0 SOL','Solana Mainnet','Disponibles: 1','Confirmar y firmar'])assert.ok(html.includes(content),content);
 });
 test('Activity tracks pending transfers and replaces them with a unique finalized entry',()=>{
  assert.equal(activityStatusKey({source:'transfer',status:'completed'}),'transferCompleted');

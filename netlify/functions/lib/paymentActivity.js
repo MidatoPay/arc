@@ -24,7 +24,7 @@ export async function listUserActivity(db,userId,network) {
         AND (t.charge_id=c.id OR t.hash=c.signature))
     UNION ALL
     SELECT w.id,COALESCE(w.signature,'transfer:'||w.id::text),w.kind,'out',w.recipient_name,
-      w.usdc_raw::numeric/1000000,w.fx_rate,w.ars,'transfer_'||w.id::text,w.block,0::numeric,w.memo,w.created_at,
+      w.usdc_raw::numeric/1000000,w.fx_rate,w.ars,'transfer_'||w.id::text,w.block,0::numeric,NULL::numeric,w.memo,w.created_at,
       NULL::uuid,NULL::text,NULL::text,NULL::text,w.status,w.signature,false,NULL::timestamptz,w.last_error,'transfer',w.id
     FROM wallet_transfers w WHERE w.user_id=$1 AND w.network=$2 AND w.signature IS NOT NULL AND NOT EXISTS(
       SELECT 1 FROM transactions t WHERE t.user_id=w.user_id AND t.network=w.network AND (t.transfer_id=w.id OR t.hash=w.signature))

@@ -88,7 +88,8 @@ export const handler = async (event) => {
 
   const text = String(body.text || "").trim();
   if (!text || text.length > 500) return json(400, { error: "invalid_text" });
-  const lang = body.lang === "en" ? "en" : "es";
+  // Chino usa el prompt en inglés: el modelo entiende el comando y devuelve el mismo JSON.
+  const lang = body.lang === "en" || body.lang === "zh" ? "en" : "es";
   const aliases = Array.isArray(body.aliases) ? body.aliases.slice(0, 100) : [];
 
   try {

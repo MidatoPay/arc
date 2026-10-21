@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
-import { chargeApi, chargeError, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt, bindChargeAttempt, canStartNewCharge } from "./charges.js";
+import { chargeApi, readChargeAttempt, saveChargeAttempt, clearChargeAttempt, prepareChargeAttempt, bindChargeAttempt, canStartNewCharge } from "./charges.js";
+import { useOptionalLanguage } from "./i18n.jsx";
+import { chargeErrorText } from "./errorText.js";
 import { paymentReceived } from "./chargeStatus.js";
 import ChargeSummary from "./ChargeSummary.jsx";
 
@@ -117,7 +119,8 @@ function appendAmountDigit(prev, key) {
   return cur + key;
 }
 
-function AmountKeypad({ disabled, onKey }) {
+export function AmountKeypad({ disabled, onKey }) {
+  const { t } = useOptionalLanguage();
   return (
     <div
       style={{
@@ -135,7 +138,7 @@ function AmountKeypad({ disabled, onKey }) {
           type="button"
           disabled={disabled}
           onClick={() => onKey(key)}
-          aria-label={key === "back" ? "Borrar" : key === "," ? "Coma decimal" : key}
+          aria-label={key === "back" ? t("mpCharge.keypadDelete") : key === "," ? t("mpCharge.keypadDecimal") : key}
           style={{
             border: "1px solid #F0F0F3",
             background: "#FCFCFD",
@@ -160,6 +163,10 @@ function AmountKeypad({ disabled, onKey }) {
 }
 
 export default function MercadoPagoCharge({ userId, address, getAccessToken, onDelivered, onPaymentReceived, chargeRequest, onChargeRequestConsumed, onBack }) {
+  const lang = useOptionalLanguage();
+  const { t } = lang;
+  // `error` guarda un código del backend ({code}) o una clave de texto ({key}); se traduce al renderizar.
+  const errorText = (e) => (!e ? "" : e.key ? t(e.key) : chargeErrorText(lang, e.code));
   const [ars,setArs] = useState(""), [charge,setCharge] = useState(null), [qr,setQr] = useState("");
   const [busy,setBusy] = useState(false), [error,setError] = useState(""), [history,setHistory] = useState([]);
   const [nextCursor,setNextCursor]=useState(null),[loadingHistory,setLoadingHistory]=useState(false);
@@ -186,7 +193,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     if(!event || notified.current.has(key))return;
     notified.current.add(key);
     Promise.resolve((event==="delivered"?deliveredCallback:paidCallback).current?.(current)).catch(()=>{
-      if(mounted.current)setError("El pago fue recibido. Volvé a abrir Activity para actualizar el historial.");
+      if(mounted.current)setError({ key: "mpCharge.receivedRefresh" });
     });
   },[]);
   const accept = useCallback((current,key) => {
@@ -233,7 +240,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
           if (result.charge) { accept(result.charge,attempt.current.key); return; }
         } catch { /* Preserve the attempt until the server is reachable. */ }
       }
-      if (mounted.current) setError(chargeError(e.code));
+      if (mounted.current) setError({ code: e.code });
     }
     finally { starting.current=false; if (mounted.current) setBusy(false); }
   },[userId,address,request,accept]);
@@ -259,9 +266,9 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
         // Opening the screen only recovers an existing operation; it never starts a payment.
         return request(`/charges?attempt=${encodeURIComponent(saved.key)}`).then((result)=>{
           if (!canceled && result.charge) accept(result.charge,saved.key);
-        }).catch((e)=>{ if (!canceled) setError(chargeError(e.code)); });
+        }).catch((e)=>{ if (!canceled) setError({ code: e.code }); });
       }
-    }).catch((e) => { if (!canceled) setError(chargeError(e.code)); })
+    }).catch((e) => { if (!canceled) setError({ code: e.code }); })
       .finally(()=>{if(!canceled)setHistoryReady(true);});
     return () => { canceled=true; mounted.current=false; };
   },[userId,request,accept,start]);
@@ -283,7 +290,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     }
     QRCode.toDataURL(charge.qrData,{margin:4,width:320,errorCorrectionLevel:"M"})
       .then((value) => { if (!canceled) setQr(value); })
-      .catch(() => { if (!canceled) setError("No se pudo mostrar el QR. Volvé a abrir el cobro."); });
+      .catch(() => { if (!canceled) setError({ key: "mpCharge.qrRenderError" }); });
     return () => { canceled=true; };
   },[charge?.id,charge?.qrData,charge?.status,charge?.settled]);
 
@@ -293,7 +300,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     let canceled=false, timer;
     const poll=async () => {
       try { const {charge:current}=await request(`/charges/${charge.id}`); if (!canceled && selectedId.current===charge.id) { accept(current); setError(""); } }
-      catch (e) { if (!canceled && selectedId.current===charge.id) setError(chargeError(e.code)); }
+      catch (e) { if (!canceled && selectedId.current===charge.id) setError({ code: e.code }); }
       if (!canceled) timer=setTimeout(poll,pollMs);
     };
     timer=setTimeout(poll,pollMs);
@@ -336,7 +343,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       selectedId.current=null;
       setCharge(null);setQr("");setArs("");setError("");
     }
-    catch(e) { setError(chargeError(e.code)); }
+    catch(e) { setError({ code: e.code }); }
     finally { setBusy(false); }
   };
   const reset=() => {
@@ -348,7 +355,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     setLoadingHistory(true);
     try{const result=await request(`/charges?cursor=${encodeURIComponent(nextCursor)}`);
       if(mounted.current){setHistory((list)=>[...list,...result.charges.filter((c)=>!list.some((old)=>old.id===c.id))]);setNextCursor(result.nextCursor);}}
-    catch(e){if(mounted.current)setError(chargeError(e.code));}finally{if(mounted.current)setLoadingHistory(false);}
+    catch(e){if(mounted.current)setError({ code: e.code });}finally{if(mounted.current)setLoadingHistory(false);}
   };
 
   const amountNumber = Number(String(ars).replace(/\./g, "").replace(",", "."));
@@ -359,7 +366,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
     <button
       type="button"
       onClick={onBack}
-      aria-label="Volver"
+      aria-label={t("mpCharge.back")}
       style={{
         width: 40,
         height: 40,
@@ -427,7 +434,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
         {!successSplash && <div style={{ flexShrink: 0 }}>{backButton}</div>}
         {!successSplash && error && (
           <div role="alert" style={{ color: "#E4483D", fontSize: 13, marginTop: 6, flexShrink: 0 }}>
-            {error}
+            {errorText(error)}
           </div>
         )}
         <div style={{ flex: 1, minHeight: 0, marginTop: successSplash ? 0 : 8 }}>
@@ -438,7 +445,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
             onCancel={cancel}
             onReset={reset}
             onSplashChange={handleSplashChange}
-            errorMessage={chargeError(charge.lastError)}
+            errorMessage={chargeErrorText(lang, charge.lastError)}
           />
         </div>
       </section>
@@ -486,8 +493,8 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {expiredCharges.length === 1
-                  ? "Tenés 1 cobro vencido"
-                  : `Tenés ${expiredCharges.length} cobros vencidos`}
+                  ? t("mpCharge.expiredOne")
+                  : t("mpCharge.expiredMany", expiredCharges.length)}
               </span>
               <span
                 style={{
@@ -543,11 +550,11 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
                   <span style={{ fontWeight: 700, color: INK, fontSize: 13 }}>
                     $ {Number(c.ars).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: ORANGE, flexShrink: 0 }}>Cobrar de nuevo</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: ORANGE, flexShrink: 0 }}>{t("mpCharge.chargeAgain")}</span>
                 </button>
                 <button
                   type="button"
-                  aria-label="Quitar de la lista"
+                  aria-label={t("mpCharge.dismissExpired")}
                   onClick={() => dismissExpired(c.id)}
                   style={{
                     width: 32,
@@ -573,7 +580,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
 
       {error && (
         <div role="alert" style={{ color: "#E4483D", fontSize: 13, marginTop: 6, flexShrink: 0, position: "relative", zIndex: expiredOpen ? 0 : 1 }}>
-          {error}
+          {errorText(error)}
         </div>
       )}
 
@@ -679,7 +686,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
               boxShadow: canSubmit && !expiredOpen ? "0 8px 20px rgba(255,90,0,0.28)" : "none",
             }}
           >
-            {busy ? "Iniciando…" : attempt.current ? "Continuar cobro" : "Cobrar"}
+            {busy ? t("mpCharge.starting") : attempt.current ? t("mpCharge.continueCharge") : t("mpCharge.charge")}
           </button>
         </div>
       </div>
@@ -687,7 +694,7 @@ export default function MercadoPagoCharge({ userId, address, getAccessToken, onD
       {expiredOpen && (
         <button
           type="button"
-          aria-label="Cerrar cobros vencidos"
+          aria-label={t("mpCharge.closeExpired")}
           onClick={() => setExpiredOpen(false)}
           style={{
             position: "absolute",
