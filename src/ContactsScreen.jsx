@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { isAddress } from "@solana/kit";
+import { isAddress } from "./arc.js";
 import { useLanguage } from "./i18n.jsx";
 import { searchContacts, validateContact } from "./contacts.js";
 
@@ -221,7 +221,7 @@ export default function ContactsScreen({ contacts, onAdd, onUpdate, onRemove, lo
       ) : (
         <div style={{ background: C.bg, borderRadius: 22, padding: "2px 14px" }}>
           {visible.map((c, index) => {
-            const solana = isAddress(c.addr || "");
+            const compatible = isAddress(c.addr || "");
             const copied = copiedId === c.id;
             return (
               <Fragment key={c.id || c.alias}>
@@ -234,8 +234,8 @@ export default function ContactsScreen({ contacts, onAdd, onUpdate, onRemove, lo
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: 15, fontWeight: 500, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
-                      <span style={{ display: "block", fontSize: 12.5, color: solana ? C.mut : C.amber, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        @{c.alias} · {solana ? shortAddr(c.addr) : t("agenda.incompatible")}
+                      <span style={{ display: "block", fontSize: 12.5, color: compatible ? C.mut : C.amber, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        @{c.alias} · {compatible ? shortAddr(c.addr) : t("agenda.incompatible")}
                       </span>
                     </span>
                   </button>

@@ -1,12 +1,15 @@
 import { authenticatePayment,errorResponse } from './paymentRuntime.js';
 import { PaymentError } from './paymentCore.js';
 import { CHAINLINK_USD_ARS_FEED } from '../../../src/chainlinkConfig.js';
+import { NETWORK } from '../../../src/network.js';
 
-const solanaMethods=new Set(['getAccountInfo','getMultipleAccounts','getBalance','getTokenAccountBalance',
-  'getTokenAccountsByOwner','getLatestBlockhash','getBlockHeight','getSlot','getGenesisHash','getVersion','getHealth',
-  'getFeeForMessage','getMinimumBalanceForRentExemption','getSignatureStatuses','getSignaturesForAddress',
-  'getTransaction','simulateTransaction','sendTransaction','isBlockhashValid']);
+// Browser reads on Arc. Writes (eth_sendRawTransaction) go through /transfers,
+// never through this proxy. eth_getLogs is bounded to avoid expensive scans.
+const arcMethods=new Set(['eth_chainId','eth_blockNumber','eth_getBalance','eth_call','eth_estimateGas','eth_gasPrice',
+  'eth_maxPriorityFeePerGas','eth_feeHistory','eth_getTransactionReceipt','eth_getTransactionByHash','eth_getTransactionCount',
+  'eth_getCode','eth_getBlockByNumber']);
 const feedCalls=new Set(['0x50d25bcd','0x313ce567','0x7284e416','0xfeaf968c']);
+const callTargets=new Set([NETWORK.usdc.toLowerCase(),NETWORK.memo.toLowerCase()]);
 export function createRpcHandler({target,chain,authenticate=authenticatePayment,request=fetch,now=Date.now}={}) {
   const limits=new Map();
   const headers={'Content-Type':'application/json','Cache-Control':'private, no-store','Vary':'Authorization'};
@@ -22,10 +25,11 @@ export function createRpcHandler({target,chain,authenticate=authenticatePayment,
       if(!calls.length || calls.length>10)throw new PaymentError('rpc_batch_limit',400);
       for(const call of calls) {
         if(!call || call.jsonrpc!=='2.0' || !['string','number'].includes(typeof call.id) || !Array.isArray(call.params || []))throw new PaymentError('rpc_invalid_request',400);
-        if(chain==='solana') {
-          if(!solanaMethods.has(call.method))throw new PaymentError('rpc_method_not_allowed',403);
-          if(call.method==='getMultipleAccounts' && (!Array.isArray(call.params?.[0]) || call.params[0].length>100))throw new PaymentError('rpc_batch_limit',400);
-          if(call.method==='getSignaturesForAddress' && (call.params?.[1]?.limit ?? 1000)>50)throw new PaymentError('rpc_batch_limit',400);
+        if(chain==='arc') {
+          if(!arcMethods.has(call.method))throw new PaymentError('rpc_method_not_allowed',403);
+          if(call.method==='eth_call' && !callTargets.has(String(call.params?.[0]?.to || '').toLowerCase()))throw new PaymentError('rpc_method_not_allowed',403);
+          if(call.method==='eth_getBlockByNumber' && call.params?.[1]!==false)throw new PaymentError('rpc_method_not_allowed',403);
+          if(call.method==='eth_feeHistory' && Number(call.params?.[0])>100)throw new PaymentError('rpc_batch_limit',400);
         } else if(call.method!=='eth_chainId') {
           const tx=call.params?.[0];
           if(call.method!=='eth_call' || tx?.to?.toLowerCase()!==CHAINLINK_USD_ARS_FEED.toLowerCase() || !feedCalls.has(tx?.data?.toLowerCase()) || call.params?.[1]!=='latest')throw new PaymentError('rpc_method_not_allowed',403);

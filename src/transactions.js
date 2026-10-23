@@ -1,11 +1,11 @@
-import { SOLANA } from "./chain.js";
+import { ARC } from "./chain.js";
 import { deliveryPhase, paymentReceived } from "./chargeStatus.js";
 // Cliente HTTP del historial de transacciones, con cache stale-while-revalidate
 // en localStorage. Mismo patrón que src/contacts.js. Ver
 // docs/superpowers/specs/2026-08-07-transactions-history-design.md § 1.4.
 
 const CACHE_PREFIX = "mp_tx_cache_";
-const cacheKey = (userId) => `${CACHE_PREFIX}${SOLANA.cluster}_${userId}`;
+const cacheKey = (userId) => `${CACHE_PREFIX}${ARC.network}_${userId}`;
 
 function readCache(userId) {
   if (!userId) return [];
@@ -73,7 +73,7 @@ function fromWire(row) {
     providerStatus: row.provider_status || null,
     providerDetail: row.provider_detail || null,
     settled: row.settled !== false,
-    signature: row.signature || (row.hash?.startsWith("charge:") ? null : row.hash),
+    txHash: row.tx_hash || (/^(charge|transfer):/.test(row.hash || "") ? null : row.hash),
   };
 }
 

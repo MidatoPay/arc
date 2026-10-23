@@ -1,4 +1,5 @@
 import { PaymentError, unitsDecimal, publicCharge } from "./paymentCore.js";
+import { NETWORK } from "../../../src/network.js";
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function isPaymentAdmin(userId, configured=process.env.PAYMENTS_ADMIN_USER_IDS || "") {
@@ -25,7 +26,7 @@ export function reportFilters(query={}, defaultEnvironment=process.env.MP_ENVIRO
   const statuses=["creating","awaiting_payment","paid","delivery_pending","broadcasting","delivered","cancel_pending","expired","canceled","refunded","manual_review","confirmed"];
   if(query.status && !statuses.includes(query.status)) throw new PaymentError("invalid_report_status",400);
   if(query.source && !["mercadopago","wallet"].includes(query.source)) throw new PaymentError("invalid_report_source",400);
-  return {environment,network:environment==="production"?"mainnet-beta":"devnet",from,to,
+  return {environment,network:NETWORK.network,from,to,
     merchant:query.merchant || null,status:query.status || null,source:query.source || null,limit};
 }
 export function decodeCursor(value) {
@@ -65,7 +66,7 @@ const operationsSql=`WITH operations AS (
   SELECT 'mercadopago'::text AS source,c.id,c.user_id AS merchant,c.created_at AS occurred_at,
     'mercadopago:'||c.id::text AS sort_key,c.status,c.provider_status,c.provider_detail,'in'::text AS direction,
     c.wallet_address,c.amount_cents,c.fee_cents,c.fee_bps,c.usdc_raw,c.fx_rate,c.external_reference AS reference,
-    c.order_id,c.payment_id,c.signature,c.delivered_at,l.earned_at AS commission_earned_at,
+    c.order_id,c.payment_id,c.tx_hash,c.delivered_at,l.earned_at AS commission_earned_at,
     l.fee_cents AS recorded_fee_cents,
     (c.status='manual_review' OR c.provider_status LIKE '%refunded%' OR EXISTS(
       SELECT 1 FROM payment_incidents i WHERE i.charge_id=c.id AND i.resolved_at IS NULL)) AS needs_review
@@ -76,7 +77,7 @@ const operationsSql=`WITH operations AS (
     t.created_at,NULL,NULL,false
   FROM transactions t LEFT JOIN wallets w ON w.user_id=t.user_id AND w.network=t.network
   WHERE t.network=$2 AND t.charge_id IS NULL AND NOT EXISTS(
-    SELECT 1 FROM charges c WHERE c.signature=t.hash AND c.user_id=t.user_id AND c.network=t.network)
+    SELECT 1 FROM charges c WHERE c.tx_hash=t.hash AND c.user_id=t.user_id AND c.network=t.network)
 ), filtered AS (
   SELECT * FROM operations WHERE ($3::timestamptz IS NULL OR occurred_at>=$3) AND ($4::timestamptz IS NULL OR occurred_at<$4)
     AND ($5::text IS NULL OR merchant=$5) AND ($6::text IS NULL OR status=$6) AND ($7::text IS NULL OR source=$7)
@@ -86,7 +87,7 @@ export function operationFromRow(r) {
   return {id:r.id,source:r.source,merchantId:r.merchant,createdAt:r.occurred_at,status:r.status,providerStatus:r.provider_status,
     direction:r.direction,wallet:r.wallet_address,ars:unitsDecimal(r.amount_cents,2),feeArs:unitsDecimal(r.fee_cents,2),feeBps:r.fee_bps,
     usdc:unitsDecimal(r.usdc_raw,6),fxRate:String(r.fx_rate),reference:r.reference,orderId:r.order_id,paymentId:r.payment_id,
-    signature:r.signature,deliveredAt:r.delivered_at,commissionEarnedAt:r.commission_earned_at,
+    txHash:r.tx_hash,deliveredAt:r.delivered_at,commissionEarnedAt:r.commission_earned_at,
     commissionState:r.source==="wallet"?"not_applicable":r.recorded_fee_cents!=null?(r.needs_review?"review":"recorded"):
       ["expired","canceled","refunded"].includes(r.status)?"not_earned":"estimated"};
 }

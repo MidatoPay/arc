@@ -76,9 +76,10 @@ test("partial or full refund signals stop delivery",()=>{
   order.status="partially_refunded";assert.equal(validateOrder(order,charge()).refunded,true);
   order.status="processed";order.transactions.refunds=[{id:"refund"}];assert.equal(validateOrder(order,charge()).refunded,true);
 });
-test("public response preserves QR exactly and never leaks signed wire or credentials",()=>{
-  const c={...charge(),qr_data:"000201...EXACT-MP-QR",signed_wire:"private",idempotency_key:"private"};
-  const result=publicCharge(c);assert.equal(result.qrData,c.qr_data);assert.equal(result.signed_wire,undefined);assert.equal(result.idempotency_key,undefined);
+test("public response preserves QR exactly and never leaks the signed transaction or credentials",()=>{
+  const c={...charge(),qr_data:"000201...EXACT-MP-QR",tx_hash:"0xhash",signed_tx:"0x02private",nonce:"3",idempotency_key:"private"};
+  const result=publicCharge(c);assert.equal(result.qrData,c.qr_data);assert.equal(result.txHash,"0xhash");
+  assert.ok(!JSON.stringify(result).includes("private"));assert.equal(result.nonce,undefined);
 });
 test("cancel requested hides the payable state until provider confirmation",()=>{
   assert.equal(publicCharge({...charge(),status:"awaiting_payment",cancel_requested:true}).status,"cancel_pending");
@@ -99,10 +100,12 @@ test("Chainlink round must be positive, correct pair, complete and have a valid 
   for(const maxAge of [undefined,0,-1,1.5,NaN,Infinity])
     assert.throws(()=>validateRound(round,maxAge,1100),/chainlink_max_age_not_configured/);
 });
-test("network mint and chain configuration distinguish mainnet from testnet",()=>{
-  assert.equal(networkConfig("mainnet-beta").mint,"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-  assert.equal(networkConfig("mainnet-beta").chain,"solana:mainnet");
-  assert.notEqual(networkConfig("mainnet-beta").mint,networkConfig("devnet").mint);
+test("network configuration targets Arc Mainnet, its USDC and its Memo contract",()=>{
+  const network=networkConfig("mainnet");
+  assert.equal(network.chainId,5042);assert.equal(network.network,"arc-mainnet");
+  assert.equal(network.usdc,"0x3600000000000000000000000000000000000000");
+  assert.equal(network.memo,"0x5294E9927c3306DcBaDb03fe70b92e01cCede505");
+  assert.equal(network.minFeePerGasWei,20_000_000_000n);
   assert.throws(()=>networkConfig("unknown"));
 });
 
@@ -124,57 +127,76 @@ test("internal worker requests require a strong exact secret",()=>{
   try {assert.equal(internalAuthorized({headers:{"x-worker-secret":"a".repeat(64)}}),true);assert.equal(internalAuthorized({headers:{}}),false);}
   finally {if(before===undefined)delete process.env.INTERNAL_WORKER_SECRET;else process.env.INTERNAL_WORKER_SECRET=before;}
 });
-test("production Mercado Pago supports a devnet wallet independently of its payment environment",()=>{
+test("payment settings require ARC_RPC, and sandbox Mercado Pago never releases real USDC on Arc Mainnet",()=>{
   const env={MP_ENVIRONMENT:"production",MP_ACCESS_TOKEN:"test-token",MP_USER_ID:"123",
-    MP_WEBHOOK_SECRET:"test-webhook",SOLANA_RPC:"https://api.devnet.solana.com",INTERNAL_WORKER_SECRET:"x".repeat(32)};
-  const settings=paymentSettings(env,networkConfig("devnet"));
+    MP_WEBHOOK_SECRET:"test-webhook",ARC_RPC:"https://rpc.example.invalid",INTERNAL_WORKER_SECRET:"x".repeat(32)};
+  const settings=paymentSettings(env,networkConfig("mainnet"));
   assert.equal(settings.environment,"production");
-  assert.equal(settings.network,"devnet");
-  assert.throws(()=>paymentSettings({...env,MP_ACCESS_TOKEN:""},networkConfig("devnet")),/missing_mp_access_token/);
+  assert.equal(settings.network,"arc-mainnet");
+  for(const environment of ["test",undefined])
+    assert.throws(()=>paymentSettings({...env,MP_ENVIRONMENT:environment},networkConfig("mainnet")),/mp_test_requires_test_network/);
+  assert.equal(paymentSettings({...env,MP_ENVIRONMENT:"test"},{...networkConfig("mainnet"),testnet:true}).environment,"test");
+  assert.throws(()=>paymentSettings({...env,MP_ACCESS_TOKEN:""},networkConfig("mainnet")),/missing_mp_access_token/);
+  assert.throws(()=>paymentSettings({...env,ARC_RPC:""},networkConfig("mainnet")),/missing_arc_rpc/);
 });
 
+// Treasury nonce assignment takes a session advisory lock; this fake database only records it.
+const lockDb={query:async()=>({rows:[]})};
 function payoutFixture() {
-  const events=[],c={...charge(),wallet_address:"wallet",external_reference:"ref"};
-  const adapters={save:async(fields)=>events.push(["save",fields]),prepare:async()=>({hash:"signature",wire:"signed-wire",lastValidBlockHeight:"100",memo:"memo"}),
-    rpc:async(method,params)=>{events.push([method,params]);if(method==="getSignatureStatuses")return {value:[null]};if(method==="getBlockHeight")return 90;return "signature";}};
-  return {events,c,adapters};
+  const events=[],c={...charge(),network:"arc-mainnet",wallet_address:"0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    treasury_address:"0x8ba1f109551bD432803012645Ac136ddd64DBA72",external_reference:"ref"};
+  const state={receipt:null,latest:0};
+  const adapters={save:async(fields)=>events.push(["save",fields]),nextNonce:async()=>4n,
+    prepare:async({nonce})=>({hash:"0xhash",signedTx:"0x02signed",nonce:String(nonce),memo:"memo"}),
+    rpc:async(method,params)=>{events.push([method,params]);
+      if(method==="eth_getTransactionReceipt")return state.receipt;
+      if(method==="eth_getTransactionCount")return `0x${(4+state.latest).toString(16)}`;
+      if(method==="eth_sendRawTransaction")return "0xhash";
+      assert.fail(`unexpected RPC: ${method}`);
+    }};
+  return {events,c,adapters,state};
 }
-test("signed wire is durably saved before any transmit",async()=>{
-  const {events,c,adapters}=payoutFixture();await settlePayout(null,c,adapters);
-  assert.equal(events[0][0],"save");assert.equal(events[0][1].signed_wire,"signed-wire");
-  assert.equal(events.find(([method])=>method==="sendTransaction")[1][0],"signed-wire");
+const sends=events=>events.filter(([method])=>method==="eth_sendRawTransaction").map(([,params])=>params[0]);
+test("the signed transaction and its nonce are durably saved before any transmit",async()=>{
+  const {events,c,adapters}=payoutFixture();assert.deepEqual(await settlePayout(lockDb,c,adapters),{pending:true});
+  assert.equal(events[0][0],"save");
+  assert.deepEqual(events[0][1],{tx_hash:"0xhash",signed_tx:"0x02signed",nonce:"4",payout_memo:"memo",status:"delivery_pending"});
+  assert.deepEqual(sends(events),["0x02signed"]);
+  assert.deepEqual(events.at(-1),["save",{status:"broadcasting"}]);
 });
 test("database failure before durable save cannot transmit money",async()=>{
   const {events,c,adapters}=payoutFixture();adapters.save=async()=>{throw new Error("database unavailable");};
-  await assert.rejects(()=>settlePayout(null,c,adapters));assert.equal(events.length,0);
+  await assert.rejects(()=>settlePayout(lockDb,c,adapters));assert.equal(events.length,0);
 });
-test("transmit timeout preserves signature and retries the identical wire",async()=>{
+test("transmit timeout preserves the transaction and retries the identical bytes",async()=>{
   const {events,c,adapters}=payoutFixture();const rpc=adapters.rpc;
-  adapters.rpc=async(method,params)=>{if(method==="sendTransaction"){events.push([method,params]);throw new Error("timeout");}return rpc(method,params);};
-  await assert.rejects(()=>settlePayout(null,c,adapters));
+  adapters.rpc=async(method,params)=>{if(method==="eth_sendRawTransaction"){events.push([method,params]);throw new Error("timeout");}return rpc(method,params);};
+  await assert.rejects(()=>settlePayout(lockDb,c,adapters));
   adapters.prepare=async()=>{throw new Error("must not sign again");};adapters.rpc=rpc;
-  await settlePayout(null,c,adapters);
-  assert.deepEqual(events.filter(([method])=>method==="sendTransaction").map(([,params])=>params[0]),["signed-wire","signed-wire"]);
+  await settlePayout(lockDb,c,adapters);
+  assert.deepEqual(sends(events),["0x02signed","0x02signed"]);
 });
-test("confirmed is pending; only finalized completes delivery",async()=>{
-  for(const level of ["confirmed","finalized"]){const {events,c,adapters}=payoutFixture();c.signature="signature";
-    adapters.rpc=async()=>({value:[{confirmationStatus:level,slot:42}]});
-    const result=await settlePayout(null,c,adapters);assert.equal(Boolean(result.finalized),level==="finalized");
-    if(level==="confirmed") {assert.equal(result.confirmed,true);assert.deepEqual(events,[["save",{status:"confirmed",last_error:null}]]);}
-    else assert.equal(events.length,0);}
+test("a successful receipt is final and completes delivery without transmitting again",async()=>{
+  const {events,c,adapters,state}=payoutFixture();Object.assign(c,{tx_hash:"0xhash",signed_tx:"0x02signed",nonce:"4"});
+  state.receipt={status:"0x1",blockNumber:"0x2a"};
+  assert.deepEqual(await settlePayout(lockDb,c,adapters),{finalized:true,block:"42"});
+  assert.deepEqual(sends(events),[]);assert.equal(events.some(([kind])=>kind==="save"),false);
 });
-test("failed or expired ambiguous signatures require review instead of a second transfer",async()=>{
-  for(const failed of [true,false]) {const {events,c,adapters}=payoutFixture();c.signature="signature";c.last_valid_block_height="80";
-    const rpc=adapters.rpc;adapters.rpc=async(method,params)=>method==="getSignatureStatuses" && failed ? {value:[{err:{InstructionError:[1,"failed"]}}]} : rpc(method,params);
-    const result=await settlePayout(null,c,adapters);assert.ok(result.review);assert.equal(events.some(([m])=>m==="sendTransaction"),false);}
+test("a reverted receipt or a nonce consumed elsewhere requires review instead of a second transfer",async()=>{
+  for(const [setup,review] of [[state=>{state.receipt={status:"0x0",blockNumber:"0x2a"};},"arc_transaction_failed"],
+    [state=>{state.latest=1;},"arc_payout_not_landed"]]) {
+    const {events,c,adapters,state}=payoutFixture();Object.assign(c,{tx_hash:"0xhash",signed_tx:"0x02signed",nonce:"4"});setup(state);
+    adapters.prepare=async()=>assert.fail("must not sign again");
+    assert.deepEqual(await settlePayout(lockDb,c,adapters),{review});assert.deepEqual(sends(events),[]);
+  }
 });
 
 test("paused payments still observe finalization but cannot sign or broadcast",async()=>{
- const {events,c,adapters}=payoutFixture();adapters.allowBroadcast=false;
- assert.deepEqual(await settlePayout(null,c,adapters),{pending:true});assert.equal(events.length,0);
- Object.assign(c,{signature:"signature",signed_wire:"signed-wire",last_valid_block_height:"100"});
- assert.deepEqual(await settlePayout(null,c,adapters),{pending:true});
- assert.equal(events.some(([method])=>method==="sendTransaction"),false);
- adapters.rpc=async()=>({value:[{confirmationStatus:"finalized",slot:42}]});
- assert.deepEqual(await settlePayout(null,c,adapters),{finalized:true,block:42});
+ const {events,c,adapters,state}=payoutFixture();adapters.allowBroadcast=false;
+ assert.deepEqual(await settlePayout(lockDb,c,adapters),{pending:true});assert.equal(events.length,0);
+ Object.assign(c,{tx_hash:"0xhash",signed_tx:"0x02signed",nonce:"4"});
+ assert.deepEqual(await settlePayout(lockDb,c,adapters),{pending:true});
+ assert.deepEqual(sends(events),[]);
+ state.receipt={status:"0x1",blockNumber:"0x2a"};
+ assert.deepEqual(await settlePayout(lockDb,c,adapters),{finalized:true,block:"42"});
 });

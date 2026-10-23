@@ -1,77 +1,63 @@
-import {
- address,createNoopSigner,createTransactionMessage,setTransactionMessageFeePayer,
- setTransactionMessageLifetimeUsingBlockhash,appendTransactionMessageInstructions,compileTransaction,
- getTransactionEncoder,getTransactionDecoder,getBase64EncodedWireTransaction,getSignatureFromTransaction,
- getPublicKeyFromAddress,verifySignature,partiallySignTransaction,
-} from '@solana/kit';
-import {TOKEN_PROGRAM_ADDRESS,findAssociatedTokenPda,getCreateAssociatedTokenIdempotentInstruction,getTransferCheckedInstruction} from '@solana-program/token';
-import {getAddMemoInstruction} from '@solana-program/memo';
+// Arc transaction building and verification for user USDC transfers.
+// The user's Privy wallet signs and pays its own gas in USDC; the server only
+// prepares, verifies, stores and broadcasts the exact signed transaction.
+import {Transaction} from 'ethers';
 import {NETWORK} from '../../../src/network.js';
+import {feeFields,gasLimitWithMargin,memoTransferData,normalizeAddress,sameAddress} from '../../../src/arc.js';
 import {PaymentError} from './paymentCore.js';
-import {getTreasurySigner} from './treasuryPayout.js';
+import {ArcRpcRejected,assertArcNetwork,createArcRpc} from './arcRpc.js';
 
-export async function transferRpc(method,params) {
- try {
-  const response=await fetch(process.env.SOLANA_RPC || NETWORK.rpc,{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:AbortSignal.timeout(10000)});
-  const body=await response.json();
-  if(!response.ok || body.error || !Object.hasOwn(body,'result'))throw new PaymentError('transfer_rpc_unavailable');
-  return body.result;
- }catch(error){if(error instanceof PaymentError)throw error;throw new PaymentError('transfer_rpc_unavailable');}
-}
-export async function tokenAddress(owner,network=NETWORK) {
- return String((await findAssociatedTokenPda({owner:address(owner),mint:address(network.mint),tokenProgram:TOKEN_PROGRAM_ADDRESS}))[0]);
-}
+export const transferRpc=createArcRpc({unavailable:'transfer_rpc_unavailable',timeout:'transfer_rpc_unavailable',rejected:'transfer_rpc_rejected'});
+
+/** Native USDC balance of an account, in wei (18 decimals). */
 export async function sourceBalance(owner,rpc=transferRpc,network=NETWORK) {
- if(await rpc('getGenesisHash',[])!==network.genesis)throw new PaymentError('solana_rpc_network_mismatch');
- const ata=await tokenAddress(owner,network);
- const account=(await rpc('getAccountInfo',[ata,{encoding:'jsonParsed',commitment:'finalized'}])).value;
- if(!account)return 0n;
- const info=account.data?.parsed?.info;
- if(account.owner!==TOKEN_PROGRAM_ADDRESS || info?.owner!==owner || info?.mint!==network.mint ||
-   info?.tokenAmount?.decimals!==6 || info?.state!=='initialized')throw new PaymentError('invalid_usdc_account',409);
- return BigInt(info.tokenAmount.amount);
-}
-export async function prepareTransfer({from,to,raw,memo},adapters={}) {
- const rpc=adapters.rpc || transferRpc,network=adapters.network || NETWORK;
- const signer=await (adapters.signer || getTreasurySigner)();
- const user=createNoopSigner(address(from)),payer=createNoopSigner(signer.address);
- const [source,destination]=await Promise.all([tokenAddress(from,network),tokenAddress(to,network)]);
- const target=(await rpc('getAccountInfo',[to,{encoding:'jsonParsed',commitment:'confirmed'}])).value;
- if(target && target.owner!== '11111111111111111111111111111111')throw new PaymentError('recipient_not_wallet',400);
- const latest=(await rpc('getLatestBlockhash',[{commitment:'confirmed'}])).value;
- let message=createTransactionMessage({version:0});
- message=setTransactionMessageFeePayer(signer.address,message);
- message=setTransactionMessageLifetimeUsingBlockhash({blockhash:latest.blockhash,lastValidBlockHeight:BigInt(latest.lastValidBlockHeight)},message);
- message=appendTransactionMessageInstructions([
-  getCreateAssociatedTokenIdempotentInstruction({payer,ata:address(destination),owner:address(to),mint:address(network.mint),tokenProgram:TOKEN_PROGRAM_ADDRESS}),
-  getTransferCheckedInstruction({source:address(source),mint:address(network.mint),destination:address(destination),authority:user,amount:BigInt(raw),decimals:6}),
-  getAddMemoInstruction({memo,signers:[user]}),
- ],message);
- const tx=compileTransaction(message);
- const fee=(await rpc('getFeeForMessage',[Buffer.from(tx.messageBytes).toString('base64'),{commitment:'confirmed'}])).value;
- if(fee===null)throw new PaymentError('transfer_blockhash_expired',409);
- // Reserve worst-case rent, even when the ATA exists: it can be closed before broadcast.
- const rent=await rpc('getMinimumBalanceForRentExemption',[165,{commitment:'confirmed'}]);
- return {unsigned_wire:Buffer.from(getTransactionEncoder().encode(tx)).toString('base64'),
-  last_valid_block_height:String(latest.lastValidBlockHeight),fee_payer:String(signer.address),cost_lamports:String(BigInt(fee)+BigInt(rent))};
+ await assertArcNetwork(rpc,network);
+ return BigInt(await rpc('eth_getBalance',[normalizeAddress(owner),'latest']));
 }
 
-export async function validateUserSignature(prepared,wire) {
- if(typeof wire!=='string' || wire.length>1800 || !/^[A-Za-z0-9+/]+={0,2}$/.test(wire))throw new PaymentError('invalid_signed_transaction',400);
- let tx,original;
- try {tx=getTransactionDecoder().decode(Buffer.from(wire,'base64'));original=getTransactionDecoder().decode(Buffer.from(prepared.unsigned_wire,'base64'));}
- catch {throw new PaymentError('invalid_signed_transaction',400);}
- if(!Buffer.from(tx.messageBytes).equals(Buffer.from(original.messageBytes)) ||
-   Object.keys(tx.signatures).sort().join(',')!==Object.keys(original.signatures).sort().join(','))throw new PaymentError('transfer_message_changed',400);
- const signature=tx.signatures[prepared.from_address];
- if(!signature || !(await verifySignature(await getPublicKeyFromAddress(address(prepared.from_address)),signature,tx.messageBytes)))
-  throw new PaymentError('invalid_user_signature',403);
- return tx;
+/** Contract recipients are rejected; plain EOAs and EIP-7702 delegated EOAs are accepted. */
+async function assertWalletRecipient(rpc,to) {
+ const code=String(await rpc('eth_getCode',[to,'latest']) || '0x').toLowerCase();
+ if(code!=='0x' && !code.startsWith('0xef0100'))throw new PaymentError('recipient_not_wallet',400);
 }
-export async function signSponsoredTransfer(prepared,tx,adapters={}) {
- const signer=await (adapters.signer || getTreasurySigner)();
- if(signer.address!==prepared.fee_payer)throw new PaymentError('transfer_treasury_changed',409);
- const signed=await partiallySignTransaction([signer.keyPair],tx);
- return {signature:String(getSignatureFromTransaction(signed)),signed_wire:getBase64EncodedWireTransaction(signed)};
+
+/**
+ * Builds the unsigned EIP-1559 transaction the user's wallet will sign:
+ * Memo.memo(USDC, transfer(to, raw), keccak256(reference), memo).
+ */
+export async function prepareTransfer({from,to,raw,memo,reference},adapters={}) {
+ const rpc=adapters.rpc || transferRpc,network=adapters.network || NETWORK;
+ const sender=normalizeAddress(from),recipient=normalizeAddress(to);
+ await assertArcNetwork(rpc,network);
+ await assertWalletRecipient(rpc,recipient);
+ const data=memoTransferData({to:recipient,raw,memo,reference,network});
+ let gasEstimate;
+ try {gasEstimate=await rpc('eth_estimateGas',[{from:sender,to:network.memo,data}]);}
+ catch(error){if(error instanceof ArcRpcRejected)throw new PaymentError('transfer_simulation_failed',409);throw error;}
+ const [gasPrice,nonce]=await Promise.all([rpc('eth_gasPrice',[]),rpc('eth_getTransactionCount',[sender,'pending'])]);
+ const gasLimit=gasLimitWithMargin(gasEstimate),fees=feeFields({gasPrice,network});
+ const tx=Transaction.from({type:2,chainId:network.chainId,to:network.memo,data,value:0n,nonce:Number(BigInt(nonce)),gasLimit,...fees});
+ return {unsigned_tx:tx.unsignedSerialized,nonce:String(BigInt(nonce)),max_gas_wei:String(gasLimit*fees.maxFeePerGas),
+  request:{from:sender,to:network.memo,data,value:'0x0',nonce:Number(BigInt(nonce)),chainId:network.chainId,type:2,
+   gasLimit:`0x${gasLimit.toString(16)}`,maxFeePerGas:`0x${fees.maxFeePerGas.toString(16)}`,
+   maxPriorityFeePerGas:`0x${fees.maxPriorityFeePerGas.toString(16)}`}};
+}
+
+/** Rebuilds the wallet request from a stored unsigned transaction. */
+export function signingRequest(t) {
+ const tx=Transaction.from(t.unsigned_tx);
+ return {from:t.from_address,to:tx.to,data:tx.data,value:'0x0',nonce:tx.nonce,chainId:Number(tx.chainId),type:2,
+  gasLimit:`0x${tx.gasLimit.toString(16)}`,maxFeePerGas:`0x${tx.maxFeePerGas.toString(16)}`,
+  maxPriorityFeePerGas:`0x${tx.maxPriorityFeePerGas.toString(16)}`};
+}
+
+/** The signed transaction must be exactly the prepared one, signed by the transfer's sender. */
+export function validateUserSignature(prepared,signedTx,network=NETWORK) {
+ if(typeof signedTx!=='string' || signedTx.length>20000 || !/^0x[0-9a-fA-F]+$/.test(signedTx))throw new PaymentError('invalid_signed_transaction',400);
+ let tx;
+ try {tx=Transaction.from(signedTx);}catch{throw new PaymentError('invalid_signed_transaction',400);}
+ if(!tx.signature || !tx.from)throw new PaymentError('invalid_signed_transaction',400);
+ if(tx.unsignedSerialized!==prepared.unsigned_tx || BigInt(tx.chainId)!==BigInt(network.chainId))throw new PaymentError('transfer_message_changed',400);
+ if(!sameAddress(tx.from,prepared.from_address))throw new PaymentError('invalid_user_signature',403);
+ return {hash:tx.hash,signed_tx:tx.serialized,request:{from:tx.from,to:tx.to,data:tx.data}};
 }

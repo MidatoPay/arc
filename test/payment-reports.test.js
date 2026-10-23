@@ -13,7 +13,7 @@ test("administrative access uses a private exact allowlist, denied by default",(
 });
 test("report dates are inclusive Argentina days with an exclusive UTC end",()=>{
   const f=reportFilters({from:"2026-10-13",to:"2026-10-13",environment:"production"});
-  assert.equal(f.from,"2026-10-13T03:00:00.000Z");assert.equal(f.to,"2026-10-14T03:00:00.000Z");assert.equal(f.network,"mainnet-beta");
+  assert.equal(f.from,"2026-10-13T03:00:00.000Z");assert.equal(f.to,"2026-10-14T03:00:00.000Z");assert.equal(f.network,"arc-mainnet");
 });
 test("invalid filters, environment, cursor and excessive page size are rejected",()=>{
   for(const q of [{from:"2026-02-30"},{from:"2026-10-14",to:"2026-10-13"},{limit:"201"},{limit:"-1"},{environment:"all"},{merchant:"not-a-privy-id"},{status:"anything"},{source:"anything"}])assert.throws(()=>reportFilters(q));

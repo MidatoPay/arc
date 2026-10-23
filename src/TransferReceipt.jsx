@@ -3,13 +3,13 @@ import { transferApi } from "./transfers.js";
 import { explorerTxUrl } from "./chain.js";
 import { useOptionalLanguage } from "./i18n.jsx";
 import { transferErrorText } from "./errorText.js";
-import { exactAmount, Spinner } from "./TransferApproval.jsx";
+import { exactAmount, Spinner, NETWORK_LABEL, networkFeeText } from "./TransferApproval.jsx";
+import { isAddress } from "./arc.js";
 
 // Recibo de un envío USDC: sigue el estado real (polling) hasta completed/failed.
 // Nunca presenta como enviado algo pendiente, fallido o en revisión.
 // useOptionalLanguage: fuera del LanguageProvider (tests estáticos) se muestra en español.
 const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", accent: "#fe6c1c", orangeSoft: "#FFEADF", green: "#21B95B", red: "#E4483D" };
-const NETWORK_LABEL = { "mainnet-beta": "Mainnet", devnet: "Devnet" };
 const TONES = {
   green: { bg: "#E7F7EE", fg: "#15803D" },
   amber: { bg: "#FFF3E6", fg: "#B45309" },
@@ -26,7 +26,6 @@ const STATUS = {
 };
 const FALLBACK = { tone: "amber", title: "sending" };
 const shortId = (a) => (a && a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-6)}` : a || "—");
-const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const Svg = ({ size, children }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">{children}</svg>;
 const stroke = { stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" };
@@ -104,8 +103,8 @@ export default function TransferReceipt({ transfer: initial, getAccessToken, onC
     ? t("transferReceipt.date", when.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" }),
       when.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }))
     : "";
-  const copySignature = async () => {
-    try { await navigator.clipboard.writeText(transfer.signature); setCopied(true); } catch { /* sin permiso de portapapeles */ }
+  const copyTxHash = async () => {
+    try { await navigator.clipboard.writeText(transfer.txHash); setCopied(true); } catch { /* sin permiso de portapapeles */ }
   };
   const label = { fontSize: 14, color: C.mut };
   const value = { fontSize: 14, color: C.ink, fontWeight: 600, textAlign: "right" };
@@ -135,28 +134,28 @@ export default function TransferReceipt({ transfer: initial, getAccessToken, onC
                 <span style={label}>{t("transferReceipt.to")}</span>
                 <span style={{ ...value, overflowWrap: "anywhere" }}>
                   {/* Sin agendar, el "nombre" es la propia dirección: no repetirla, ya se muestra completa abajo. */}
-                  {transfer.recipient && !SOLANA_ADDRESS.test(transfer.recipient.trim()) && transfer.recipient.trim() !== transfer.to
-                    ? transfer.recipient : t("transferReceipt.solanaWallet")}
+                  {transfer.recipient && !isAddress(transfer.recipient.trim()) && transfer.recipient.trim() !== transfer.to
+                    ? transfer.recipient : t("transferReceipt.arcWallet")}
                 </span>
               </div>
               <div style={{ marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.5, color: C.mut, textAlign: "right", wordBreak: "break-all" }}>{transfer.to}</div>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span style={label}>{t("transferReceipt.network")}</span><span style={value}>Solana {network}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span style={label}>{t("transferReceipt.cost")}</span><span style={value}>0 SOL</span></div>
-            {transfer.signature && (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span style={label}>{t("transferReceipt.network")}</span><span style={value}>{network}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span style={label}>{t("transferReceipt.cost")}</span><span style={value}>{networkFeeText(transfer.maxNetworkFeeUsdc, locale) || "—"}</span></div>
+            {transfer.txHash && (
               <>
                 <div aria-hidden="true" style={{ borderTop: "1.5px dashed #DCDCE2", margin: "4px 0 0" }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={label}>{t("transferReceipt.txId")}</div>
-                    <div style={{ marginTop: 3, fontSize: 14, fontWeight: 600, color: C.accent, fontFamily: "ui-monospace, monospace" }}>{shortId(transfer.signature)}</div>
+                    <div style={{ marginTop: 3, fontSize: 14, fontWeight: 600, color: C.accent, fontFamily: "ui-monospace, monospace" }}>{shortId(transfer.txHash)}</div>
                   </div>
-                  <button type="button" onClick={copySignature} aria-label={copied ? t("transferReceipt.copied") : t("transferReceipt.copy")}
+                  <button type="button" onClick={copyTxHash} aria-label={copied ? t("transferReceipt.copied") : t("transferReceipt.copy")}
                     style={{ border: 0, background: "transparent", color: copied ? C.green : C.accent, cursor: "pointer", padding: 8, margin: -4, display: "grid", placeItems: "center" }}>
                     {copied ? <IconCheck size={18} /> : <IconCopy />}
                   </button>
                 </div>
-                <a href={explorerTxUrl(transfer.signature)} target="_blank" rel="noreferrer"
+                <a href={explorerTxUrl(transfer.txHash)} target="_blank" rel="noreferrer"
                   style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.accent, textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
                   {t("transferReceipt.viewOnchain")}<IconExternal />
                 </a>

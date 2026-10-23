@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual, createHash } from "node:crypto";
 
-export const RECOVERABLE_PAYOUT_REVIEW_REASONS = ["charge_configuration_changed", "solana_expired_requires_review"];
-export const CHARGE_SCOPED_REVIEW_REASONS = [...RECOVERABLE_PAYOUT_REVIEW_REASONS, "solana_transaction_failed"];
+export const RECOVERABLE_PAYOUT_REVIEW_REASONS = ["charge_configuration_changed", "arc_payout_not_landed"];
+export const CHARGE_SCOPED_REVIEW_REASONS = [...RECOVERABLE_PAYOUT_REVIEW_REASONS, "arc_transaction_failed"];
 
 export class PaymentError extends Error {
   constructor(code, status = 503) { super(code); this.code = code; this.status = status; }
@@ -77,7 +77,7 @@ export function publicCharge(c) {
   return { id: c.id, status, providerStatus: c.provider_status, providerDetail: c.provider_detail,
     ars: unitsDecimal(c.amount_cents, 2), feeArs: unitsDecimal(c.fee_cents, 2), feeBps: c.fee_bps,
     usdc: unitsDecimal(c.usdc_raw, 6), fxRate: c.fx_rate, qrData: c.qr_data,
-    orderId: c.order_id, paymentId: c.payment_id, signature: c.signature,
+    orderId: c.order_id, paymentId: c.payment_id, txHash: c.tx_hash,
     reference: c.external_reference, createdAt: c.created_at, paidAt: c.paid_at, expiresAt: c.expires_at,
     lastError: c.last_error, network: c.network };
 }

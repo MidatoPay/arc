@@ -94,7 +94,7 @@ test("unpaid charges show the QR and cancellation without claiming payment succe
 test("delayed and received payments under review remain processing without claiming delivery",()=>{
   for(const charge of [
     {...base,paidAt:new Date(now-180000).toISOString()},
-    {...base,status:"manual_review",lastError:"solana_expired_requires_review"},
+    {...base,status:"manual_review",lastError:"arc_payout_not_landed"},
   ]){
     const html=render(charge);
     assert.match(html,/Procesando pago/);

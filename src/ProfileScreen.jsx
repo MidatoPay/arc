@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useLanguage } from "./i18n.jsx";
-import { SOLANA, explorerAddressUrl } from "./chain.js";
+import { ARC, explorerAddressUrl } from "./chain.js";
 import BusinessProfile from "./BusinessProfile.jsx";
 import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
 import LanguageSelect from "./LanguageSelect.jsx";
@@ -123,10 +123,10 @@ export default function ProfileScreen({ email, address, nombre, onLogout, goRepo
 
       <Section title={t("mas.sectionAccount")}>
         <SettingsRow icon={<IconExplorer />} title={t("mas.explorerTitle")} sub={t("mas.explorerSub")} href={explorerAddressUrl(address)} />
-        {SOLANA.cluster === "devnet" && (
+        {ARC.testnet && (
           <>
             <Divider />
-            <SettingsRow icon={<IconFaucet />} title={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={SOLANA.faucet} />
+            <SettingsRow icon={<IconFaucet />} title={t("mas.faucetTitle")} sub={t("mas.faucetSub")} href={ARC.faucet} />
           </>
         )}
         <Divider />

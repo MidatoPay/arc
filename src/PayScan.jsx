@@ -1,21 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "./i18n.jsx";
-import { SOLANA } from "./chain.js";
+import { ARC } from "./chain.js";
 import { exactUsdc } from "./transfers.js";
-import { nuevaFactura } from "./solana.js";
+import { nuevaFactura } from "./arc.js";
 import { parseScanTarget } from "./scanTarget.js";
 import { transferErrorText } from "./errorText.js";
 import QrScanner from "./QrScanner.jsx";
 import { AmountKeypad } from "./MercadoPagoCharge.jsx";
 
-// Pagar: escanear (o pegar) el QR de una wallet Solana / cobro MidatoPay y enviar USDC.
+// Pagar: escanear (o pegar) el QR de una wallet EVM / cobro MidatoPay y enviar USDC en Arc.
 // El envío usa el motor existente (onPay → aprobación con Privy → recibo); acá solo cambia la interfaz.
 const C = {
   bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0",
   orange: "#FF5A00", accent: "#fe6c1c", orangeSoft: "#FFEADF", red: "#E4483D", redSoft: "#FDECEA",
 };
 const cta = { border: 0, borderRadius: 18, padding: "16px 18px", font: "inherit", fontSize: 16, fontWeight: 600, cursor: "pointer", width: "100%" };
-const NETWORK_NAME = SOLANA.cluster === "devnet" ? "Devnet" : "Mainnet";
+const NETWORK_NAME = ARC.name;
 
 const fmtArs = (n) => Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtUsdc = (n, locale) => Number(n).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
@@ -63,7 +63,7 @@ const fromPayRequest = (req) => (req
   ? { kind: "charge_p2p", addr: req.addr, name: req.who || "", ars: req.ars, factura: req.factura || "", usdc: null } : null);
 
 export default function PayScan({
-  address, balance, fxRate, contacts, onPay, onDone, scanRequest, onScanRequestConsumed, onBack, onFullscreenChange,
+  address, balance, networkFee = 0, fxRate, contacts, onPay, onDone, scanRequest, onScanRequestConsumed, onBack, onFullscreenChange,
 }) {
   const { t, locale } = useLanguage();
   const [view, setView] = useState(scanRequest ? "amount" : "scan"); // scan | link | invalid | amount
@@ -101,7 +101,7 @@ export default function PayScan({
     setView("link");
   };
   const accept = (raw) => {
-    const result = parseScanTarget(raw, { mint: SOLANA.usdcMint, self: address });
+    const result = parseScanTarget(raw, { usdc: ARC.usdc, self: address });
     if (result.error) return result.error;
     setTarget(result);
     setTargetId((n) => n + 1);
@@ -231,7 +231,7 @@ export default function PayScan({
 
   return (
     <AmountStep key={targetId} target={target} title={t("scan.payTitle")} onBack={openScan}
-      balance={balance} fxRate={fxRate} contacts={contacts} onPay={onPay} onDone={onDone} />
+      balance={balance} networkFee={networkFee} fxRate={fxRate} contacts={contacts} onPay={onPay} onDone={onDone} />
   );
 }
 
@@ -242,7 +242,7 @@ const page = { display: "flex", flexDirection: "column", height: "100%", minHeig
  * Paso de monto compartido por Pagar y Enviar: destinatario, monto en USDC (o fijo del QR) y Continuar.
  * Continuar abre la aprobación existente (TransferApproval) a través de onPay.
  */
-export function AmountStep({ target, title, onBack, balance, fxRate, contacts, onPay, onDone }) {
+export function AmountStep({ target, title, onBack, balance, networkFee = 0, fxRate, contacts, onPay, onDone }) {
   const langCtx = useLanguage();
   const { t, locale } = langCtx;
   const [amount, setAmount] = useState("");
@@ -254,7 +254,7 @@ export function AmountStep({ target, title, onBack, balance, fxRate, contacts, o
   const contact = contacts.find((c) => c.addr === target.addr) || null;
   const generic = /^(your commerce|tu comercio)$/i.test(String(target.name || "").trim());
   const displayName = contact?.name || (!generic && target.name) ||
-    (target.kind === "charge_p2p" ? t("scan.merchantQr") : t("scan.solanaWallet"));
+    (target.kind === "charge_p2p" ? t("scan.merchantQr") : t("scan.arcWallet"));
   const fixedArs = target.ars ?? null;
   const fixedUsdc = target.usdc ?? null;
   const editable = fixedArs == null && fixedUsdc == null;
@@ -272,14 +272,18 @@ export function AmountStep({ target, title, onBack, balance, fxRate, contacts, o
     }
   }, [fixedArs, fixedUsdc, amount, fxRate]);
   const usdc = usdcText ? Number(usdcText) : 0;
-  const insufficient = balance !== null && usdc > balance;
+  // El importe llega completo al destinatario; el fee de red (USDC) se paga aparte desde el mismo saldo.
+  const fee = Number(networkFee) > 0 ? Number(networkFee) : 0;
+  const insufficient = balance !== null && usdc + fee > balance;
   // Dirección que no está en la agenda: primero se confirma la red/dirección en un aviso.
   const [addressConfirmed, setAddressConfirmed] = useState(() => !(target.kind === "pay" && !contact));
   const canContinue = Boolean(usdcText) && !insufficient && !busy && addressConfirmed;
 
   const useAll = () => {
-    if (!(balance > 0)) return;
-    const floored = Math.floor(balance * 1000000) / 1000000;
+    // Enviar todo: llega el saldo menos el fee de red.
+    const sendable = balance - fee;
+    if (!(sendable > 0)) return;
+    const floored = Math.floor(sendable * 1000000) / 1000000;
     setAmount(floored.toFixed(6).replace(/\.?0+$/, "").replace(".", ","));
   };
 
@@ -326,7 +330,7 @@ export function AmountStep({ target, title, onBack, balance, fxRate, contacts, o
           <div style={{ fontSize: 12.5, color: C.mut, marginTop: 2, fontFamily: "ui-monospace, monospace" }} title={target.addr}>{shortAddr(target.addr)}</div>
         </div>
         <div style={{ fontSize: 11.5, fontWeight: 500, color: C.mut, textAlign: "right", flexShrink: 0, lineHeight: 1.3 }}>
-          USDC<br />Solana {NETWORK_NAME}
+          USDC<br />{NETWORK_NAME}
         </div>
       </div>
 
@@ -360,9 +364,6 @@ export function AmountStep({ target, title, onBack, balance, fxRate, contacts, o
           <div role="alert" style={{ fontSize: 13, color: C.red, textAlign: "center", lineHeight: 1.45 }}>
             {insufficient ? t("scan.insufficient") : transferErrorText(langCtx, sendError)}
           </div>
-        )}
-        {target.solanaPay && (
-          <div style={{ fontSize: 11.5, color: C.mut, textAlign: "center", lineHeight: 1.45 }}>{t("scan.solanaPayNote")}</div>
         )}
         <button type="button" onClick={submit} disabled={!canContinue} aria-busy={busy || undefined}
           style={{ ...cta, background: C.orange, color: "#fff", opacity: canContinue ? 1 : 0.4, boxShadow: canContinue ? "0 8px 20px rgba(255,90,0,0.28)" : "none" }}>
@@ -401,7 +402,7 @@ function AddressCheck({ addr, onConfirm, onBack }) {
         </h2>
         <p id="mp-address-check-body" style={{ margin: "8px 0 16px", fontSize: 14, color: C.mut, lineHeight: 1.5 }}>{t("scan.networkWarning")}</p>
         <div style={{ background: C.bg, borderRadius: 16, padding: "12px 14px", textAlign: "left" }}>
-          <div style={{ fontSize: 12, color: C.mut, marginBottom: 6 }}>{t("scan.verifyAddressLabel")} · USDC Solana {NETWORK_NAME}</div>
+          <div style={{ fontSize: 12, color: C.mut, marginBottom: 6 }}>{t("scan.verifyAddressLabel")} · USDC {NETWORK_NAME}</div>
           <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 14, lineHeight: 1.55, wordBreak: "break-all", color: C.mut }}>
             <span style={strong}>{addr.slice(0, 4)}</span>{addr.slice(4, -4)}<span style={strong}>{addr.slice(-4)}</span>
           </div>

@@ -3,10 +3,10 @@ import {
   estimateUsdcTransfer,
   nuevaFactura,
   sendUsdc,
-} from "./solana.js";
+} from "./arc.js";
 import { arsToUsdc, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
 import { payoutArsToUser } from "./fiatRail.js";
-import { SOLANA } from "./chain.js";
+import { ARC } from "./chain.js";
 import { getWalletBalance } from './walletBalance.js';
 import {
   getTreasuryAddressAsync,
@@ -18,10 +18,10 @@ const MIN_USDC = 0.01;
 
 /**
  * Convertir ARS → USDC:
- * Cotiza con Chainlink y la Function de tesorería envía USDC SPL.
+ * Cotiza con Chainlink y la Function de tesorería envía USDC en Arc.
  */
 export async function runConvertArsToUsdc({ token, userAddress, arsAmount, arsBalance }) {
-  if (SOLANA.cluster !== "devnet") throw new Error("demo_conversion_disabled");
+  if (!ARC.testnet) throw new Error("demo_conversion_disabled");
   if (!token) throw new Error("Sesión requerida para convertir");
   if (!userAddress) throw new Error("Wallet de usuario no disponible");
   const ars = Number(arsAmount);
@@ -99,7 +99,7 @@ export async function estimateConvertUsdcToArs({ from, usdcAmount, fxRate }) {
  * Convertir USDC → ARS:
  * Usuario envía USDC a la recaudadora; se acredita ARS simulado (fiatRail).
  */
-export async function runConvertUsdcToArs({ wallet, signAndSendTransaction, usdcAmount, userUsdcBalance }) {
+export async function runConvertUsdcToArs({ wallet, sendTransaction, usdcAmount, userUsdcBalance }) {
   const treasury = await getTreasuryAddressAsync();
   if (!treasury) throw new Error("Treasury no configurada. Definí TREASURY_SECRET_KEY en el server.");
 
@@ -115,7 +115,7 @@ export async function runConvertUsdcToArs({ wallet, signAndSendTransaction, usdc
   const factura = nuevaFactura();
   const memo = buildConvertUsdcArsMemo({ usdc, ars, fxRate, factura });
 
-  const tx = await sendUsdc(wallet, signAndSendTransaction, { to: treasury, usdc, memo });
+  const tx = await sendUsdc(wallet, sendTransaction, { to: treasury, usdc, memo, reference: factura });
   const fiat = await payoutArsToUser(ars);
 
   return {

@@ -7,12 +7,12 @@ if(![".env",".env.production"].includes(target)) throw new Error("invalid_env_ta
 const production=target===".env.production";
 let contents = await readFile(target, "utf8").catch((e) => { if(e.code === "ENOENT") return ""; throw e; });
 const values = {
-  VITE_SOLANA_CLUSTER:production?"mainnet-beta":"devnet", MP_ENVIRONMENT:production?"production":"test", PAYMENTS_ENABLED:"false",
+  // Arc Mainnet only admits the production Mercado Pago environment (sandbox payments cannot release real USDC).
+  VITE_ARC_NETWORK:"mainnet", MP_ENVIRONMENT:"production", PAYMENTS_ENABLED:"false",
   MP_ACCESS_TOKEN:"", MP_USER_ID:"", MP_EXTERNAL_POS_ID:"", MP_STORE_ID:"", MP_WEBHOOK_SECRET:"",
   CONVERSION_FEE_BPS:"50", CHAINLINK_MAX_AGE_SECONDS:"90000",
   ETH_RPC_URL:production?"https://ethereum.publicnode.com":"",
-  SOLANA_RPC:production?"https://api.mainnet-beta.solana.com":"",
-  VITE_SOLANA_WSS:production?"wss://api.mainnet-beta.solana.com":"",
+  ARC_RPC:"https://rpc.mainnet.arc.io",
   PAYMENTS_BASE_URL:"", INTERNAL_WORKER_SECRET:randomBytes(32).toString("hex"),
   PAYMENTS_ADMIN_USER_IDS:"",
 };

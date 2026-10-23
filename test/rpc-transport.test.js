@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setRpcSession } from '../src/rpcSession.js';
 
-test('the real Solana Kit transport attaches renewed session tokens and preserves numeric RPC results',async t=>{
+test('the app JSON-RPC client attaches renewed session tokens and returns raw hex results',async t=>{
   const previousWindow=globalThis.window,previousFetch=globalThis.fetch;
   t.after(()=>{globalThis.window=previousWindow;globalThis.fetch=previousFetch;setRpcSession(null);});
   globalThis.window={location:{origin:'http://localhost:5173'}};
@@ -10,19 +10,22 @@ test('the real Solana Kit transport attaches renewed session tokens and preserve
   const requests=[];
   globalThis.fetch=async(url,options)=>{
     const body=JSON.parse(options.body);
-    requests.push({url:String(url),authorization:new Headers(options.headers).get('authorization'),method:body.method});
-    return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{context:{slot:1},value:123}}),{headers:{'Content-Type':'application/json'}});
+    requests.push({url:String(url),authorization:new Headers(options.headers).get('authorization'),method:body.method,params:body.params});
+    if(body.method==='eth_call')return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,error:{code:3,message:'execution reverted'}}),{headers:{'Content-Type':'application/json'}});
+    return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:'0x7b'}),{headers:{'Content-Type':'application/json'}});
   };
   const {createAppRpc}=await import('../src/chain.js?browser-transport-test');
   const rpc=createAppRpc();
-  assert.equal((await rpc.getBalance('11111111111111111111111111111111').send()).value,123n);
+  const owner='0x8ba1f109551bD432803012645Ac136ddd64DBA72';
+  assert.equal(await rpc('eth_getBalance',[owner,'latest']),'0x7b');
   token='renewed';
-  assert.equal((await rpc.getBalance('11111111111111111111111111111111').send()).value,123n);
+  assert.equal(BigInt(await rpc('eth_getBalance',[owner,'latest'])),123n);
   assert.deepEqual(requests,[
-    {url:'http://localhost:5173/rpc',authorization:'Bearer first',method:'getBalance'},
-    {url:'http://localhost:5173/rpc',authorization:'Bearer renewed',method:'getBalance'},
+    {url:'http://localhost:5173/rpc',authorization:'Bearer first',method:'eth_getBalance',params:[owner,'latest']},
+    {url:'http://localhost:5173/rpc',authorization:'Bearer renewed',method:'eth_getBalance',params:[owner,'latest']},
   ]);
+  await assert.rejects(()=>rpc('eth_call',[{to:owner,data:'0x'},'latest']),error=>error.code===3 && /execution reverted/.test(error.message));
   setRpcSession(null);
-  await assert.rejects(()=>rpc.getHealth().send(),/session_required/);
-  assert.equal(requests.length,2);
+  await assert.rejects(()=>rpc('eth_blockNumber'),/session_required/);
+  assert.equal(requests.length,3);
 });

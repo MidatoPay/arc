@@ -1,11 +1,11 @@
 import { useState,useEffect,useRef,useCallback } from "react";
 import { reportsApi,csvColumns,csvCell,csvOperation } from "./paymentReports.js";
-import { SOLANA } from "./chain.js";
+import { ARC } from "./chain.js";
 import { useOptionalLanguage } from "./i18n.jsx";
 import { chargeErrorText } from "./errorText.js";
 const control={font:"inherit",padding:12,border:"1px solid #ECECF0",borderRadius:12};
 const button={...control,background:"white",cursor:"pointer"};
-const initial={from:"",to:"",merchant:"",status:"",source:"",environment:SOLANA.cluster==="devnet"?"test":"production"};
+const initial={from:"",to:"",merchant:"",status:"",source:"",environment:ARC.testnet?"test":"production"};
 const params=(f)=>new URLSearchParams(Object.entries(f).filter(([,v])=>v)).toString();
 export default function PaymentReports({getAccessToken,onBack}) {
   const lang=useOptionalLanguage();const {t,locale}=lang;
@@ -93,7 +93,7 @@ export default function PaymentReports({getAccessToken,onBack}) {
         <td style={{padding:12}}>{new Date(r.createdAt).toLocaleString(locale,{timeZone:"America/Argentina/Buenos_Aires"})}<div style={{fontSize:11,overflowWrap:"anywhere"}}>{r.merchantId}</div></td>
         <td style={{padding:12}}>{r.source}<div>{r.status} · {r.direction}</div></td><td style={{padding:12}}>$ {r.ars}</td>
         <td style={{padding:12}}>{r.source==="mercadopago"?`$ ${r.feeArs} (${r.feeBps/100}%)`:"—"}<div>{r.commissionState ? t(`reports.commission.${r.commissionState}`) : ""}</div></td>
-        <td style={{padding:12}}>{r.usdc}</td><td style={{padding:12,fontSize:11,overflowWrap:"anywhere",minWidth:150}}>{r.reference}<div>{r.orderId}</div><div>{r.paymentId}</div><div>{r.signature}</div></td>
+        <td style={{padding:12}}>{r.usdc}</td><td style={{padding:12,fontSize:11,overflowWrap:"anywhere",minWidth:150}}>{r.reference}<div>{r.orderId}</div><div>{r.paymentId}</div><div>{r.txHash}</div></td>
       </tr>)}</tbody>
     </table>{!loading && !rows.length && <p style={{padding:16}}>{t("reports.empty")}</p>}</div>
     {next && <button disabled={loading || exporting} onClick={more} style={button}>{t("reports.loadMore")}</button>}

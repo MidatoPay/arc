@@ -1,10 +1,9 @@
 const columns={
-  wallet_transfers:["id","user_id","network","signature","signed_wire","usdc_raw","sponsor_day"],
+  wallet_transfers:["id","user_id","network","tx_hash","signed_tx","unsigned_tx","nonce","max_gas_wei","usdc_raw"],
   wallet_identity_audit:["user_id","network","previous_address","primary_address"],
-  charges:["id","user_id","environment","network","seller_id","pos_id","amount_cents","fee_cents","usdc_raw","idempotency_key","order_body","order_id","signature","signed_wire","status","paid_at"],
+  charges:["id","user_id","environment","network","seller_id","pos_id","amount_cents","fee_cents","usdc_raw","idempotency_key","order_body","order_id","tx_hash","signed_tx","nonce","status","paid_at"],
   payment_inbox:["id","environment","event_key","order_id","payload","processed_at","quarantined"],
   payment_incidents:["id","charge_id","reason","resolved_at"],
-  payment_user_blocks:["user_id","environment","reason"],
   commission_ledger:["charge_id","merchant_user_id","environment","network","fee_cents","earned_at"],
   merchant_payment_pos:["user_id","environment","seller_id","merchant_email","store_id","external_id","pos_id","creation_key","creation_body","status"],
   merchant_pos_assignments:["environment","seller_id","merchant_email","external_id","pos_id","store_id","pos_name","claimed_user_id","claimed_at"],

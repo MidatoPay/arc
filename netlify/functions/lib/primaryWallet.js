@@ -1,17 +1,19 @@
-import { primarySolanaWallet } from '../../../src/primaryWallet.js';
+import { primaryArcWallet } from '../../../src/primaryWallet.js';
+import { normalizeAddress } from '../../../src/arc.js';
 import { NETWORK } from '../../../src/network.js';
 import { getPaymentDb,getPaymentPrivy,transaction } from './paymentRuntime.js';
 import { PaymentError } from './paymentCore.js';
 
 export async function resolvePrimaryWallet(userId,adapters={}) {
   const user=await (adapters.getUser || (id=>getPaymentPrivy().getUser(id)))(userId);
-  const primary=primarySolanaWallet(user);
+  const primary=primaryArcWallet(user);
   if(!primary || !primary.id)throw new PaymentError('primary_wallet_unavailable',409);
-  return primary;
+  // One canonical (checksummed) spelling is stored and compared everywhere.
+  return {...primary,address:normalizeAddress(primary.address)};
 }
 
 export async function syncPrimaryWallet(userId,adapters={}) {
-  const primary=await resolvePrimaryWallet(userId,adapters),network=adapters.network || NETWORK.cluster;
+  const primary=await resolvePrimaryWallet(userId,adapters),network=adapters.network || NETWORK.network;
   await transaction(async db=>{
     await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`primary-wallet:${network}:${userId}`]);
     const previous=(await db.query('SELECT address FROM wallets WHERE user_id=$1 AND network=$2 FOR UPDATE',[userId,network])).rows[0];

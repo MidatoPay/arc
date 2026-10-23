@@ -1,42 +1,19 @@
 import { NETWORK } from "../../../src/network.js";
-// Reconciliación compartida: trae transferencias USDC (SPL) entrantes vía RPC
-// de Solana para una address y las inserta en `transactions` si faltan.
-// Usado por reconcile-wallets.js (job) y transactions.js (GET).
+import { TRANSFER_TOPIC, memoFromLogs, weiToUsdc } from "../../../src/arc.js";
+import { createArcRpc } from "./arcRpc.js";
+// Reconciliación compartida: trae movimientos USDC de una address desde Arc y
+// los inserta en `transactions` si faltan. Usado por reconcile-wallets.js (job)
+// y transactions.js (GET).
+//
+// Fuente: logs `Transfer` del emisor de sistema de Arc (EIP-7708), que registra
+// TODO movimiento de USDC (nativo y ERC-20) en 18 decimales. Se lee un solo
+// emisor para no contar dos veces las transferencias ERC-20.
 
-const USDC_MINT = NETWORK.mint;
-const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const ASSOCIATED_TOKEN_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const MAX_SIGS_FIRST_SYNC = 40;
+// eth_getLogs admite como máximo 10.000 bloques por llamada (~85 min).
+export const MAX_LOG_RANGE = 9_999n;
+const MAX_RANGES_PER_RUN = 6n;
 
-function rpcUrl() {
-  return process.env.SOLANA_RPC || process.env.VITE_SOLANA_RPC || NETWORK.rpc;
-}
-
-async function rpcCall(method, params) {
-  const res = await fetch(rpcUrl(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  if (!res.ok) throw new Error(`solana_rpc_http_${res.status}`);
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.message || "solana_rpc_error");
-  return json.result;
-}
-
-/** ATA PDA (mismo algoritmo que Associated Token Program). */
-async function findAta(owner) {
-  // En Node usamos getProgramAccounts filter como fallback; para ATA canónico
-  // pedimos getTokenAccountsByOwner y tomamos el de USDC.
-  const result = await rpcCall("getTokenAccountsByOwner", [
-    owner,
-    { mint: USDC_MINT },
-    { encoding: "jsonParsed" },
-  ]);
-  const value = result?.value || [];
-  if (value.length === 0) return null;
-  return value[0].pubkey;
-}
+const rpcCall = createArcRpc();
 
 export function decodeMemo(text) {
   if (!text) return null;
@@ -51,133 +28,110 @@ export function decodeMemo(text) {
   return { text, fields };
 }
 
-function extractMemo(tx) {
-  const ixs = tx?.transaction?.message?.instructions || [];
-  for (const ix of ixs) {
-    if (ix.program === "spl-memo" || ix.parsed?.type === "memo") {
-      return String(ix.parsed?.info?.memo || ix.parsed || "");
-    }
-  }
-  for (const group of tx?.meta?.innerInstructions || []) {
-    for (const ix of group.instructions || []) {
-      if (ix.program === "spl-memo" || ix.parsed?.type === "memo") {
-        return String(ix.parsed?.info?.memo || "");
-      }
-    }
-  }
-  return null;
-}
+const topicFor = (address) => `0x${address.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`;
+const addressFromTopic = (topic) => `0x${String(topic).slice(-40)}`;
 
-function usdcDeltaByOwner(tx, owner) {
-  const pre = tx?.meta?.preTokenBalances || [];
-  const post = tx?.meta?.postTokenBalances || [];
-  const preHit = pre.find((b) => b.mint === USDC_MINT && b.owner === owner);
-  const postHit = post.find((b) => b.mint === USDC_MINT && b.owner === owner);
-  if (!postHit && !preHit) return 0;
-  const postAmt = Number(postHit?.uiTokenAmount?.uiAmount ?? 0);
-  const preAmt = Number(preHit?.uiTokenAmount?.uiAmount ?? 0);
-  return postAmt - preAmt;
-}
-
-function counterparty(tx, owner) {
-  const pre = tx?.meta?.preTokenBalances || [];
-  const post = tx?.meta?.postTokenBalances || [];
-  const all = [...pre, ...post];
-  const other = all.find((b) => b.mint === USDC_MINT && b.owner && b.owner !== owner);
-  return other?.owner || null;
+async function logs(rpc, network, fromBlock, toBlock, topics) {
+  return rpc("eth_getLogs", [{
+    address: network.systemEmitter,
+    fromBlock: `0x${fromBlock.toString(16)}`,
+    toBlock: `0x${toBlock.toString(16)}`,
+    topics,
+  }]);
 }
 
 /**
  * @param {import('pg').Pool} db
- * @param {{ userId: string, address: string, lastSyncedBlock: number|null, getFxRate: () => Promise<number> }} opts
- * @returns {Promise<number|null>} nuevo last_synced_block (slot)
+ * @param {{ userId: string, address: string, lastSyncedBlock: number|string|null, getFxRate: () => Promise<number> }} opts
+ * @returns {Promise<string|null>} nuevo last_synced_block (número de bloque)
  */
-export async function reconcileWallet(db, { userId, address, lastSyncedBlock, getFxRate }) {
-  const ata = await findAta(address);
-  if (!ata) return lastSyncedBlock;
+export async function reconcileWallet(db, { userId, address, lastSyncedBlock, getFxRate }, adapters = {}) {
+  const rpc = adapters.rpc || rpcCall, network = adapters.network || NETWORK;
+  const head = BigInt(await rpc("eth_blockNumber", []));
+  let from = lastSyncedBlock == null ? (head > MAX_LOG_RANGE ? head - MAX_LOG_RANGE : 0n) : BigInt(lastSyncedBlock) + 1n;
+  if (from > head) return lastSyncedBlock == null ? null : String(lastSyncedBlock);
+  const target = topicFor(address);
+  let synced = lastSyncedBlock == null ? null : BigInt(lastSyncedBlock);
+  const blockTimes = new Map();
 
-  const sigs = await rpcCall("getSignaturesForAddress", [
-    ata,
-    { limit: lastSyncedBlock == null ? MAX_SIGS_FIRST_SYNC : 25 },
-  ]);
-  if (!Array.isArray(sigs) || sigs.length === 0) return lastSyncedBlock;
+  for (let ranges = 0n; from <= head && ranges < MAX_RANGES_PER_RUN; ranges++) {
+    const to = from + MAX_LOG_RANGE - 1n < head ? from + MAX_LOG_RANGE - 1n : head;
+    const [incoming, outgoing] = await Promise.all([
+      logs(rpc, network, from, to, [TRANSFER_TOPIC, null, target]),
+      logs(rpc, network, from, to, [TRANSFER_TOPIC, target, null]),
+    ]);
+    const entries = [...incoming.map((log) => ({ log, direction: "in" })), ...outgoing.map((log) => ({ log, direction: "out" }))]
+      .filter(({ log }) => !log.removed)
+      .sort((a, b) => Number(BigInt(a.log.blockNumber) - BigInt(b.log.blockNumber)));
 
-  let maxSlotSeen = lastSyncedBlock ?? null;
+    for (const { log, direction } of entries) {
+      const hash = log.transactionHash;
+      try {
+        const amount = BigInt(log.data);
+        if (amount <= 0n) continue;
+        const usdc = weiToUsdc(amount);
+        // Mint/burn (0x0) are not payments between wallets.
+        const counterpartyAddress = addressFromTopic(direction === "in" ? log.topics[1] : log.topics[2]);
+        if (/^0x0{40}$/.test(counterpartyAddress)) continue;
 
-  for (const s of sigs) {
-    if (s.err) continue;
-    if (lastSyncedBlock != null && s.slot <= lastSyncedBlock) continue;
+        const paymentJob = await db.query("SELECT id FROM charges WHERE tx_hash=$1 AND user_id=$2 AND network=$3", [hash, userId, network.network]);
+        if (paymentJob.rowCount) continue; // payment worker writes its authoritative conversion metadata
+        const transferJob = await db.query("SELECT id FROM wallet_transfers WHERE tx_hash=$1 AND user_id=$2 AND network=$3", [hash, userId, network.network]);
+        if (transferJob.rowCount) continue; // transfer worker persists its authoritative outgoing movement
 
-    try {
-      const tx = await rpcCall("getTransaction", [
-        s.signature,
-        { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "finalized" },
-      ]);
-      if (!tx) continue;
+        const receipt = await rpc("eth_getTransactionReceipt", [hash]);
+        if (!receipt || receipt.status !== "0x1") continue;
+        const memoText = memoFromLogs(receipt.logs, network);
+        const fields = decodeMemo(memoText)?.fields ?? null;
 
-      const delta = usdcDeltaByOwner(tx, address);
-      const usdc = Math.abs(delta);
-      const direction = delta > 0 ? "in" : "out";
-      if (!(usdc > 0)) continue;
-
-      const paymentJob = await db.query("SELECT id FROM charges WHERE signature=$1 AND user_id=$2 AND network=$3", [s.signature,userId,NETWORK.cluster]);
-      if (paymentJob.rowCount) continue; // payment worker writes its authoritative conversion metadata
-      const transferJob=await db.query('SELECT id FROM wallet_transfers WHERE signature=$1 AND user_id=$2 AND network=$3',[s.signature,userId,NETWORK.cluster]);
-      if(transferJob.rowCount)continue; // transfer worker persists its authoritative outgoing movement
-      const memoText = extractMemo(tx);
-      const decoded = decodeMemo(memoText);
-      const fields = decoded?.fields ?? null;
-
-      let kind = "received";
-      let factura = null;
-      let ars = null;
-      let fxRate;
-
-      if (fields && fields.kind) {
-        kind = ["voice","pay","charge_p2p"].includes(fields.kind) ? fields.kind : "received";
-        factura = fields.inv ? String(fields.inv).slice(0, 64) : null;
-        if (fields.cur === "ARS" && fields.amt) {
-          const parsedArs = Number(fields.amt);
-          if (Number.isFinite(parsedArs) && parsedArs > 0) {
-            ars = parsedArs;
-            fxRate = ars / usdc;
+        let kind = "received";
+        let factura = null;
+        let ars = null;
+        let fxRate;
+        if (fields && fields.kind) {
+          kind = ["voice", "pay", "charge_p2p"].includes(fields.kind) ? fields.kind : "received";
+          factura = fields.inv ? String(fields.inv).slice(0, 64) : null;
+          if (fields.cur === "ARS" && fields.amt) {
+            const parsedArs = Number(fields.amt);
+            if (Number.isFinite(parsedArs) && parsedArs > 0) {
+              ars = parsedArs;
+              fxRate = ars / Number(usdc);
+            }
           }
         }
-      }
-      if (ars == null) {
-        fxRate = await getFxRate();
-        ars = usdc * fxRate;
-      }
+        if (ars == null) {
+          fxRate = await getFxRate();
+          ars = Number(usdc) * fxRate;
+        }
 
-      const from = counterparty(tx, address);
-      let who = from ? `${from.slice(0, 4)}…${from.slice(-4)}` : "—";
-      if (from) {
+        let who = `${counterpartyAddress.slice(0, 6)}…${counterpartyAddress.slice(-4)}`;
         const contact = await db.query(
-          "SELECT name FROM contacts WHERE user_id = $1 AND address = $2 LIMIT 1",
-          [userId, from]
+          "SELECT name FROM contacts WHERE user_id = $1 AND lower(address) = lower($2) LIMIT 1",
+          [userId, counterpartyAddress]
         );
         if (contact.rows[0]?.name) who = contact.rows[0].name;
+
+        const block = BigInt(log.blockNumber);
+        if (!blockTimes.has(block)) {
+          const header = await rpc("eth_getBlockByNumber", [log.blockNumber, false]).catch(() => null);
+          blockTimes.set(block, header?.timestamp ? new Date(Number(BigInt(header.timestamp)) * 1000).toISOString() : null);
+        }
+        // The fee belongs to the sender; for outgoing transfers it is in the receipt.
+        const fee = direction === "out" ? weiToUsdc(BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice)) : null;
+
+        await db.query(
+          `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at, network)
+           VALUES ($1, $2, $3, $13, $4, $5, $6, $7, $8, $9, $14, $10, COALESCE($11::timestamptz, now()), $12)
+           ON CONFLICT (user_id, network, hash) DO NOTHING`,
+          [userId, hash, kind, who, usdc, fxRate, ars, factura, String(block), memoText, blockTimes.get(block), network.network, direction, fee]
+        );
+      } catch (err) {
+        console.error(`Failed to reconcile transaction ${hash || "unknown"}:`, err?.code || err?.message || "unknown");
       }
-
-      const createdAt = s.blockTime ? new Date(s.blockTime * 1000).toISOString() : null;
-
-      await db.query(
-        `INSERT INTO transactions (user_id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at, network)
-         VALUES ($1, $2, $3, $13, $4, $5, $6, $7, $8, $9, NULL, $10, COALESCE($11::timestamptz, now()), $12)
-         ON CONFLICT (user_id, network, hash) DO NOTHING`,
-        [userId, s.signature, kind, who, usdc, fxRate, ars, factura, s.slot, memoText, createdAt, NETWORK.cluster, direction]
-      );
-
-      if (maxSlotSeen == null || s.slot > maxSlotSeen) maxSlotSeen = s.slot;
-    } catch (err) {
-      console.error(`Failed to process signature ${s.signature || "unknown"}:`, err);
-      continue;
     }
+    synced = to;
+    from = to + 1n;
   }
 
-  return maxSlotSeen;
+  return synced == null ? null : String(synced);
 }
-
-// Silencia unused imports warning if tree-shaken elsewhere
-void TOKEN_PROGRAM;
-void ASSOCIATED_TOKEN_PROGRAM;

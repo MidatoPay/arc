@@ -3,11 +3,12 @@ import { PaymentError } from "./paymentCore.js";
 import { paymentSettings,paymentQuoteSettings,paymentDatabaseConfig,getPaymentDb,getPaymentPrivy } from "./paymentRuntime.js";
 import { verifySellerAccount,verifyStore } from "./mercadopago.js";
 import { treasuryLiquidity,treasuryRpc,getTreasurySigner } from "./treasuryPayout.js";
+import { assertArcNetwork } from "./arcRpc.js";
 import { inspectPaymentDatabase } from "./paymentDatabase.js";
 import { fetchArsQuote,CHAINLINK_USD_ARS_HEARTBEAT_SECONDS } from "../../../src/priceFeed.js";
 import { publicSecretVariables } from "../../../scripts/public-env-policy.js";
 
-const required=["MP_ACCESS_TOKEN","MP_USER_ID","MP_STORE_ID","MP_WEBHOOK_SECRET","SOLANA_RPC","ETH_RPC_URL",
+const required=["MP_ACCESS_TOKEN","MP_USER_ID","MP_STORE_ID","MP_WEBHOOK_SECRET","ARC_RPC","ETH_RPC_URL",
   "CHAINLINK_MAX_AGE_SECONDS","INTERNAL_WORKER_SECRET","AIVEN_PG_URL","AIVEN_PG_CA_CERT","VITE_PRIVY_APP_ID","PRIVY_APP_SECRET"];
 function failureCode(error) {
   if(error instanceof PaymentError)return error.code;
@@ -64,11 +65,11 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
     return {updatedAt:quote.updatedAt,ageSeconds:Math.floor(Date.now()/1000)-quote.updatedAt,maxAgeSeconds:maxAge,
       publishedHeartbeatSeconds:CHAINLINK_USD_ARS_HEARTBEAT_SECONDS};
   });
-  add("solana_network",["SOLANA_RPC"],async()=>{
-    if(await (adapters.rpc || treasuryRpc)("getGenesisHash",[])!==network.genesis)throw new PaymentError("solana_rpc_network_mismatch");
-    return {cluster:network.cluster};
+  add("arc_network",["ARC_RPC"],async()=>{
+    await assertArcNetwork(adapters.rpc || treasuryRpc,network);
+    return {network:network.network,chainId:network.chainId};
   });
-  add("treasury",["SOLANA_RPC"],async()=>{
+  add("treasury",["ARC_RPC"],async()=>{
     if(!env.TREASURY_SECRET_KEY?.trim() && !env.TREASURY_PRIVATE_KEY?.trim())throw new PaymentError("treasury_not_configured");
     try {await (adapters.getSigner || getTreasurySigner)();}catch{throw new PaymentError("invalid_treasury_secret_key");}
     const liquidity=await (adapters.liquidity || treasuryLiquidity)();
@@ -91,6 +92,6 @@ export async function runPaymentPreflight({env=process.env,network=NETWORK,userI
   });
   else checks.push({name:"privy_user",status:"unverified",code:"privy_check_user_id_required"});
   checks.push(...await Promise.all(jobs));
-  return {ready:checks.every(check=>check.status==="pass"),readOnly:true,environment:env.MP_ENVIRONMENT || "test",network:network.cluster,
+  return {ready:checks.every(check=>check.status==="pass"),readOnly:true,environment:env.MP_ENVIRONMENT || "test",network:network.network,
     paymentsEnabled:env.PAYMENTS_ENABLED==="true",checks};
 }

@@ -80,7 +80,7 @@ export default function ChargeSummary({ charge, qr, busy, onCancel, onReset, err
 
   const showCancel = !received && ["creating", "awaiting_payment"].includes(charge.status);
   const showNew = canStartNewCharge(charge) && !processing;
-  const explorerUrl = charge.signature ? explorerTxUrl(charge.signature) : null;
+  const explorerUrl = charge.txHash ? explorerTxUrl(charge.txHash) : null;
 
   useEffect(() => {
     if (!delivered) {

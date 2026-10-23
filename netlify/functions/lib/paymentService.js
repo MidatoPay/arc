@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isAddress } from "@solana/kit";
+import { isAddress, normalizeAddress } from "../../../src/arc.js";
 import { fetchArsQuote } from "../../../src/priceFeed.js";
 import { PaymentError, quoteCharge, orderBody, unitsDecimal, validateOrder, decimalUnits } from "./paymentCore.js";
 import { getPaymentDb, transaction, paymentSettings, paymentQuoteSettings, assertPaymentsEnabled, assertWalletOwned } from "./paymentRuntime.js";
@@ -15,6 +15,8 @@ export async function createCharge(userId, input, key, adapters = {}) {
   const amount = decimalUnits(input.ars, 2);
   if (amount <= 0n || amount > 100000000n) throw new PaymentError("invalid_amount_or_fee",400);
   if (!isAddress(input.wallet || "")) throw new PaymentError("invalid_wallet", 400);
+  // One canonical spelling for comparisons and storage (EVM addresses are case-insensitive).
+  input = { ...input, wallet: normalizeAddress(input.wallet) };
   await (adapters.assertWalletOwned || assertWalletOwned)(userId, input.wallet);
   const existing = await pool.query("SELECT * FROM charges WHERE idempotency_key=$1", [key]);
   if (existing.rows[0]) {

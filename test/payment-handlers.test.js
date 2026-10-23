@@ -5,7 +5,7 @@ import { createPaymentReportsHandler } from "../netlify/functions/payment-report
 import { PaymentError } from "../netlify/functions/lib/paymentCore.js";
 
 test("charge endpoint commits an intent before dispatch and returns 202 for asynchronous QR creation",async()=>{
- const events=[],c={id:"00000000-0000-4000-8000-000000000001",status:"creating",amount_cents:"10000",fee_cents:"50",usdc_raw:"60000",signed_wire:"private"};
+ const events=[],c={id:"00000000-0000-4000-8000-000000000001",status:"creating",amount_cents:"10000",fee_cents:"50",usdc_raw:"60000",signed_tx:"private"};
  const handler=createChargesHandler({authenticatePayment:async()=>"merchant",paymentSettings:()=>({}),
  createCharge:async(user,input,key)=>{events.push({user,input,key});return c;},kickWorker:async()=>events.push("dispatch")});
  const result=await handler({path:"/charges",httpMethod:"POST",headers:{"idempotency-key":"same-attempt"},body:JSON.stringify({ars:"100",wallet:"wallet"})});

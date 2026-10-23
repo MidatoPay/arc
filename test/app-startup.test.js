@@ -11,14 +11,14 @@ const compiled=await build({
  stdin:{contents:"export {default as App} from './src/App.jsx'; export {setSession} from '@privy-io/react-auth';",resolveDir:process.cwd(),loader:'js'},
  bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',packages:'external',
  plugins:[{name:'privy-loading-session',setup(build){
-  build.onResolve({filter:/^@privy-io\/react-auth(?:\/solana)?$/},()=>({path:'session',namespace:'privy-mock'}));
+  build.onResolve({filter:/^@privy-io\/react-auth$/},()=>({path:'session',namespace:'privy-mock'}));
   build.onLoad({filter:/.*/,namespace:'privy-mock'},()=>({contents:`
    let state;
    export function setSession(session){state={ready:false,authenticated:false,user:null,login:()=>{},logout:async()=>{},getAccessToken:async()=>null,...session};}
    export function usePrivy(){return state;}
    export function useWallets(){return {ready:state.ready,wallets:[]};}
    export function useSignTransaction(){return {signTransaction:async()=>{throw new Error('Must not sign on startup');}};}
-   export function useSignAndSendTransaction(){return {signAndSendTransaction:async()=>{throw new Error('Must not send on startup');}};}
+   export function useSendTransaction(){return {sendTransaction:async()=>{throw new Error('Must not send on startup');}};}
    export function useExportWallet(){return {exportWallet:async()=>{throw new Error('Must not export on startup');}};}
   `,loader:'js'}));
  }}],

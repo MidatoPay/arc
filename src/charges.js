@@ -1,6 +1,6 @@
-import { SOLANA } from "./chain.js";
+import { ARC } from "./chain.js";
 export { canStartNewCharge } from "./chargeStatus.js";
-const storageKey = (userId) => `mp_charge_${SOLANA.cluster}_${userId}`;
+const storageKey = (userId) => `mp_charge_${ARC.network}_${userId}`;
 export function readChargeAttempt(userId) {
   try { return JSON.parse(localStorage.getItem(storageKey(userId))); } catch { return null; }
 }
@@ -56,12 +56,12 @@ export async function chargeApi(path, token, options = {}) {
 }
 export const CHARGE_ERRORS = {
   charge_configuration_changed:"La configuración de este cobro cambió. Estamos conciliando la operación; podés iniciar otro cobro.",
-  solana_expired_requires_review:"La entrega de USDC requiere verificar su confirmación. Podés iniciar otro cobro.",
-  solana_transaction_failed:"La transferencia de USDC falló y este cobro requiere revisión. Podés iniciar otro cobro.",
-  invalid_treasury_secret_key:"TREASURY_SECRET_KEY no contiene una clave Solana válida. Revisá la variable privada de Functions.",
-  solana_rpc_network_mismatch:"SOLANA_RPC apunta a una red distinta de VITE_SOLANA_CLUSTER. Revisá la configuración de Functions.",
-  solana_rpc_unavailable:"El RPC de Solana no respondió correctamente. Conservamos el cobro para reintentar.",
-  solana_rpc_timeout:"El RPC de Solana demoró demasiado en responder. Conservamos el cobro para reintentar.",
+  arc_payout_not_landed:"La entrega de USDC requiere verificar su estado. Podés iniciar otro cobro.",
+  arc_transaction_failed:"La transferencia de USDC falló y este cobro requiere revisión. Podés iniciar otro cobro.",
+  invalid_treasury_secret_key:"TREASURY_SECRET_KEY no contiene una clave privada EVM válida. Revisá la variable privada de Functions.",
+  arc_rpc_network_mismatch:"ARC_RPC apunta a una red distinta de Arc Mainnet. Revisá la configuración de Functions.",
+  arc_rpc_unavailable:"El RPC de Arc no respondió correctamente. Conservamos el cobro para reintentar.",
+  arc_rpc_timeout:"El RPC de Arc demoró demasiado en responder. Conservamos el cobro para reintentar.",
   mercadopago_invalid_response:"Mercado Pago devolvió una respuesta inesperada. Conservamos el intento para reintentar.",
   mercadopago_account_unavailable:"No se pudo verificar la cuenta vendedora con Mercado Pago. Intentá nuevamente.",
   invalid_mp_store_id:"MP_STORE_ID debe ser el ID numérico de la sucursal de la cuenta Mercado Pago configurada.",
@@ -88,6 +88,7 @@ export const CHARGE_ERRORS = {
   missing_aiven_pg_ca_cert:"Falta AIVEN_PG_CA_CERT en las variables de Functions de Netlify.",
   idempotency_conflict:"Este intento ya tiene un cobro con otro importe. Recuperá esa operación antes de iniciar otra.",
   payments_disabled:"Los cobros están deshabilitados hasta completar la configuración productiva.",
+  mp_test_requires_test_network:"MP_ENVIRONMENT=test está deshabilitado en Arc Mainnet: un pago de prueba no puede liberar USDC real. Usá MP_ENVIRONMENT=production.",
   quote_unavailable:"No se pudo consultar la cotización Chainlink. Intentá nuevamente más tarde.",
   quote_invalid_round:"La cotización Chainlink no contiene una ronda válida de USD/ARS.",
   quote_invalid_or_stale:"La cotización Chainlink no es válida o está vencida. El cobro queda detenido hasta tener una ronda vigente.",
@@ -100,7 +101,7 @@ export const CHARGE_ERRORS = {
   invalid_conversion_fee:"CONVERSION_FEE_BPS debe ser 50 para la comisión de conversión del 0,5%.",
   treasury_not_configured:"Falta configurar la tesorería del servidor con TREASURY_SECRET_KEY.",
   insufficient_treasury:"No hay suficiente liquidez USDC para iniciar este cobro.",
-  insufficient_treasury_sol:"La tesorería necesita SOL para completar las entregas.",
+  arc_rpc_rejected:"La red Arc rechazó la operación de la tesorería. Conservamos el cobro para reintentar.",
   mercadopago_pos_not_found:"La caja Mercado Pago no está configurada para esta cuenta.",
   mercadopago_pos_not_pdv:"La caja existe, pero debe configurarse con config.qr.operating_mode=pdv para cobrar con este QR.",
   mercadopago_invalid_pos_response:"Mercado Pago devolvió un formato de cajas inesperado. No se inició el cobro.",

@@ -3,10 +3,17 @@ import { useOptionalLanguage } from "./i18n.jsx";
 import { transferErrorText } from "./errorText.js";
 
 // Confirmación previa a firmar un envío USDC (Enviar, Pagar y voz). Hoja inferior minimalista.
-// Muestra la dirección completa del destinatario, importe exacto, red, costo de envío y cupo diario.
-// useOptionalLanguage: fuera del LanguageProvider (tests estáticos) se muestra en español.
+// Muestra la dirección completa del destinatario, importe exacto, red y costo de red estimado (en USDC,
+// lo paga el usuario aparte del importe). useOptionalLanguage: fuera del LanguageProvider se muestra en español.
 const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", orange: "#FF5A00", accent: "#fe6c1c", orangeSoft: "#FFEADF", red: "#E4483D" };
-const NETWORK_LABEL = { "mainnet-beta": "Mainnet", devnet: "Devnet" };
+export const NETWORK_LABEL = { "arc-mainnet": "Arc Mainnet" };
+
+/** Costo de red en USDC con hasta 6 decimales: "0.003000000000000000" → "0,003". */
+export function networkFeeText(fee, locale = "es-AR") {
+  const n = Number(fee);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `≈ ${n.toLocaleString(locale, { maximumFractionDigits: 6 })} USDC`;
+}
 const mono = { fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.5, color: C.mut, wordBreak: "break-all" };
 
 /** Importe exacto sin redondear, con el separador del idioma: es "0.020000" → "0,02"; en "0.000001" → "0.000001". */
@@ -53,7 +60,7 @@ export default function TransferApproval({ engine }) {
 
   // El origen siempre es la wallet principal del usuario (lo valida el servidor), por eso no se muestra.
   const { to, amount } = a.input;
-  const remaining = engine.info?.quota?.remaining;
+  const fee = networkFeeText(engine.info?.networkFeeUsdc, locale);
   const network = NETWORK_LABEL[engine.network] || engine.network || "";
   const initial = (a.recipient || "?").trim().charAt(0).toUpperCase() || "?";
   return (
@@ -82,9 +89,8 @@ export default function TransferApproval({ engine }) {
         </div>
 
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          <Row label={t("approval.network")}>Solana {network}</Row>
-          <Row label={t("approval.cost")}>0 SOL</Row>
-          <Row label={t("approval.sendsToday")}>{remaining === undefined || remaining === null ? t("approval.maxPerDay") : t("approval.available", remaining)}</Row>
+          <Row label={t("approval.network")}>{network}</Row>
+          <Row label={t("approval.cost")}>{fee || t("approval.costPending")}</Row>
         </div>
 
         {engine.error && (

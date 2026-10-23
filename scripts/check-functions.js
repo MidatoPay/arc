@@ -3,9 +3,10 @@ import { resolve,sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { readFile,writeFile,mkdir,mkdtemp,rm } from "node:fs/promises";
 Object.assign(process.env,{
- MP_ENVIRONMENT:process.env.VITE_SOLANA_CLUSTER==="mainnet-beta"?"production":"test",
+ // Arc Mainnet only admits the production Mercado Pago environment; credentials here are fake and offline.
+ MP_ENVIRONMENT:"production",
  MP_ACCESS_TOKEN:"offline-check-token",MP_USER_ID:"123",MP_WEBHOOK_SECRET:"offline-check-webhook",
- SOLANA_RPC:"https://example.invalid",INTERNAL_WORKER_SECRET:"x".repeat(32)
+ ARC_RPC:"https://example.invalid",INTERNAL_WORKER_SECRET:"x".repeat(32)
 });
 // Any accidental remote request makes this check fail immediately.
 globalThis.fetch=async()=>{throw new Error("Network access is forbidden in the packaged Functions check");};

@@ -3,7 +3,8 @@ import { PrivyClient } from "@privy-io/server-auth";
 import { timingSafeEqual } from "node:crypto";
 import { NETWORK } from "../../../src/network.js";
 import { PaymentError } from "./paymentCore.js";
-import { primarySolanaWallet } from '../../../src/primaryWallet.js';
+import { primaryArcWallet } from '../../../src/primaryWallet.js';
+import { sameAddress } from '../../../src/arc.js';
 
 let pool, privy;
 export function paymentDatabaseConfig(env=process.env) {
@@ -36,17 +37,19 @@ export async function authenticatePayment(event) {
 }
 export async function assertWalletOwned(userId, wallet) {
   const user = await getPaymentPrivy().getUser(userId);
-  if (primarySolanaWallet(user)?.address!==wallet) throw new PaymentError("primary_wallet_required", 403);
+  if (!sameAddress(primaryArcWallet(user)?.address,wallet)) throw new PaymentError("primary_wallet_required", 403);
 }
 export function paymentSettings(env=process.env,network=NETWORK) {
   const environment = env.MP_ENVIRONMENT || "test";
   if (!["test", "production"].includes(environment)) throw new PaymentError("invalid_mp_environment");
-  // Mercado Pago environment and Solana cluster are configured independently.
-  for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_WEBHOOK_SECRET", "SOLANA_RPC", "INTERNAL_WORKER_SECRET"]) {
+  // Sandbox Mercado Pago payments must never release real USDC: the test
+  // environment stays disabled unless the configured Arc network is a test network.
+  if (environment === "test" && !network.testnet) throw new PaymentError("mp_test_requires_test_network");
+  for (const key of ["MP_ACCESS_TOKEN", "MP_USER_ID", "MP_WEBHOOK_SECRET", "ARC_RPC", "INTERNAL_WORKER_SECRET"]) {
     if (!env[key]?.trim()) throw new PaymentError(`missing_${key.toLowerCase()}`);
   }
   if (env.INTERNAL_WORKER_SECRET.length < 32) throw new PaymentError("invalid_worker_secret");
-  return { environment, network: network.cluster, seller: env.MP_USER_ID.trim(),
+  return { environment, network: network.network, seller: env.MP_USER_ID.trim(),
     store: env.MP_STORE_ID?.trim(), token: env.MP_ACCESS_TOKEN.trim() };
 }
 export function assertPaymentsEnabled() {

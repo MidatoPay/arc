@@ -1,17 +1,16 @@
-# MidatoPay × Solana: QR and voice payments
+# MidatoPay × Arc: QR and voice payments
 
-**Argentine merchants get paid in pesos through a Mercado Pago QR code and receive the proceeds in USDC on Solana.**
+**Argentine merchants get paid in pesos through a Mercado Pago QR code and receive the proceeds in USDC on Arc.**
 
-The customer pays in ARS with a Mercado Pago QR code. MidatoPay verifies the payment server-side, and a treasury sends the equivalent amount in native USDC, net of a 0.5% fee, to the merchant's Solana wallet. Every settlement carries an on-chain memo with the charge reference, the ARS amount and the exchange rate.
+The customer pays in ARS with a Mercado Pago QR code. MidatoPay verifies the payment server-side, and a treasury sends the equivalent amount in USDC, net of a 0.5% fee, to the merchant's Arc wallet. Every settlement carries an on-chain memo (Arc Memo contract) with the charge reference, the ARS amount and the exchange rate.
 
-The merchant logs in with email or phone, and the app creates an embedded Solana wallet for them. From there they can charge and send USDC by typing or speaking, for example "cobrar 5000 pesos" ("charge 5000 pesos") or "enviar 1 dólar a katy" ("send 1 dollar to katy"). Every operation settles on Solana and can be verified on Solana Explorer.
+The merchant logs in with email or phone, and the app creates an embedded EVM wallet for them. From there they can charge and send USDC by typing or speaking, for example "cobrar 5000 pesos" ("charge 5000 pesos") or "enviar 1 dólar a katy" ("send 1 dollar to katy"). Every operation settles on Arc and can be verified on the Arc explorer.
 
-- Repository: `github.com/MidatoPay/solanahackcba`
-- Primary network: **Solana** (`mainnet-beta` for production, `devnet` for testing)
-- Settlement asset: Circle USDC (SPL Token)
+- Repository: `github.com/MidatoPay/arc`
+- Network: **Arc Mainnet** (chain ID `5042`)
+- Settlement asset: USDC, Arc's native gas token, moved through its ERC-20 interface (`0x3600000000000000000000000000000000000000`, 6 decimals)
 - Payment provider: Mercado Pago (Orders API, dynamic QR)
-- Treasury on Solana Mainnet: [`7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L`](https://explorer.solana.com/address/7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L)
-- Real mainnet transaction: [`3hsY2qzq…STchL4hv`](https://explorer.solana.com/tx/3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv)
+- Explorer: https://explorer.arc.io
 
 ---
 
@@ -20,8 +19,8 @@ The merchant logs in with email or phone, and the app creates an embedded Solana
 1. [Problem and product](#1-problem-and-product)
 2. [Architecture](#2-architecture)
 3. [Charge and settlement flow](#3-charge-and-settlement-flow)
-4. [Fee](#4-fee)
-5. [Solana and USDC](#5-solana-and-usdc)
+4. [Fees and gas](#4-fees-and-gas)
+5. [Arc and USDC](#5-arc-and-usdc)
 6. [Installation and configuration](#6-installation-and-configuration)
 7. [Commercial traction](#7-commercial-traction)
 8. [Repository map](#8-repository-map)
@@ -38,84 +37,86 @@ MidatoPay changes nothing at the counter. It changes what the merchant ends up h
 | Actor | Experience |
 |---|---|
 | Customer | Scans a Mercado Pago dynamic QR code and pays in ARS, with no crypto wallet and no new app. |
-| Merchant | Logs in with email or phone (Privy) and gets a Solana wallet automatically. Types or says the amount ("cobrar 5000 pesos"), shows the QR code, and sees "Payment received" followed by the USDC credit. |
+| Merchant | Logs in with email or phone (Privy) and gets an Arc wallet automatically. Types or says the amount ("cobrar 5000 pesos"), shows the QR code, and sees "Payment received" followed by the USDC credit. |
 | Platform | Verifies the payment with Mercado Pago, settles USDC from a prefunded treasury and records the fee. |
 
 The app also includes:
 
-- **Activity:** history with a Solana Explorer link for every settlement.
-- **Send:** USDC transfers to contacts or addresses.
+- **Activity:** history with an Arc explorer link for every settlement.
+- **Send:** USDC transfers to contacts or addresses (the sender pays Arc gas in USDC).
 - **Voice charges.**
 - **Contacts.**
 - **Business profile** (see below).
 - **Operations and commissions reports** for administrators (see below).
-- **Languages:** English and Spanish.
+- **Languages:** English, Spanish and Chinese.
 
 ### Business name
 
 - Each user can save or clear their business name under **Profile → Business name**.
 - The name appears in Activity and in the QR header. If it is empty, the Privy user name is used instead.
-- The `merchant_profiles` table links both names to the authenticated Privy DID. Before deploying this version, apply `db/migrations/20261016_merchant_profiles.sql`, which is already included in `npm run db:migrate:payments`.
+- The `merchant_profiles` table links both names to the authenticated Privy DID (`db/migrations/20261016_merchant_profiles.sql`, included in `npm run db:migrate:payments`).
 - The authenticated `/merchant-profile` endpoint returns the profile with GET and updates only `businessName` with PATCH.
 
 ### Administrator access
 
 Users listed in `PAYMENTS_ADMIN_USER_IDS` open **More → Operations and commissions**. There they see the history of every merchant, with filters, totals and CSV export.
 
-`GET /treasury` requires a valid Privy access token. Signed-in merchants receive the configuration and destination address needed by the app; only users in `PAYMENTS_ADMIN_USER_IDS` receive the treasury balance. Responses use `Cache-Control: private, no-store`. The frontend requests the status after login and clears it when the session changes. Charge creation and settlement read treasury liquidity directly on the server.
+`GET /treasury` requires a valid Privy access token. Signed-in merchants receive the configuration and destination address needed by the app; only users in `PAYMENTS_ADMIN_USER_IDS` receive the treasury balance. Responses use `Cache-Control: private, no-store`. Charge creation and settlement read treasury liquidity directly on the server.
 
 ### RPC traffic and read caches
 
-- `GET /quote` serves a validated Chainlink display quote. It uses Netlify Durable CDN caching for up to 60 seconds, bounded by the feed's remaining freshness. Errors and display fallbacks are never cached at the CDN. Browsers deduplicate quote requests and no longer call Ethereum to display prices. Charge creation still obtains and validates its own strict quote.
-- `GET /balance` authenticates with Privy and selects the session's saved primary wallet server-side. Snapshot responses stay private (`no-store`); the internal Netlify Cache API shares snapshots by network and wallet for 10 seconds. Administrator treasury balance reads use the same internal cache. Neither authorization decisions nor transaction/liquidity validation use these snapshots.
-- The UI refreshes balances on entry, on return to a visible tab, and after operations. A visible-tab fallback runs every two minutes to detect external wallet changes; periodic display requests stop while hidden. Post-operation reads bypass cached balance snapshots. This uses application events and bounded polling, not a permanently running chain subscription service.
-- Both RPC proxies require a current Privy token, bound bodies to 64 KiB and batches to 10, and allow only SDK methods needed by the app. Ethereum calls are restricted to the configured Chainlink contract/selectors. Native Function routes apply Netlify rate limits (RPC: 300/IP/min; Ethereum, quote and balance: 120/IP/min); the default direct function URLs are disabled by these custom routes. Each warm RPC instance also limits authenticated users to 120 RPC operations/minute. Shared IP limits can affect multiple users behind the same NAT; tune them from observed production traffic.
-- Netlify Dev does not persist the platform Cache API/CDN entries. A bounded in-memory cache supplies local deduplication/TTL behavior; tests simulate shared storage across handler instances. In production, inspect `Cache-Status` and the deploy logs to verify CDN hits and applied rate-limit rules. CDN and Cache API caches are scoped to a deploy; Cache API storage is regional. No migration or new secret is required. Deploy frontend and backend together.
+- `GET /quote` serves a validated Chainlink display quote, cached at the Netlify CDN for up to 60 seconds and bounded by the feed's remaining freshness. Errors and fallbacks are never cached. Charge creation still obtains and validates its own strict quote.
+- `GET /balance` authenticates with Privy and selects the session's saved primary wallet server-side. It returns the USDC that can be moved through the ERC-20 interface (native balance truncated to 6 decimals). Snapshots stay private (`no-store`) and are shared internally for 10 seconds.
+- The UI refreshes balances on entry, on return to a visible tab, and after operations, with a two-minute visible-tab fallback.
+- Both RPC proxies require a current Privy token, bound bodies to 64 KiB and batches to 10, and allow only the methods the app needs. The Arc proxy (`/rpc`) allows read methods only: `eth_call` is limited to the USDC and Memo contracts, `eth_getBlockByNumber` only without full transactions, and writes or log scans are rejected. The Ethereum proxy (`/eth-rpc`) is restricted to the configured Chainlink contract and selectors. Each warm instance also limits authenticated users to 120 RPC operations per minute.
 
 ---
 
 ## 2. Architecture
 
-MidatoPay is built as follows:
-
 - **Application:** a Vite + React SPA served by Netlify.
 - **Backend:** Netlify Functions.
 - **State:** PostgreSQL.
-- **Settlement:** standard SPL Token, associated token account and SPL Memo instructions, through `@solana/kit` v8. There is no custom on-chain program.
+- **Settlement:** EIP-1559 transactions on Arc that call `Memo.memo(USDC, transfer(to, amount), keccak256(reference), memo)`. There is no custom contract; `ethers` v6 builds, signs and verifies transactions.
 
 ```mermaid
 flowchart LR
   subgraph Client["Browser (React SPA)"]
     UI["Charge / Activity / Send / Reports"]
-    PW["Privy embedded Solana wallet"]
+    PW["Privy embedded EVM wallet"]
   end
   subgraph Netlify["Netlify Functions"]
     CH["/charges"]
+    TR["/transfers"]
     WH["/webhooks/mercadopago"]
-    WK["Payment worker"]
+    WK["Payment and transfer workers"]
     RP["/payment-reports"]
   end
   DB[("PostgreSQL")]
   MP["Mercado Pago"]
-  SOL["Solana"]
-  ETH["Chainlink USD/ARS"]
+  ARC["Arc Mainnet"]
+  ETH["Chainlink USD/ARS (Ethereum)"]
 
-  UI --> CH & RP
-  PW -->|user sends| SOL
+  UI --> CH & RP & TR
+  PW -->|signs user transfer| TR
   CH --> ETH
   CH --> DB
+  TR --> DB
   MP -->|signed notification| WH --> DB
   WK --> MP
   WK --> DB
-  WK -->|USDC transfer| SOL
+  WK -->|broadcast signed transactions| ARC
 ```
 
 | Layer | Main files |
 |---|---|
-| Frontend | `src/App.jsx`, `src/MercadoPagoCharge.jsx`, `src/solana.js`, `src/network.js` |
+| Network and chain primitives | `src/network.js`, `src/chain.js`, `src/arc.js` |
+| Frontend | `src/App.jsx`, `src/MercadoPagoCharge.jsx`, `src/transfers.js`, `src/scanTarget.js` |
 | Charges and Mercado Pago | `netlify/functions/charges.js`, `lib/paymentService.js`, `lib/mercadopago.js`, `lib/merchantPos.js` |
-| Webhook and worker | `netlify/functions/mercadopago-webhook.js`, `lib/paymentWorker.js` |
+| Webhook and payment worker | `netlify/functions/mercadopago-webhook.js`, `lib/paymentWorker.js` |
 | Treasury | `lib/treasuryPayout.js` |
+| User transfers | `netlify/functions/transfers.js`, `lib/transferChain.js`, `lib/transferService.js`, `lib/transferWorker.js` |
+| Arc RPC | `lib/arcRpc.js`, `lib/rpcProxy.js`, `lib/reconcile.js` |
 | Reports | `netlify/functions/payment-reports.js`, `lib/paymentReporting.js` |
 | Data | `db/schema.sql`, `db/migrations/*.sql` |
 
@@ -127,29 +128,29 @@ flowchart LR
 2. **The QR code is generated.** MidatoPay creates a dynamic QR order in Mercado Pago, on the merchant's own point of sale. The rate stays locked for 15 minutes (see [Quote freshness](#quote-freshness)).
 3. **The customer pays** in pesos by scanning the QR code.
 4. **MidatoPay verifies the payment** with Mercado Pago, through the signed webhook and an order lookup. A payment only counts as paid if the amount, seller, point of sale and currency match exactly.
-5. **The treasury settles in USDC.** It sends the USDC to the merchant's Solana wallet and pays the network fee, so the merchant needs no SOL. The transaction includes a memo with the charge reference, the ARS amount and the rate.
-6. **Delivery is confirmed.** Once the transaction is finalized on Solana, the charge becomes "delivered" and the fee is recorded exactly once.
+5. **The treasury settles in USDC.** The worker assigns the next treasury nonce under a database lock, signs the transaction and saves it before broadcasting. It sends the USDC to the merchant's Arc wallet and pays the gas, so the merchant needs nothing extra. The memo carries the charge reference, the ARS amount and the rate.
+6. **Delivery is confirmed.** Arc finality is deterministic: a successful receipt is final. The charge becomes "delivered" and the fee is recorded exactly once. A reverted receipt, or a nonce consumed by another transaction, sends the charge to manual review instead of paying twice.
 
-The merchant follows the progress on screen: QR code, "Payment received", "Confirmed" and "USDC credited".
+The merchant follows the progress on screen: QR code, "Payment received" and "USDC credited".
 
 ### Quote freshness
 
-With real money, a stale price could be arbitraged against the treasury. That is why every charge requires a current quote from the Chainlink USD/ARS feed:
+Every charge requires a current quote from the Chainlink USD/ARS feed:
 
 - `CHAINLINK_MAX_AGE_SECONDS` sets the maximum accepted quote age. It is required and its value is **90000 seconds (25 hours)**: the feed's published heartbeat (86400 s) plus one hour of margin.
-- If the latest round is older than that maximum, the charge is rejected with `quote_stale`: no QR code is created and no liquidity is reserved.
-- If the variable is missing or is not a positive integer, no charges are created (`missing_chainlink_max_age_seconds` / `invalid_chainlink_max_age_seconds`).
-- The admin configuration check shows the quote age, the configured maximum and the heartbeat.
+- If the latest round is older, the charge is rejected with `quote_stale`: no QR code is created and no liquidity is reserved.
+- If the variable is missing or is not a positive integer, no charges are created.
 
 ---
 
-## 4. Fee
+## 4. Fees and gas
 
 MidatoPay charges a **fixed 0.5% fee** on the peso amount of each charge.
 
 - **Who pays it:** the merchant. It is deducted before converting to USDC.
 - **The customer** pays exactly the QR amount, with no surcharge.
-- **Other costs:** MidatoPay absorbs Mercado Pago's costs and Solana network fees.
+- **Settlement gas:** the treasury pays it in USDC. It keeps a 0.05 USDC gas reserve that is never counted as payout liquidity.
+- **User transfers:** the sender pays Arc gas in USDC from the same balance. The recipient receives exactly the amount entered; an amount is sendable only if `amount + maximum gas` fits after in-flight transfers. The approval sheet shows the estimated fee.
 
 **Example** (verified in `test/payments.test.js`):
 
@@ -161,42 +162,47 @@ MidatoPay charges a **fixed 0.5% fee** on the peso amount of each charge.
 | Rate | 1,650 ARS per USD |
 | Merchant receives | 6.030303 USDC |
 
-The proposition is simple: one percentage, no hidden spread. The merchant knows the exact USDC amount before charging, and settlement is automatic end to end.
-
 ---
 
-## 5. Solana and USDC
+## 5. Arc and USDC
 
-### 5.1 Why Solana
+### 5.1 Why Arc
 
-- **USDC is native on Solana.** Circle issues it directly as an SPL token, so no bridges or wrapped tokens are needed.
-- **Fees are low and independent of the amount.** Settling each charge costs a marginal amount compared with the fee, and the platform can pay it on the merchant's behalf.
-- **Confirmation is fast.** The merchant sees the credit within seconds.
-- **Wallets are embedded.** Privy creates the Solana wallet at login, with no seed phrases.
-- **Traceability is on-chain.** Every settlement links the Mercado Pago reference, the ARS amount and the exchange rate to a public signature.
+- **USDC is the gas token.** Balances, payouts and fees are all in USDC; there is no second token to fund.
+- **Deterministic finality.** A receipt is final, so delivery is recorded without probabilistic confirmations.
+- **EVM tooling.** Standard EIP-1559 transactions, `ethers` and EVM wallets.
+- **Embedded wallets.** Privy creates the EVM wallet at login, with no seed phrases.
+- **On-chain traceability.** Every settlement links the Mercado Pago reference, the ARS amount and the exchange rate to a public transaction through the Memo contract.
 
-### 5.2 Stack and tools
+### 5.2 Network constants (`src/network.js`)
 
-- Circle USDC (SPL Token), on mainnet and devnet
-- SPL Memo, which carries the charge reference
-- PostgreSQL for charges, contacts and history
-- `@solana/kit` v8
-- `@solana-program/token`, `@solana-program/memo` and `@solana-program/system`
-- Privy (`@privy-io/react-auth`, `@privy-io/server-auth`)
-- Solana Explorer links
+| Item | Value |
+|---|---|
+| Chain ID | `5042` |
+| Public RPC | `https://rpc.mainnet.arc.io` |
+| Explorer | `https://explorer.arc.io` |
+| USDC (ERC-20 interface, 6 decimals) | `0x3600000000000000000000000000000000000000` |
+| Native USDC decimals | 18 |
+| Memo contract | `0x5294E9927c3306DcBaDb03fe70b92e01cCede505` |
+| Minimum fee per gas | 20 gwei |
 
-### 5.3 On-chain activity on Solana Mainnet
+### 5.3 Stack and tools
 
-- **MidatoPay treasury:** [`7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L`](https://explorer.solana.com/address/7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L). Its transaction history lists the USDC settlements sent to merchants.
-- **Real transaction:** [`3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv`](https://explorer.solana.com/tx/3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv) on Solana Mainnet.
+- `ethers` v6 for transactions, ABI encoding and receipts
+- `viem` (only `defineChain` for the Privy chain object)
+- Privy (`@privy-io/react-auth`, `@privy-io/server-auth`) with EVM embedded wallets
+- PostgreSQL for charges, transfers, contacts and history
+- Arc explorer links
+
+Privy's SDK ships its own multi-chain code (including Solana screens and packages) inside `@privy-io/react-auth`; MidatoPay does not use or configure it.
 
 ### 5.4 How to verify a settlement
 
-1. Open a delivered charge in **Activity** and follow its **Solana Explorer** link, or open the [real transaction above](https://explorer.solana.com/tx/3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv) or any transaction from the [treasury](https://explorer.solana.com/address/7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L).
-2. Confirm three things:
+1. Open a delivered charge in **Activity** and follow its explorer link.
+2. Confirm:
    - the USDC transfer from the treasury to the merchant's wallet;
-   - the memo `MIDATO|v1|inv:mp_…|kind:charge_mercadopago|…`;
-   - the `finalized` status.
+   - the Memo event with `MIDATO|v1|inv:mp_…|kind:charge_mercadopago|…`;
+   - a successful receipt (`status = 1`).
 3. Compare the memo's `inv` with the Mercado Pago order reference, and its `amt` and `fx` fields with the charge.
 
 ---
@@ -207,7 +213,7 @@ Requirements:
 
 - Node.js 22
 - npm
-- a Privy app with Solana embedded wallets
+- a Privy app with EVM embedded wallets
 - PostgreSQL
 - a Mercado Pago seller account
 
@@ -223,11 +229,12 @@ npm run dev            # http://localhost:5173
 
 ```bash
 npm ci
-cp .env.example .env          # local / devnet
+cp .env.example .env
 npm run payments:env          # adds missing payment variables
-npm run db:migrate:payments   # applies the migrations
+npm run db:migrate:payments   # applies the migrations to the configured database
 npm run payments:check        # read-only configuration check
 npm run dev:full              # Vite + Functions at http://localhost:8888
+npm test                      # unit and integration tests (PGlite, mocked RPC)
 ```
 
 Use `.env.production.example` as the checklist for the Netlify **Production** context. Never commit a completed file.
@@ -237,30 +244,32 @@ Use `.env.production.example` as the checklist for the Netlify **Production** co
 | Variable | Purpose |
 |---|---|
 | `VITE_PRIVY_APP_ID`, `PRIVY_APP_SECRET` | Privy app |
-| `VITE_SOLANA_CLUSTER` | `mainnet-beta` or `devnet` |
-| `SOLANA_RPC`, `VITE_SOLANA_WSS` | Solana RPC |
-| `TREASURY_SECRET_KEY` | Treasury keypair (server-side only) |
+| `VITE_ARC_NETWORK` | `mainnet` (the only supported value) |
+| `ARC_RPC` | Arc RPC for Functions (server-side; may include a provider API key) |
+| `VITE_ARC_RPC` | Public Arc RPC used by the Privy wallet in the browser (empty = `https://rpc.mainnet.arc.io`) |
+| `TREASURY_SECRET_KEY` | Treasury EVM private key, `0x` + 64 hex (server-side only) |
 | `MP_ENVIRONMENT`, `MP_ACCESS_TOKEN`, `MP_USER_ID`, `MP_STORE_ID`, `MP_WEBHOOK_SECRET` | Mercado Pago |
-| `ETH_RPC_URL` | Chainlink USD/ARS quote |
+| `ETH_RPC_URL`, `VITE_ETH_RPC` | Chainlink USD/ARS quote on Ethereum Mainnet |
 | `CHAINLINK_MAX_AGE_SECONDS` | Maximum quote age: `90000` (25 h) |
 | `CONVERSION_FEE_BPS` | `50` |
 | `PAYMENTS_BASE_URL`, `INTERNAL_WORKER_SECRET` | Payment worker |
 | `PAYMENTS_ENABLED` | Enables charges |
 | `PAYMENTS_ADMIN_USER_IDS` | Administrators |
+| `TRANSFERS_ENABLED`, `TRANSFERS_ALLOWED_USER_IDS` | User USDC transfers and production pilot |
 | `AIVEN_PG_URL`, `AIVEN_PG_CA_CERT` | PostgreSQL |
-| `ANTHROPIC_API_KEY` | Voice charges (optional) |
+| `ANTHROPIC_API_KEY` | Voice parsing (optional) |
 
 ### 6.4 Configure Privy
 
 1. Go to https://dashboard.privy.io and create an app.
 2. Under **Login methods**, enable Email and SMS.
-3. Under **Embedded wallets**, enable automatic creation of **Solana** wallets.
+3. Under **Embedded wallets**, enable automatic creation of **Ethereum (EVM)** wallets.
 4. Under **Domains**, add `http://localhost:5173`, `http://localhost:8888` and the deployment domain.
 5. Copy the App ID into `VITE_PRIVY_APP_ID`.
 
-The full production go-live guide is in `docs/MERCADOPAGO_PRODUCCION.md`.
+The production go-live guide is in `docs/MERCADOPAGO_PRODUCCION.md`.
 
-USDC sends through manual entry, QR and voice use the user's primary Privy wallet (index 0), with the user's signature and SOL costs covered by treasury. Two daily sends per user and a configurable global budget apply. General access defaults to disabled; `TRANSFERS_ALLOWED_USER_IDS` enables selected Privy users for a production pilot. See the [transfer operations guide](docs/USDC_TRANSFERS.md).
+USDC sends through manual entry, QR and voice use the user's primary Privy wallet (index 0). The server prepares the exact transaction, the embedded wallet signs it without a pop-up after the in-app approval sheet, and the server verifies and stores it before the worker broadcasts it. General access defaults to disabled; `TRANSFERS_ALLOWED_USER_IDS` enables selected Privy users for a production pilot. See the [transfer operations guide](docs/USDC_TRANSFERS.md).
 
 ---
 
@@ -284,9 +293,9 @@ The `business-lois/` folder contains two letters of intent: one from a distribut
 ## 8. Repository map
 
 ```
-src/                     React SPA
+src/                     React SPA and shared Arc primitives
 netlify/functions/       HTTP and scheduled Functions
-netlify/functions/lib/   Payment core, worker, Mercado Pago client, treasury
+netlify/functions/lib/   Payment core, workers, Mercado Pago client, treasury, Arc RPC
 db/                      Schema and migrations
 scripts/                 Environment setup, checks and migrations
 test/                    Tests
@@ -298,7 +307,8 @@ business-lois/           Letters of intent (Deenex, Supermercado Soler)
 
 ## 9. Further documentation
 
-- [`datosadicionales.md`](datosadicionales.md): why MidatoPay is a strong fit for the Solana ecosystem, covering its capabilities, commercial proposition and adoption potential.
+- [`datosadicionales.md`](datosadicionales.md): why MidatoPay fits Arc, covering its capabilities, commercial proposition and adoption potential.
 - [`docs/MERCADOPAGO_PRODUCCION.md`](docs/MERCADOPAGO_PRODUCCION.md): operations guide for Mercado Pago → USDC (Spanish).
 - [`docs/USDC_TRANSFERS.md`](docs/USDC_TRANSFERS.md): primary wallet, USDC sends, production pilot and recovery (Spanish).
-- [`SOLANA-RULES.md`](SOLANA-RULES.md): Solana engineering rules.
+- [`docs/arc-migration/`](docs/arc-migration/): migration plan, target architecture and Arc research.
+- [`ARC-RULES.md`](ARC-RULES.md): Arc engineering rules.

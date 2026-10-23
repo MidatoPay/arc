@@ -4,7 +4,7 @@ Esta referencia describe el checkout observado al crear la skill. Confirmar los 
 
 ## Ubicacion e instrucciones
 
-- La raiz operativa contiene `package.json`, `src/` y `netlify/functions/`. En el workspace original esta dentro de `solanahackcba/`; ejecutar Git y npm desde esa raiz.
+- La raiz operativa contiene `package.json`, `src/` y `netlify/functions/`. En el workspace original esta dentro de `arc/`; ejecutar Git y npm desde esa raiz.
 - Leer `AGENTS.md` si existe. Si esta disponible `.agents/skills/midatopay-dev-release/SKILL.md`, aplicar su procedimiento para desarrollo y publicacion segun el alcance, sin duplicarlo aqui.
 - Si falta alguno de esos archivos, continuar con las instrucciones disponibles, scripts actuales y esta referencia. No cambiar de branch ni copiar instrucciones desde otra rama automaticamente.
 - No leer ni imprimir `.env` para orientarse. Usar ejemplos de configuracion cuando hagan falta y nunca incorporar credenciales a capturas o commits.
@@ -26,7 +26,7 @@ No imponer el frontend colombiano a Argentina ni asumir equivalencia entre prove
 
 - Conservar la seleccion de wallet principal y sus resolvers existentes; no elegir otra wallet para evitar un fallo visual o un dato nulo.
 - Al tocar React o autenticacion, contemplar usuario nulo, sesion restaurandose y wallet pendiente. Los hooks y efectos requieren evidencia de navegador para sus recorridos completos.
-- Leer `SOLANA-RULES.md` y `docs/USDC_TRANSFERS.md` si el cambio afecta dinero, importes, firmas o redes. Preservar importes, destinatarios, estados y autorizaciones; no firmar ni mover fondos reales como prueba automatica.
+- Leer `ARC-RULES.md` y `docs/USDC_TRANSFERS.md` si el cambio afecta dinero, importes, firmas o redes. Preservar importes, destinatarios, estados y autorizaciones; no firmar ni mover fondos reales como prueba automatica.
 - No cambiar contratos backend, capabilities o configuracion de entornos para que una pantalla de prueba parezca funcionar.
 - El manual de marca y el trabajo con UX/UI se incorporaran posteriormente. No declarar los colores o tipografias actuales como sistema de diseno aprobado.
 

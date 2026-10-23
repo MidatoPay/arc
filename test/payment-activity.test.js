@@ -4,7 +4,7 @@ import { mergeByHash,activityStatusKey,activityRefreshInterval } from "../src/tr
 
 test("a delivered charge replaces its cached unsigned activity without duplicating the operation",()=>{
   const cached={hash:"charge:charge-id",chargeId:"charge-id",status:"manual_review"};
-  const delivered={hash:"real-signature",chargeId:"charge-id",status:"delivered"};
+  const delivered={hash:"0xreal-hash",chargeId:"charge-id",status:"delivered"};
   assert.deepEqual(mergeByHash([delivered],[cached]),[delivered]);
 });
 

@@ -11,10 +11,7 @@ import { fetchArsPerUsd } from "../../src/priceFeed.js";
 import { listUserActivity } from "./lib/paymentActivity.js";
 import {resolvePrimaryWallet} from './lib/primaryWallet.js';
 
-/** Validación liviana de address Solana (base58, sin traer @solana/kit al bundle de la function). */
-function isSolanaAddress(value) {
-  return typeof value === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
-}
+import { isAddress, sameAddress, normalizeAddress } from "../../src/arc.js";
 
 const { Pool } = pkg;
 
@@ -78,7 +75,7 @@ export const handler = async (event) => {
   try {
     if (event.httpMethod === "GET") {
       const address = event.queryStringParameters?.address;
-      if (address && isSolanaAddress(address)) {
+      if (address && isAddress(address)) {
         // El address viaja en la query del cliente y no está atado a nada —
         // hay que verificar que sea una wallet del propio usuario antes de
         // pisar su fila en `wallets`, o cualquiera podría inyectar el
@@ -88,7 +85,7 @@ export const handler = async (event) => {
         // hubiera mandado address.
         let owned = false;
         try {
-          owned=(await resolvePrimaryWallet(userId)).address===address;
+          owned=sameAddress((await resolvePrimaryWallet(userId)).address,address);
         } catch {
           owned = false;
         }
@@ -97,10 +94,10 @@ export const handler = async (event) => {
           await db.query(
             `INSERT INTO wallets (user_id, address, network, updated_at) VALUES ($1, $2, $3, now())
              ON CONFLICT (user_id, network) DO NOTHING`,
-            [userId, address, NETWORK.cluster]
+            [userId, normalizeAddress(address), NETWORK.network]
           );
           try {
-            const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1 AND network = $2", [userId, NETWORK.cluster]);
+            const { rows: walletRows } = await db.query("SELECT last_synced_block FROM wallets WHERE user_id = $1 AND network = $2", [userId, NETWORK.network]);
             const newCheckpoint = await reconcileWallet(db, {
               userId,
               address,
@@ -108,21 +105,21 @@ export const handler = async (event) => {
               getFxRate,
             });
             if (newCheckpoint != null) {
-              await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2 AND network = $3", [newCheckpoint, userId, NETWORK.cluster]);
+              await db.query("UPDATE wallets SET last_synced_block = $1 WHERE user_id = $2 AND network = $3", [newCheckpoint, userId, NETWORK.network]);
             }
           } catch {
-            // Si el RPC de Solana falla acá, no bloquea la carga del historial existente
+            // Si el RPC de Arc falla acá, no bloquea la carga del historial existente
             // — se reintenta en la próxima apertura o en el próximo tick del job.
           }
         }
       }
 
-      const rows = await listUserActivity(db,userId,NETWORK.cluster);
+      const rows = await listUserActivity(db,userId,NETWORK.network);
       return json(200, { transactions: rows });
     }
 
     if (event.httpMethod === "POST") {
-      if (NETWORK.cluster !== "devnet") return json(403, { error: "client_history_writes_disabled" });
+      if (!NETWORK.testnet) return json(403, { error: "client_history_writes_disabled" });
       const body = JSON.parse(event.body || "{}");
       const missing = REQUIRED_FIELDS.filter((f) => body[f] === undefined || body[f] === null || body[f] === "");
       if (missing.length > 0) return json(400, { error: "missing_fields" });
@@ -145,7 +142,7 @@ export const handler = async (event) => {
           body.block ?? null,
           body.fee ?? null,
           body.memo ?? null,
-          NETWORK.cluster,
+          NETWORK.network,
         ]
       );
 
@@ -157,7 +154,7 @@ export const handler = async (event) => {
       const existing = await db.query(
         `SELECT id, hash, kind, direction, who, amt, fx_rate, ars, factura, block, fee, memo, created_at
          FROM transactions WHERE hash = $1 AND user_id = $2 AND network = $3`,
-        [body.hash, userId, NETWORK.cluster]
+        [body.hash, userId, NETWORK.network]
       );
       if (existing.rows.length === 0) return json(409, { error: "hash_conflict" });
       return json(200, { transaction: existing.rows[0] });

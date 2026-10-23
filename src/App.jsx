@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { usePrivy, useWallets as useEvmWallets } from "@privy-io/react-auth";
-import { useWallets, useSignTransaction, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
-import { isAddress } from "@solana/kit";
+import { usePrivy, useWallets, useSignTransaction, useSendTransaction } from "@privy-io/react-auth";
 import MercadoPagoCharge from "./MercadoPagoCharge.jsx";
 import PaymentReports from "./PaymentReports.jsx";
-import {primarySolanaWallet} from './primaryWallet.js';
+import {primaryArcWallet} from './primaryWallet.js';
 import {setRpcSession} from './rpcSession.js';
 import {startVisibleRefresh} from './visibleRefresh.js';
-import {useSponsoredTransfers,transferApi,exactUsdc} from './transfers.js';
+import {useWalletTransfers,transferApi,exactUsdc} from './transfers.js';
 import TransferApproval from './TransferApproval.jsx';
 import TransferReceipt from './TransferReceipt.jsx';
 import { useMerchantProfile } from "./merchantProfile.js";
@@ -20,14 +18,14 @@ import PayScan from "./PayScan.jsx";
 import SendScreen from "./SendScreen.jsx";
 import ContactsScreen from "./ContactsScreen.jsx";
 import QrScanner from "./QrScanner.jsx";
-import { SOLANA, explorerAddressUrl, explorerTxUrl } from "./chain.js";
+import { ARC, explorerAddressUrl, explorerTxUrl } from "./chain.js";
 import {
   armarMemo,
   estimateUsdcTransfer,
-  getUsdcBalance,
+  isAddress,
   nuevaFactura,
-  sendUsdc,
-} from "./solana.js";
+  sameAddress,
+} from "./arc.js";
 import { FALLBACK_FX_ARS_USD, getArsPerUsdc, quoteArsToUsdc, quoteUsdcToArs, usdcToArs } from "./fx.js";
 import {
   estimateConvertUsdcToArs,
@@ -59,15 +57,15 @@ import { loadTransactions, addTransaction, mergeByHash, activityRefreshInterval 
 import { parsePayUrl } from "./payQr.js";
 
 // ————————————————————————————————————————————————
-// MidatoPay × Solana — Pagos por voz
-// Login con email o teléfono (Privy) → wallet embebida Solana.
-// Transferencias reales de USDC (SPL) en Solana Devnet.
+// MidatoPay × Arc — Pagos por voz
+// Login con email o teléfono (Privy) → wallet embebida EVM.
+// Transferencias reales de USDC en Arc Mainnet (el gas se paga en USDC).
 // ————————————————————————————————————————————————
 
 const arsStorageKey = (address) => `mp_ars_balance_${address || ""}`;
 
 function loadArsBalance(address) {
-  if (!address || SOLANA.cluster !== "devnet") return 0;
+  if (!address || !ARC.testnet) return 0;
   try {
     const raw = localStorage.getItem(arsStorageKey(address));
     const n = Number(raw);
@@ -1376,11 +1374,11 @@ function Home({
         />
       </div>
 
-      {SOLANA.cluster === "devnet" && balance !== null && balance < 0.5 && (
+      {ARC.testnet && balance !== null && balance < 0.5 && (
         <Card style={{ background: "#16161A", color: "#fff" }}>
           <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.35 }}>{t("home.faucetCardTitle")}</div>
           <div style={{ fontSize: 13.5, opacity: 0.75, marginTop: 8, lineHeight: 1.5 }}>{t("home.faucetCardBody")}</div>
-          <a href={SOLANA.faucet} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 16, background: C.orange, color: "#fff", padding: "11px 22px", borderRadius: 12, fontSize: 14.5, fontWeight: 700, textDecoration: "none" }}>
+          <a href={ARC.faucet} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 16, background: C.orange, color: "#fff", padding: "11px 22px", borderRadius: 12, fontSize: 14.5, fontWeight: 700, textDecoration: "none" }}>
             {t("home.faucetCardBtn")}
           </a>
         </Card>
@@ -1569,12 +1567,12 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
     estimateFn: estimateConvertFn,
   });
 
-  const feeSol =
+  const feeUsdc =
     needsUserSignature && Number.isFinite(gas.estimate?.feeNative)
       ? Number(gas.estimate.feeNative)
       : 0;
   const feeReady = !needsUserSignature || (!gas.loading && !!gas.estimate && !gas.error);
-  // En Solana el fee es SOL (no USDC): el monto USDC a convertir es el ingresado completo.
+  // En Arc el gas se paga en USDC desde el saldo restante: el monto a convertir llega completo.
   const transferUsdc = Number.isFinite(n) && n > 0 ? n : null;
 
   const quote =
@@ -1685,7 +1683,7 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
       onDone({
         kind: result.kind,
         ...result,
-        fee: feeSol,
+        fee: feeUsdc,
         parsed: {
           usdc: result.usdc,
           amount: result.usdc,
@@ -1920,7 +1918,7 @@ function Convert({ address, balance, arsBalance, fxRate, onConvertArsUsdc, onCon
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16, marginTop: 14 }}>
                   <span style={{ fontSize: 14, color: C.mut, flexShrink: 0 }}>{t("gas.totalNative")}</span>
                   <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, textAlign: "right", whiteSpace: "nowrap" }}>
-                    − {fmt(feeSol, 6, locale)} {gas.estimate?.nativeSymbol || "SOL"}
+                    − {fmt(feeUsdc, 6, locale)} {gas.estimate?.nativeSymbol || "USDC"}
                   </span>
                 </div>
               )}
@@ -2515,7 +2513,7 @@ function Voice({
                 parsed.currency === "ARS" ? [t("voice.equals"), `$${fmtArs(parsed.amount)} ARS`] : [t("voice.equals"), `$${fmtArs(parsed.usdc * parsed.fxRate)} ARS`],
                 [t("voice.exchangeRate"), `1 USDC = $${fmtArs(parsed.fxRate)} ARS`],
                 [t("voice.invoice"), parsed.factura],
-                [t("voice.network"), `Solana ${SOLANA.cluster}`],
+                [t("voice.network"), ARC.name],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5 }}>
                   <span style={{ color: C.mut }}>{k}:</span>
@@ -2747,9 +2745,8 @@ function AppInner() {
     return ()=>{clearTreasury();clearRpc();};
   }, [ready, authenticated, user?.id, getAccessToken]);
   const merchantProfile = useMerchantProfile(authenticated ? user?.id : null,getAccessToken);
-  const { ready: walletInfrastructureReady } = useEvmWallets();
-  const { ready: solanaWalletsReady, wallets } = useWallets();
-  const { signAndSendTransaction } = useSignAndSendTransaction();
+  const { ready: walletsReady, wallets } = useWallets();
+  const { sendTransaction } = useSendTransaction();
   const [tab, setTab] = useState("home");
   const [balance, setBalance] = useState(null);
   const [arsBalance, setArsBalance] = useState(0);
@@ -2792,7 +2789,7 @@ function AppInner() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const wantsGuest = url.searchParams.get("guest") === "1" || url.searchParams.get("cliente") === "1";
-    if (wantsGuest && SOLANA.cluster === "devnet") {
+    if (wantsGuest && ARC.testnet) {
       setGuestMode(true);
       url.searchParams.delete("guest");
       url.searchParams.delete("cliente");
@@ -2823,28 +2820,30 @@ function AppInner() {
 
   const [primaryRecord,setPrimaryRecord]=useState(null);
   const [primaryRevision,setPrimaryRevision]=useState(0);
-  const linkedSolanaAddress=primarySolanaWallet(user)?.address || '';
+  const linkedArcAddress=primaryArcWallet(user)?.address || '';
   useEffect(()=>{
     let canceled=false;setPrimaryRecord(null);setWalletError('');
     if(authenticated && user?.id)transferApi('/wallet',getAccessToken)
       .then(({wallet:record})=>{if(!canceled)setPrimaryRecord({userId:user.id,...record});})
       .catch(()=>{if(!canceled)setWalletError(t('app.walletVerifyError'));});
     return()=>{canceled=true;};
-  },[authenticated,user?.id,getAccessToken,primaryRevision,linkedSolanaAddress]);
+  },[authenticated,user?.id,getAccessToken,primaryRevision,linkedArcAddress]);
   const address=authenticated && user?.id && primaryRecord &&
-    primaryRecord.userId===user.id && primaryRecord.address===linkedSolanaAddress ? primaryRecord.address : '';
-  const wallet=useMemo(()=>wallets?.find(w=>w.address===address) || null,[wallets,address]);
+    primaryRecord.userId===user.id && sameAddress(primaryRecord.address,linkedArcAddress) ? primaryRecord.address : '';
+  const wallet=useMemo(()=>wallets?.find(w=>sameAddress(w.address,address)) || null,[wallets,address]);
   const {signTransaction}=useSignTransaction();
-  const transferEngine=useSponsoredTransfers({userId:authenticated?user?.id:null,wallet,getAccessToken,signTransaction});
+  const transferEngine=useWalletTransfers({userId:authenticated?user?.id:null,wallet,getAccessToken,signTransaction});
+  // El destinatario recibe el importe exacto; el gas sale del saldo restante (enviar todo = saldo − gas).
+  const networkFee=Number(transferEngine.info?.networkFeeUsdc) || 0;
+  const spendable=balance===null ? null : Math.max(0,Math.floor((balance-networkFee)*1000000)/1000000);
   const walletDebug = {
     privyReady: ready,
     authenticated,
-    walletInfrastructureReady,
-    solanaWalletsReady,
-    linkedSolanaAddress: short(linkedSolanaAddress),
+    walletsReady,
+    linkedArcAddress: short(linkedArcAddress),
     selectedAddress: short(wallet?.address),
-    addressMatch: Boolean(wallet && wallet.address === address),
-    signerAvailable: typeof signAndSendTransaction === "function",
+    addressMatch: Boolean(wallet && sameAddress(wallet.address, address)),
+    signerAvailable: typeof sendTransaction === "function",
     connectedWallets: (wallets || []).map((w) => ({
       address: short(w.address),
       name: w.standardWallet?.name || "",
@@ -3049,12 +3048,12 @@ function AppInner() {
   );
 
   const sendPayment=useCallback(async parsed=>{
-    if(!wallet || wallet.address!==address)throw new Error(t('home.walletUnavailable'));
+    if(!wallet || !sameAddress(wallet.address,address))throw new Error(t('home.walletUnavailable'));
     const transfer=await transferEngine.send(parsed);
     getAccessToken().then(token=>loadTransactions(user.id,token)).then(fresh=>{
       if(currentContactOwner.current===user.id)setTxs(previous=>mergeByHash(fresh,previous));
     }).catch(()=>{});
-    return {transfer,transferId:transfer.id,hash:transfer.signature,usdc:Number(transfer.usdc),ars:Number(transfer.ars),fxRate:Number(transfer.fxRate)};
+    return {transfer,transferId:transfer.id,hash:transfer.txHash,usdc:Number(transfer.usdc),ars:Number(transfer.ars),fxRate:Number(transfer.fxRate)};
   },[wallet,address,transferEngine.send,getAccessToken,user?.id,t]);
 
   const handleChargePaymentReceived = useCallback(async () => {
@@ -3070,7 +3069,7 @@ function AppInner() {
 
   const handleConvertArsUsdc = useCallback(
     async (arsAmount) => {
-      if (SOLANA.cluster !== "devnet") throw new Error(t("app.convertDisabled"));
+      if (!ARC.testnet) throw new Error(t("app.convertDisabled"));
       const token = await getAccessToken();
       const result = await runConvertArsToUsdc({
         token,
@@ -3100,8 +3099,8 @@ function AppInner() {
 
   const handleConvertUsdcArs = useCallback(
     async (usdcAmount) => {
-      if (SOLANA.cluster !== "devnet") throw new Error(t("app.convertDisabled"));
-      if (!wallet || wallet.address !== address) {
+      if (!ARC.testnet) throw new Error(t("app.convertDisabled"));
+      if (!wallet || !sameAddress(wallet.address, address)) {
         console.error("[MidatoPay wallet] Conversión bloqueada: falta wallet conectada con la dirección vinculada", walletDebug);
         throw new Error(t("home.walletUnavailable"));
       }
@@ -3109,7 +3108,7 @@ function AppInner() {
       try {
         result = await runConvertUsdcToArs({
           wallet,
-          signAndSendTransaction,
+          sendTransaction,
           usdcAmount,
           userUsdcBalance: balance,
         });
@@ -3139,7 +3138,7 @@ function AppInner() {
       await refreshBalances({fresh:true});
       return result;
     },
-    [wallet, address, signAndSendTransaction, balance, applyArsDelta, pushTx, refreshBalances, t, walletDebugSignature]
+    [wallet, address, sendTransaction, balance, applyArsDelta, pushTx, refreshBalances, t, walletDebugSignature]
   );
 
   const navTabs = [
@@ -3186,7 +3185,7 @@ function AppInner() {
           className={`mp-scroll${fill ? " mp-scroll-fill" : ""}`}
           style={{ padding: pad ? "22px 18px 24px" : 0 }}
         >
-          {ready && authenticated && address && solanaWalletsReady && !wallet && (
+          {ready && authenticated && address && walletsReady && !wallet && (
             <Card style={{ marginBottom: 16, padding: 16, border: `1px solid ${C.red}` }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("home.walletUnavailableTitle")}</div>
               <div style={{ fontSize: 13, color: C.mut, marginTop: 6, lineHeight: 1.5 }}>{t("home.walletUnavailableBody")}</div>
@@ -3211,14 +3210,14 @@ function AppInner() {
             </div>
           )}
           {children}
-          <TransferApproval engine={{...transferEngine,network:SOLANA.cluster}} />
+          <TransferApproval engine={{...transferEngine,network:ARC.network}} />
         </div>
 
         {voiceOpen && (
           <div className="mp-voice-sheet">
             <Voice
               sendPayment={sendPayment}
-              balance={balance}
+              balance={spendable}
               onDone={(r) => {
                 closeVoice();
                 setReceipt(r);
@@ -3260,7 +3259,7 @@ function AppInner() {
     </div>
   );
 
-  if (guestMode && !authenticated && SOLANA.cluster === "devnet") {
+  if (guestMode && !authenticated && ARC.testnet) {
     return (
       <GuestApp
         onExit={() => {
@@ -3338,6 +3337,7 @@ function AppInner() {
         <PayScan
           address={address}
           balance={balance}
+          networkFee={networkFee}
           fxRate={fxRate}
           contacts={contacts}
           onPay={sendPayment}
@@ -3352,6 +3352,7 @@ function AppInner() {
         <SendScreen
           address={address}
           balance={balance}
+          networkFee={networkFee}
           fxRate={fxRate}
           contacts={contacts}
           onPay={sendPayment}
@@ -3372,8 +3373,8 @@ function AppInner() {
           onBack={() => setTab("home")}
         />
       )}
-      {tab === "convert" && SOLANA.cluster !== "devnet" && <Card>{t("app.convertUnavailable")}</Card>}
-      {tab === "convert" && SOLANA.cluster === "devnet" && (
+      {tab === "convert" && !ARC.testnet && <Card>{t("app.convertUnavailable")}</Card>}
+      {tab === "convert" && ARC.testnet && (
         <Convert
           address={address}
           balance={balance}

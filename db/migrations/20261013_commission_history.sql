@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS commission_ledger (
   charge_id UUID PRIMARY KEY REFERENCES charges(id),
   merchant_user_id TEXT NOT NULL,
   environment TEXT NOT NULL CHECK(environment IN ('test','production')),
-  network TEXT NOT NULL CHECK(network IN ('devnet','mainnet-beta')),
+  network TEXT NOT NULL CHECK(network IN ('arc-mainnet')),
   gross_amount_cents BIGINT NOT NULL CHECK(gross_amount_cents>0),
   fee_cents BIGINT NOT NULL CHECK(fee_cents>=0), fee_bps INTEGER NOT NULL,
   fx_rate NUMERIC NOT NULL CHECK(fx_rate>0), usdc_raw BIGINT NOT NULL,

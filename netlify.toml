@@ -4,7 +4,7 @@
 
 [build.environment]
   # Only non-credential configuration values; all other secret scanning stays enabled.
-  SECRETS_SCAN_OMIT_KEYS = "PAYMENTS_BASE_URL,MP_ENVIRONMENT,PAYMENTS_ENABLED,VITE_SOLANA_CLUSTER,ETH_RPC_URL"
+  SECRETS_SCAN_OMIT_KEYS = "PAYMENTS_BASE_URL,MP_ENVIRONMENT,PAYMENTS_ENABLED,VITE_ARC_NETWORK,ETH_RPC_URL"
 
 [dev]
   command = "npm run dev -- --host 127.0.0.1 --port 5173"
@@ -122,7 +122,7 @@
   status = 200
   force = true
 
-# Recaudadora: status público + payouts firmados server-side (TREASURY_SECRET_KEY).
+# Recaudadora: status autenticado + payouts en Arc firmados server-side (TREASURY_SECRET_KEY).
 [[redirects]]
   from = "/treasury"
   to = "/.netlify/functions/treasury"

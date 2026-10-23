@@ -1,6 +1,6 @@
 import { NETWORK } from "../../src/network.js";
 // Job de reconciliación: corre cada 15 min (ver netlify.toml), recorre
-// todas las wallets conocidas y reconcilia cada una contra el RPC de Solana.
+// todas las wallets conocidas y reconcilia cada una contra el RPC de Arc.
 // No requiere auth — lo dispara el scheduler de Netlify.
 
 import pkg from "pg";
@@ -30,7 +30,7 @@ function getPool() {
 
 export const handler = async () => {
   const db = getPool();
-  const { rows: wallets } = await db.query("SELECT user_id, address, last_synced_block FROM wallets WHERE network=$1",[NETWORK.cluster]);
+  const { rows: wallets } = await db.query("SELECT user_id, address, last_synced_block FROM wallets WHERE network=$1",[NETWORK.network]);
 
   let ok = 0;
   let failed = 0;
@@ -43,7 +43,7 @@ export const handler = async () => {
         getFxRate,
       });
       if (newCheckpoint != null) {
-        await db.query("UPDATE wallets SET last_synced_block = $1, updated_at = now() WHERE user_id = $2 AND network = $3", [newCheckpoint, w.user_id, NETWORK.cluster]);
+        await db.query("UPDATE wallets SET last_synced_block = $1, updated_at = now() WHERE user_id = $2 AND network = $3", [newCheckpoint, w.user_id, NETWORK.network]);
       }
       ok++;
     } catch (err) {

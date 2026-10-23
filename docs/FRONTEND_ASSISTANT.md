@@ -64,7 +64,7 @@ El resultado debe distinguir cambios implementados, checks realmente ejecutados 
 
 Al 18 de octubre de 2026, el responsable informa que GitHub Actions no dispone de creditos. Mientras persista esta condicion, documentar CI como no disponible y usar verificaciones locales proporcionales y la preview de Netlify cuando corresponda. Para esta entrega documental se autorizo continuar con la integracion sin esperar esos jobs; no interpretar esa excepcion como permiso para ignorar fallos de codigo, omitir verificaciones de futuros cambios o saltar protecciones del repositorio. No informar CI como aprobada.
 
-El workflow `Mercado Pago review` quedo desactivado temporalmente. Cuando haya creditos, reactivarlo desde GitHub Actions o con `gh workflow enable mercadopago-review.yml --repo MidatoPay/solanahackcba`. CodeQL no se modifico. La configuracion de Netlify se conserva.
+El workflow `Mercado Pago review` quedo desactivado temporalmente. Cuando haya creditos, reactivarlo desde GitHub Actions o con `gh workflow enable mercadopago-review.yml --repo MidatoPay/arc`. CodeQL no se modifico. La configuracion de Netlify se conserva.
 
 ### Fuente de instrucciones
 

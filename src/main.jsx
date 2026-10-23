@@ -9,9 +9,8 @@ if (typeof window !== "undefined") {
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { PrivyProvider } from "@privy-io/react-auth";
-import { createSolanaRpcSubscriptions } from "@solana/kit";
 import App from "./App.jsx";
-import { createAppRpc, WSS_URL, SOLANA } from "./chain.js";
+import { arcChain } from "./chain.js";
 import { registerAppWorker } from './pwa.js';
 
 if (import.meta.env.PROD) {
@@ -68,16 +67,13 @@ function MissingAppId() {
 VITE_PRIVY_APP_ID=tu_app_id
         </pre>
         <p style={{ color: "#8A94A8", fontSize: 13 }}>
-          En el dashboard activá los métodos de login <b>Email</b> y <b>SMS</b>, habilitá <b>Embedded wallets</b> para <b>Solana</b>,
+          En el dashboard activá los métodos de login <b>Email</b> y <b>SMS</b>, habilitá <b>Embedded wallets</b> para <b>Ethereum (EVM)</b>,
           y agregá el dominio (localhost y el de Netlify). Después reiniciá el servidor.
         </p>
       </div>
     </div>
   );
 }
-
-const solanaRpc = createAppRpc();
-const solanaRpcSubscriptions = createSolanaRpcSubscriptions(WSS_URL);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -90,26 +86,19 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             theme: "dark",
             accentColor: "#4D9FFF",
             logo: undefined,
-            // Privy 3.36.1 waits for a connector initialization event before
-            // marking embedded wallets ready. Phantom supplies that event even
-            // when it is not installed, through Privy's null connector.
-            walletList: ["phantom"],
-            walletChainType: "solana-only",
+            walletList: [],
+            walletChainType: "ethereum-only",
           },
           embeddedWallets: {
-            solana: {
+            ethereum: {
               createOnLogin: "users-without-wallets",
             },
+            // The app shows its own approval screen; the wallet signs without Privy UI.
             showWalletUIs: false,
           },
-          solana: {
-            rpcs: {
-              [SOLANA.chain]: {
-                rpc: solanaRpc,
-                rpcSubscriptions: solanaRpcSubscriptions,
-              },
-            },
-          },
+          // Guardrail: the embedded wallet can only sign for Arc Mainnet.
+          defaultChain: arcChain,
+          supportedChains: [arcChain],
         }}
       >
         <App />

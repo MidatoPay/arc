@@ -51,7 +51,7 @@ test("database diagnostics expose safe codes and never raw credentials or SQL",(
   } finally { console.error=original; }
 });
 test("missing configuration identifies the variable without exposing values",()=>{
-  for(const key of ["mp_access_token","mp_user_id","mp_webhook_secret","solana_rpc","internal_worker_secret","eth_rpc_url","chainlink_max_age_seconds"])
+  for(const key of ["mp_access_token","mp_user_id","mp_webhook_secret","arc_rpc","internal_worker_secret","eth_rpc_url","chainlink_max_age_seconds"])
     assert.ok(chargeError(`missing_${key}`).includes(key.toUpperCase()));
   assert.ok(!chargeError("missing_untrusted-value/password").includes("password"));
 });

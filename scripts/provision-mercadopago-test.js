@@ -2,6 +2,7 @@ import { readFile,writeFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { createHash } from "node:crypto";
 import { mpRequest } from "../netlify/functions/lib/mercadopago.js";
+import { NETWORK } from "../src/network.js";
 
 let stage="verify_test_account";
 try {
@@ -12,7 +13,8 @@ try {
   const response=await fetch("https://api.mercadolibre.com/users/me",{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
   const account=await response.json();
   if(!response.ok || String(account.id)!==seller || account.site_id!=="MLA" || !(account.tags || []).includes("test_user"))throw new Error("test_seller_required");
-  if(process.env.MP_ENVIRONMENT!=="test" || process.env.VITE_SOLANA_CLUSTER!=="devnet")throw new Error("test_network_required");
+  // Test provisioning only runs against a test network; it stays disabled on Arc Mainnet.
+  if(process.env.MP_ENVIRONMENT!=="test" || !NETWORK.testnet)throw new Error("test_network_required");
   const settings={token,seller},externalStore=`MIDATOTESTSTORE${seller}`,externalPos=`MIDATOTESTPOS${seller}`;
   const rows=result=>{
     const list=Array.isArray(result.results)?result.results:Array.isArray(result.data)?result.data:null;

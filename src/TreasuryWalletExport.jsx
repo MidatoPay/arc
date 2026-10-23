@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import { useExportWallet, useWallets } from "@privy-io/react-auth/solana";
+import { usePrivy, useExportWallet, useWallets } from "@privy-io/react-auth";
+import { sameAddress } from "./arc.js";
 import { useLanguage } from "./i18n.jsx";
 import { openTreasuryWalletExport, treasuryExportWallets } from "./treasuryWalletExport.js";
 import {transferApi} from './transfers.js';
@@ -15,7 +15,7 @@ export default function TreasuryWalletExport({ treasuryAddress, authorized=false
   const text = Object.fromEntries(KEYS.map((key) => [key, t(`treasuryExport.${key}`)]));
   const [busy, setBusy] = useState(false), [error, setError] = useState(false), [expanded, setExpanded] = useState(false);
   const exporting = useRef(false);
-  const addresses = treasuryExportWallets(user).filter(address=>address===treasuryAddress);
+  const addresses = treasuryExportWallets(user).filter(address=>sameAddress(address,treasuryAddress));
   const selected = treasuryAddress;
 
   if (!authorized || !ready || !authenticated || !walletsReady || !user?.id || !addresses.length) return null;

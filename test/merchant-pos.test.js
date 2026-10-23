@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { ensureMerchantPos,merchantEmail,merchantPosIdentity } from "../netlify/functions/lib/merchantPos.js";
 import { assertChargeConfig } from "../netlify/functions/lib/paymentService.js";
 
-const settings={environment:"production",network:"mainnet-beta",seller:"123",store:"456",token:"test-only"};
+const settings={environment:"production",network:"arc-mainnet",seller:"123",store:"456",token:"test-only"};
 test("POS identities isolate Privy users and environments; email labels comply with provider restrictions",()=>{
   assert.equal(merchantEmail({linkedAccounts:[{type:"email",address:"user@example.com"}]}),"user@example.com");
   assert.throws(()=>merchantEmail({linkedAccounts:[]}),{code:"merchant_email_required"});
@@ -17,7 +17,7 @@ test("POS identities isolate Privy users and environments; email labels comply w
   assert.ok(merchantPosIdentity("u1",settings,"a".repeat(100)+"@example.com").name.length<=45);
 });
 test("reconciliation preserves the POS saved on each charge, including legacy operations",()=>{
-  const charge={environment:"production",network:"mainnet-beta",seller_id:"123",pos_id:"OWNPOS",treasury_address:"wallet",
+  const charge={environment:"production",network:"arc-mainnet",seller_id:"123",pos_id:"OWNPOS",treasury_address:"wallet",
     order_body:{config:{qr:{external_pos_id:"OWNPOS"}}}};
   assert.doesNotThrow(()=>assertChargeConfig(charge,{...settings,pos:"OTHER"},"wallet"));
   assert.throws(()=>assertChargeConfig({...charge,seller_id:"other"},settings),{code:"charge_configuration_changed"});

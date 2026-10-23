@@ -1,7 +1,7 @@
 // Payload del QR/link de cobro P2P: una URL con un único query param `pay`
 // que codifica destinatario, nombre a mostrar, monto en ARS y factura.
 
-import { isAddress } from "@solana/kit";
+import { isAddress } from "./arc.js";
 
 function encodeField(v) {
   return String(v).replace(/[,:]/g, "");

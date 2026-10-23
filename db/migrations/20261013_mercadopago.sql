@@ -1,21 +1,17 @@
 BEGIN;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'devnet';
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'arc-mainnet';
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS charge_id UUID;
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_user_hash_key;
 CREATE UNIQUE INDEX IF NOT EXISTS transactions_user_network_hash_uidx ON transactions(user_id, network, hash);
 CREATE UNIQUE INDEX IF NOT EXISTS transactions_charge_uidx ON transactions(charge_id) WHERE charge_id IS NOT NULL;
-ALTER TABLE wallets ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'devnet';
+ALTER TABLE wallets ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'arc-mainnet';
 ALTER TABLE wallets DROP CONSTRAINT IF EXISTS wallets_pkey;
 ALTER TABLE wallets ADD PRIMARY KEY(user_id, network);
 
-CREATE TABLE IF NOT EXISTS payment_user_blocks (
-  user_id TEXT NOT NULL, environment TEXT NOT NULL, reason TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(user_id, environment)
-);
 CREATE TABLE IF NOT EXISTS charges (
   id UUID PRIMARY KEY, user_id TEXT NOT NULL, wallet_address TEXT NOT NULL,
   environment TEXT NOT NULL CHECK(environment IN ('test','production')),
-  network TEXT NOT NULL CHECK(network IN ('devnet','mainnet-beta')),
+  network TEXT NOT NULL CHECK(network IN ('arc-mainnet')),
   seller_id TEXT NOT NULL, pos_id TEXT NOT NULL, treasury_address TEXT NOT NULL,
   amount_cents BIGINT NOT NULL CHECK(amount_cents > 0), fee_cents BIGINT NOT NULL,
   fee_bps INTEGER NOT NULL CHECK(fee_bps = 50), usdc_raw BIGINT NOT NULL CHECK(usdc_raw >= 10000),
@@ -24,7 +20,7 @@ CREATE TABLE IF NOT EXISTS charges (
   status TEXT NOT NULL DEFAULT 'creating', order_body JSONB NOT NULL,
   order_id TEXT, payment_id TEXT, qr_data TEXT, provider_status TEXT, provider_detail TEXT,
   reserved BOOLEAN NOT NULL DEFAULT true, cancel_requested BOOLEAN NOT NULL DEFAULT false,
-  signature TEXT UNIQUE, signed_wire TEXT, last_valid_block_height BIGINT, payout_memo TEXT,
+  tx_hash TEXT UNIQUE, signed_tx TEXT, nonce BIGINT, payout_memo TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), expires_at TIMESTAMPTZ,
   delivered_at TIMESTAMPTZ, reconciled_at TIMESTAMPTZ, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT,

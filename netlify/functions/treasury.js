@@ -2,7 +2,7 @@
 // TREASURY_SECRET_KEY vive solo acá (sin prefijo VITE_).
 
 import { PrivyClient } from "@privy-io/server-auth";
-import { isAddress } from "@solana/kit";
+import { isAddress } from "../../src/arc.js";
 import { NETWORK } from "../../src/network.js";
 import { isPaymentAdmin } from './lib/paymentReporting.js';
 import { createReadCache } from './lib/readCache.js';
@@ -25,7 +25,7 @@ function json(statusCode, body) {
   return {
     statusCode,
     headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store", "Vary": "Authorization" },
-    // @solana/kit a veces devuelve BigInt (slot/amount); JSON no los serializa.
+    // Montos y bloques pueden ser BigInt; JSON no los serializa.
     body: JSON.stringify(body, (_key, value) =>
       typeof value === "bigint" ? Number(value) : value
     ),
@@ -59,7 +59,7 @@ return async (event) => {
       }
       const admin = (adapters.isAdmin || isPaymentAdmin)(userId);
       const address=await (adapters.getAddress || getTreasuryAddress)();
-      const balance=admin ? await read(`treasury:${NETWORK.cluster}:${address}`,10000,adapters.getBalance || getTreasuryBalance) : null;
+      const balance=admin ? await read(`treasury:${NETWORK.network}:${address}`,10000,adapters.getBalance || getTreasuryBalance) : null;
       return json(200, { configured: true, address, balance });
     } catch (err) {
       return json(503, { error: "treasury_unavailable" });
@@ -67,7 +67,7 @@ return async (event) => {
   }
 
   if (method === "POST") {
-    if (NETWORK.cluster !== "devnet") return json(403, { error: "direct_treasury_payout_disabled" });
+    if (!NETWORK.testnet) return json(403, { error: "direct_treasury_payout_disabled" });
     const userId = await authenticate(event);
     if (!userId) return json(401, { error: "unauthorized" });
     if (!isTreasuryConfigured()) {

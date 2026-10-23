@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "./i18n.jsx";
-import { SOLANA, explorerAddressUrl, explorerTxUrl } from "./chain.js";
+import { ARC, explorerAddressUrl, explorerTxUrl } from "./chain.js";
+import { isAddress } from "./arc.js";
 import { paymentReceived, deliveryNoticeKey } from "./chargeStatus.js";
 import { activityStatusKey } from "./transactions.js";
 
@@ -16,16 +17,16 @@ export const EMPTY_MOVS_FILTERS = Object.freeze({ date: "all", from: "", to: "",
 const DATE_PRESETS = ["all", "today", "7d", "30d", "custom"];
 const DATE_LABELS = { all: "movs.dateAll", today: "movs.dateToday", "7d": "movs.date7", "30d": "movs.date30", custom: "movs.dateCustom" };
 const TYPE_LABELS = { charge: "movs.typeCharge", qr: "movs.typeQr", send: "movs.typeSend", received: "movs.typeReceived", convert: "movs.typeConvert" };
-const MOVS_TYPES = ["charge", "qr", "send", "received", "convert"].filter((id) => id !== "convert" || SOLANA.cluster === "devnet");
+const MOVS_TYPES = ["charge", "qr", "send", "received", "convert"].filter((id) => id !== "convert" || ARC.testnet);
 
 const fmt = (n, d, locale) => Number(n).toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtArs = (n) => Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtUsdcFull = (n, locale) => Number(n).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 const shortId = (a) => (a && a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-6)}` : a || "—");
-/** Dirección Solana completa (base58), p. ej. un envío a una wallet que no está en la agenda. */
-export const isSolanaAddress = (s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(s || "").trim());
+/** Dirección EVM completa, p. ej. un envío a una wallet que no está en la agenda. */
+export const isWalletAddress = (s) => isAddress(String(s || "").trim());
 /** Nombre visible de la contraparte: una dirección completa se acorta a 4…4, como los recibidos de wallets externas. */
-export const displayWho = (who) => (isSolanaAddress(who) ? `${who.trim().slice(0, 4)}…${who.trim().slice(-4)}` : who);
+export const displayWho = (who) => (isWalletAddress(who) ? `${who.trim().slice(0, 6)}…${who.trim().slice(-4)}` : who);
 const finite = (n) => n !== null && n !== undefined && n !== "" && Number.isFinite(Number(n));
 
 // ————— íconos —————
@@ -248,7 +249,7 @@ export function receiptView(tx, t, locale) {
   const category = txCategory(tx);
   const mp = tx.source === "mercadopago";
   const pill = txPill(tx), tone = PILL_TONE[pill];
-  const signature = tx.signature || (tx.hash && !/^(charge|transfer):/.test(tx.hash) ? tx.hash : null);
+  const txHash = tx.txHash || (tx.hash && !/^(charge|transfer):/.test(tx.hash) ? tx.hash : null);
   const usdc = finite(tx.amt) ? `${fmtUsdcFull(tx.amt, locale)} USDC` : null;
   const ars = finite(tx.ars) ? `$ ${fmtArs(tx.ars)} ARS` : null;
   const rate = finite(tx.fxRate) && Number(tx.fxRate) > 0 ? `$ ${fmtArs(tx.fxRate)} / USDC` : null;
@@ -272,7 +273,7 @@ export function receiptView(tx, t, locale) {
   } else {
     // Wallet sin agendar: se ve 4…4 y la dirección completa queda para copiar (y en el comprobante compartido).
     add(t(category === "received" ? "movs.rowOrigin" : category === "convert" ? "movs.rowCounterpart" : "movs.rowRecipient"),
-      displayWho(tx.who), isSolanaAddress(tx.who) ? tx.who.trim() : undefined);
+      displayWho(tx.who), isWalletAddress(tx.who) ? tx.who.trim() : undefined);
     add(t("movs.rowAmount"), usdc);
     // Envíos y recibidos son USDC directo: el equivalente en ARS solo aplica a operaciones con precio en pesos
     // (pago de un cobro MidatoPay por QR) o a conversiones.
@@ -280,12 +281,12 @@ export function receiptView(tx, t, locale) {
       add(t("movs.rowEquals"), ars);
       add(t("movs.rowExchangeRate"), rate);
     }
-    if (tx.source === "transfer") add(t("movs.rowNetworkCost"), t("movs.networkCostSponsored"));
+    if (tx.source === "transfer") add(t("movs.rowNetworkCost"), t("movs.networkCostUsdc", tx.fee == null ? null : String(tx.fee)));
   }
-  add(t("movs.rowNetwork"), `Solana ${SOLANA.cluster === "devnet" ? "Devnet" : "Mainnet"}`);
+  add(t("movs.rowNetwork"), ARC.name);
   if (mp && tx.orderId) refs.push({ label: t("movs.rowOrder"), value: tx.orderId, copy: tx.orderId });
   if (tx.factura && !String(tx.factura).startsWith("transfer_")) refs.push({ label: t("movs.rowOperation"), value: tx.factura, copy: tx.factura });
-  if (signature) refs.push({ label: t("movs.rowTxId"), value: shortId(signature), copy: signature, accent: true });
+  if (txHash) refs.push({ label: t("movs.rowTxId"), value: shortId(txHash), copy: txHash, accent: true });
   const created = new Date(tx.createdAt || "");
   const dateText = Number.isFinite(created.getTime())
     ? t("movs.receiptDate", created.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" }),
@@ -294,7 +295,7 @@ export function receiptView(tx, t, locale) {
   const statusKey = tone === "amber" ? activityStatusKey(tx) : null;
   const noticeKey = mp && tone === "amber" ? deliveryNoticeKey(tx) : null;
   return {
-    category, title, pill, tone, rows, refs, signature, dateText,
+    category, title, pill, tone, rows, refs, txHash, dateText,
     amount: headlineUsdc || (category === "charge" ? ars : usdc) || "—",
     status: statusKey ? t(`movs.${statusKey}`) : "",
     notice: noticeKey ? t(`movs.${noticeKey}`) : "",
@@ -306,7 +307,7 @@ function shareText(view, t) {
     `MidatoPay · ${view.title}`, view.amount, view.dateText, `${t(`movs.pill.${view.pill}`)}`,
     ...view.rows.map((r) => `${r.label}: ${r.copy || r.value}`),
     ...view.refs.map((r) => `${r.label}: ${r.copy}`),
-    view.signature ? explorerTxUrl(view.signature) : "",
+    view.txHash ? explorerTxUrl(view.txHash) : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -445,8 +446,8 @@ export function TxReceipt({ tx, onClose, actions, onOpenTransfer }) {
                 </div>
               ))}
             </div>
-            {view.signature && (
-              <a href={explorerTxUrl(view.signature)} target="_blank" rel="noreferrer"
+            {view.txHash && (
+              <a href={explorerTxUrl(view.txHash)} target="_blank" rel="noreferrer"
                 style={{ marginTop: 18, display: "inline-flex", alignItems: "center", gap: 6, color: C.accent, textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
                 {t("movs.viewOnchain")}<IconExternal />
               </a>

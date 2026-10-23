@@ -1,19 +1,19 @@
-import { address,createSolanaRpc } from '@solana/kit';
-import { findAssociatedTokenPda,fetchMaybeToken,TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { NETWORK } from '../../src/network.js';
+import { rawToUsdc, weiToUsdcRaw } from '../../src/arc.js';
 import { authenticatePayment,getPaymentDb,json,errorResponse } from './lib/paymentRuntime.js';
 import { createReadCache } from './lib/readCache.js';
 import { PaymentError } from './lib/paymentCore.js';
 import { asFetchHandler } from './lib/fetchAdapter.js';
+import { assertArcNetwork,createArcRpc } from './lib/arcRpc.js';
 
+const rpc=createArcRpc();
 async function walletFor(userId) {
-  return (await getPaymentDb().query('SELECT address FROM wallets WHERE user_id=$1 AND network=$2',[userId,NETWORK.cluster])).rows[0]?.address;
+  return (await getPaymentDb().query('SELECT address FROM wallets WHERE user_id=$1 AND network=$2',[userId,NETWORK.network])).rows[0]?.address;
 }
+/** USDC the wallet can move through the ERC-20 interface (6 decimals, truncated). */
 async function chainBalance(owner) {
-  const rpc=createSolanaRpc(process.env.SOLANA_RPC || process.env.VITE_SOLANA_RPC || NETWORK.rpc);
-  const [ata]=await findAssociatedTokenPda({owner:address(owner),mint:address(NETWORK.mint),tokenProgram:TOKEN_PROGRAM_ADDRESS});
-  const token=await fetchMaybeToken(rpc,ata,{commitment:'finalized',abortSignal:AbortSignal.timeout(10000)});
-  return token.exists ? Number(token.data.amount)/1e6 : 0;
+  await assertArcNetwork(rpc);
+  return rawToUsdc(weiToUsdcRaw(BigInt(await rpc('eth_getBalance',[owner,'latest']))));
 }
 export function createBalanceHandler({authenticate=authenticatePayment,wallet=walletFor,balance=chainBalance,read=createReadCache(),now=Date.now}={}) {
   return async event=>{
@@ -23,8 +23,8 @@ export function createBalanceHandler({authenticate=authenticatePayment,wallet=wa
       if(event.httpMethod!=='GET')throw new PaymentError('method_not_allowed',405);
       const owner=await wallet(userId);
       if(!owner)throw new PaymentError('primary_wallet_unavailable',409);
-      const value=await read(`balance:${NETWORK.cluster}:${owner}`,10000,async()=>({
-        address:owner,network:NETWORK.cluster,usdc:await balance(owner),updatedAt:now(),
+      const value=await read(`balance:${NETWORK.network}:${owner}`,10000,async()=>({
+        address:owner,network:NETWORK.network,usdc:await balance(owner),updatedAt:now(),
       }),{fresh:event.queryStringParameters?.refresh==='1'});
       return {...json(200,value),headers};
     }catch(error){return {...errorResponse(error),headers};}

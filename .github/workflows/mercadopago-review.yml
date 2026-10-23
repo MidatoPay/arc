@@ -8,11 +8,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        cluster: [devnet, mainnet-beta]
     env:
-      VITE_SOLANA_CLUSTER: ${{ matrix.cluster }}
+      VITE_ARC_NETWORK: mainnet
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

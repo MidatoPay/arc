@@ -11,7 +11,7 @@ export { CHAINLINK_USD_ARS_FEED, CHAINLINK_USD_ARS_HEARTBEAT_SECONDS, FALLBACK_F
 // Fallback off-chain si el RPC de Ethereum no responde.
 
 // Lecturas van por el proxy local (/eth-rpc) para evitar CORS del navegador
-// contra el RPC de Ethereum (mismo patrón que /rpc → Solana).
+// contra el RPC de Ethereum (mismo patrón que /rpc → Arc).
 export const ETH_RPC_PROXY =
   typeof window !== "undefined" ? window.location.origin + "/eth-rpc" : "https://ethereum.publicnode.com";
 

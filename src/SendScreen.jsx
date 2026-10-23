@@ -1,12 +1,12 @@
 import { Fragment, useMemo, useState } from "react";
-import { isAddress } from "@solana/kit";
+import { isAddress } from "./arc.js";
 import { useLanguage } from "./i18n.jsx";
-import { SOLANA } from "./chain.js";
+import { ARC } from "./chain.js";
 import { searchContacts } from "./contacts.js";
 import { parseScanTarget } from "./scanTarget.js";
 import { AmountStep, Header, IconWallet, scanErrorText } from "./PayScan.jsx";
 
-// Enviar: elegir destinatario (agenda o dirección Solana pegada) y después el mismo paso de monto que Pagar.
+// Enviar: elegir destinatario (agenda o dirección EVM pegada) y después el mismo paso de monto que Pagar.
 const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", accent: "#fe6c1c", orangeSoft: "#FFEADF", red: "#E4483D" };
 const page = { display: "flex", flexDirection: "column", height: "100%", minHeight: "100%", padding: "10px 18px 18px", boxSizing: "border-box", background: C.card };
 const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-6)}` : "—");
@@ -49,16 +49,16 @@ function RowGroup({ children }) {
 
 const sectionTitle = { margin: "20px 0 10px", fontSize: 14, fontWeight: 500, color: C.mut };
 
-export default function SendScreen({ address, balance, fxRate, contacts, onPay, onDone, onBack }) {
+export default function SendScreen({ address, balance, networkFee = 0, fxRate, contacts, onPay, onDone, onBack }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState(null);
   const [targetId, setTargetId] = useState(0);
 
-  // Solo contactos con dirección Solana válida (los EVM históricos no se ofrecen para enviar).
+  // Solo contactos con dirección EVM válida en Arc.
   const sendable = useMemo(() => contacts.filter((c) => isAddress(c.addr || "")), [contacts]);
   const trimmed = query.trim();
-  const parsed = trimmed ? parseScanTarget(trimmed, { mint: SOLANA.usdcMint, self: address }) : null;
+  const parsed = trimmed ? parseScanTarget(trimmed, { usdc: ARC.usdc, self: address }) : null;
   const direct = parsed && !parsed.error ? parsed : null;
   const directError = parsed?.error && !["invalid", "empty"].includes(parsed.error) ? parsed.error : null;
   const directContact = direct ? sendable.find((c) => c.addr === direct.addr) : null;
@@ -84,7 +84,7 @@ export default function SendScreen({ address, balance, fxRate, contacts, onPay, 
   if (target) {
     return (
       <AmountStep key={targetId} target={target} title={t("send.title")} onBack={() => setTarget(null)}
-        balance={balance} fxRate={fxRate} contacts={contacts} onPay={onPay} onDone={onDone} />
+        balance={balance} networkFee={networkFee} fxRate={fxRate} contacts={contacts} onPay={onPay} onDone={onDone} />
     );
   }
 
@@ -127,8 +127,8 @@ export default function SendScreen({ address, balance, fxRate, contacts, onPay, 
           <>
             <div style={sectionTitle}>{t("sendFlow.newAddress")}</div>
             <RowGroup>
-              <RecipientRow key="direct" avatar={<IconWallet />} title={direct.name || t("scan.solanaWallet")}
-                subtitle={`${shortAddr(direct.addr)} · USDC Solana`} label={t("sendFlow.selectAria", shortAddr(direct.addr))} onClick={() => pick(direct)} />
+              <RecipientRow key="direct" avatar={<IconWallet />} title={direct.name || t("scan.arcWallet")}
+                subtitle={`${shortAddr(direct.addr)} · USDC Arc`} label={t("sendFlow.selectAria", shortAddr(direct.addr))} onClick={() => pick(direct)} />
             </RowGroup>
           </>
         )}

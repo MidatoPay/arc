@@ -8,7 +8,8 @@ import { PaymentError } from '../netlify/functions/lib/paymentCore.js';
 import { CHAINLINK_USD_ARS_FEED } from '../src/priceFeed.js';
 import { createDisplayQuoteClient } from '../src/fx.js';
 import { createWalletBalanceClient } from '../src/walletBalance.js';
-import { SOLANA } from '../src/chain.js';
+import { ARC } from '../src/chain.js';
+import { NETWORK } from '../src/network.js';
 import { startVisibleRefresh } from '../src/visibleRefresh.js';
 import { setRpcSession,rpcAccessToken } from '../src/rpcSession.js';
 
@@ -70,18 +71,27 @@ test('balance endpoint authorizes before reading, selects the session wallet and
 const rpcEvent=method=>({httpMethod:'POST',headers:{},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params:[]})});
 test('RPC gateway rejects unauthenticated traffic, expensive methods, oversized payloads and abusive batches before forwarding',async()=>{
   let calls=0,time=0;
-  const options={chain:'solana',target:'https://private.invalid',now:()=>time,request:async()=>{calls++;return {status:200,json:async()=>({result:'ok'})};}};
+  const options={chain:'arc',target:'https://private.invalid',now:()=>time,request:async()=>{calls++;return {status:200,json:async()=>({result:'ok'})};}};
   const anonymous=createRpcHandler({...options,authenticate:async()=>{throw new PaymentError('unauthorized',401);}});
-  assert.equal((await anonymous(rpcEvent('getHealth'))).statusCode,401);
+  assert.equal((await anonymous(rpcEvent('eth_chainId'))).statusCode,401);
   const handler=createRpcHandler({...options,authenticate:async()=> 'user'});
-  assert.equal((await handler(rpcEvent('getProgramAccounts'))).statusCode,403);
-  assert.equal((await handler({...rpcEvent('getHealth'),body:'x'.repeat(65537)})).statusCode,413);
-  assert.equal((await handler({...rpcEvent('getHealth'),body:'['})).statusCode,400);
-  assert.equal((await handler({...rpcEvent('getHealth'),body:JSON.stringify(Array(11).fill(JSON.parse(rpcEvent('getHealth').body)))})).statusCode,400);
+  const call=(method,params)=>({...rpcEvent(method),body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  // Writes, scans and arbitrary contract calls never reach the upstream RPC.
+  for(const method of ['eth_sendRawTransaction','eth_getLogs','eth_getProof','debug_traceTransaction','eth_sign'])
+    assert.equal((await handler(rpcEvent(method))).statusCode,403,method);
+  assert.equal((await handler(call('eth_call',[{to:'0x'+'1'.repeat(40),data:'0x'},'latest']))).statusCode,403);
+  assert.equal((await handler(call('eth_getBlockByNumber',['latest',true]))).statusCode,403);
+  assert.equal((await handler(call('eth_feeHistory',[1000,'latest',[]]))).statusCode,400);
+  assert.equal((await handler({...rpcEvent('eth_chainId'),body:'x'.repeat(65537)})).statusCode,413);
+  assert.equal((await handler({...rpcEvent('eth_chainId'),body:'['})).statusCode,400);
+  assert.equal((await handler({...rpcEvent('eth_chainId'),body:JSON.stringify(Array(11).fill(JSON.parse(rpcEvent('eth_chainId').body)))})).statusCode,400);
   assert.equal(calls,0);
-  for(let i=0;i<120;i++)assert.equal((await handler(rpcEvent('getLatestBlockhash'))).statusCode,200);
-  const limited=await handler(rpcEvent('getHealth'));assert.equal(limited.statusCode,429);assert.equal(limited.headers['Retry-After'],'60');
-  time=60000;assert.equal((await handler(rpcEvent('getHealth'))).statusCode,200);
+  assert.equal((await handler(call('eth_call',[{to:NETWORK.usdc,data:'0x70a08231'},'latest']))).statusCode,200);
+  assert.equal((await handler(call('eth_call',[{to:NETWORK.memo.toLowerCase(),data:'0x'},'latest']))).statusCode,200);
+  assert.equal((await handler(call('eth_getBlockByNumber',['latest',false]))).statusCode,200);
+  for(let i=0;i<117;i++)assert.equal((await handler(rpcEvent('eth_blockNumber'))).statusCode,200);
+  const limited=await handler(rpcEvent('eth_chainId'));assert.equal(limited.statusCode,429);assert.equal(limited.headers['Retry-After'],'60');
+  time=60000;assert.equal((await handler(rpcEvent('eth_chainId'))).statusCode,200);
 });
 
 test('Ethereum gateway accepts only Chainlink reads, and never exposes transport errors',async()=>{
@@ -106,11 +116,12 @@ test('balance client coalesces reads, supports post-operation refresh, sends aut
   let requests=0;
   const read=createWalletBalanceClient({getToken:async()=> 'token',request:async(path,options)=>{
     requests++;assert.equal(options.headers.Authorization,'Bearer token');
-    return {ok:true,json:async()=>({address:'wallet',network:SOLANA.cluster,usdc:requests})};
+    return {ok:true,json:async()=>({address:wallet,network:ARC.network,usdc:requests})};
   }});
-  assert.deepEqual(await Promise.all([read('wallet'),read('wallet')]),[1,1]);assert.equal(requests,1);
-  assert.equal(await read('wallet',{fresh:true}),2);
-  await assert.rejects(()=>read('victim'),/balance_mismatch/);
+  const wallet='0x8ba1f109551bD432803012645Ac136ddd64DBA72',victim='0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
+  assert.deepEqual(await Promise.all([read(wallet.toLowerCase()),read(wallet.toLowerCase())]),[1,1]);assert.equal(requests,1);
+  assert.equal(await read(wallet.toLowerCase(),{fresh:true}),2);
+  await assert.rejects(()=>read(victim),/balance_mismatch/);
 });
 
 test('visible refresh pauses hidden tabs, deduplicates wakeups and stops cleanly',async()=>{

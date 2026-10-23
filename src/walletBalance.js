@@ -1,5 +1,6 @@
 import { rpcAccessToken } from './rpcSession.js';
-import { SOLANA } from './chain.js';
+import { ARC } from './chain.js';
+import { sameAddress } from './arc.js';
 
 export function createWalletBalanceClient({request=(...args)=>fetch(...args),getToken=rpcAccessToken,now=Date.now}={}) {
   let cached,pending;
@@ -12,7 +13,7 @@ export function createWalletBalanceClient({request=(...args)=>fetch(...args),get
       const response=await request(`/balance${fresh?'?refresh=1':''}`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(15000)});
       if(!response.ok)throw new Error('balance_unavailable');
       const body=await response.json();
-      if(body.address!==address || body.network!==SOLANA.cluster || !Number.isFinite(body.usdc) || body.usdc<0)throw new Error('balance_mismatch');
+      if(!sameAddress(body.address,address) || body.network!==ARC.network || !Number.isFinite(body.usdc) || body.usdc<0)throw new Error('balance_mismatch');
       // A late ordinary response must not overwrite a forced refresh.
       if(pending?.promise===promise)cached={key,usdc:body.usdc,until:now()+10000};
       return body.usdc;

@@ -1,27 +1,25 @@
-# Why MidatoPay Is a Strong Fit for the Solana Ecosystem
+# Why MidatoPay Is a Strong Fit for Arc
 
-Companion to [`README.md`](README.md). This document summarizes MidatoPay's capabilities and explains why the project is valuable for Solana. Every technical claim points to files in the repository.
+Companion to [`README.md`](README.md). This document summarizes MidatoPay's capabilities and explains why the project fits Arc, Circle's stablecoin-native network. Every technical claim points to files in the repository.
 
 ---
 
 ## 1. A real economic use case
 
-MidatoPay connects, in a single flow, a payment rail the market already uses with settlement on Solana:
+MidatoPay connects, in a single flow, a payment rail the market already uses with settlement on Arc:
 
 1. The customer pays in pesos with Mercado Pago, a widely used QR payment provider in Argentina.
-2. The merchant ends up holding USDC on Solana.
+2. The merchant ends up holding USDC on Arc.
 
 | Element | Implementation |
 |---|---|
 | Mercado Pago Orders API integration: dynamic QR, signed webhooks, canonical verification | `netlify/functions/lib/mercadopago.js`, `lib/paymentService.js`, `lib/paymentCore.js` |
-| Automatic USDC settlement on `mainnet-beta`, with an on-chain memo | `lib/paymentWorker.js`, `lib/treasuryPayout.js` |
-| Production configuration: Solana `mainnet-beta` and Mercado Pago production | `.env.production.example`, `docs/MERCADOPAGO_PRODUCCION.md` |
-| Treasury on Solana Mainnet | [`7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L`](https://explorer.solana.com/address/7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L) on Solana Explorer |
-| Real mainnet transaction | [`3hsY2qzq…STchL4hv`](https://explorer.solana.com/tx/3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv) on Solana Explorer |
-| One embedded Solana wallet per merchant, created at login | Privy, `src/main.jsx` |
+| Automatic USDC settlement on Arc Mainnet (chain ID 5042), with an on-chain memo | `lib/paymentWorker.js`, `lib/treasuryPayout.js` |
+| Production configuration: Arc Mainnet and Mercado Pago production | `.env.production.example`, `docs/MERCADOPAGO_PRODUCCION.md` |
+| One embedded EVM wallet per merchant, created at login | Privy, `src/main.jsx` |
 | A dedicated Mercado Pago point of sale per merchant | `lib/merchantPos.js` |
 
-This covers the angle that Colosseum's analysis of previous submissions identified as open: **the merchant side**. The customer keeps paying in pesos without changing anything, and the merchant holds digital dollars with settlement that can be verified on-chain.
+This covers **the merchant side**. The customer keeps paying in pesos without changing anything, and the merchant holds digital dollars with settlement that can be verified on-chain.
 
 ---
 
@@ -29,20 +27,21 @@ This covers the angle that Colosseum's analysis of previous submissions identifi
 
 | Capability | Evidence |
 |---|---|
-| **A real PSP, not a simulation.** Charges go through the Mercado Pago Orders API with dynamic QR, in production or test mode | `orderBody` (`mode: "dynamic"`), `ensureOrder` |
+| **A real PSP, not a simulation.** Charges go through the Mercado Pago Orders API with dynamic QR | `orderBody` (`mode: "dynamic"`), `ensureOrder` |
 | **Server-side payment verification.** Before settling, the worker re-reads the canonical order and requires seller, point of sale, currency (ARS), exact amount, reference and `live_mode` to match | `validateOrder` in `lib/paymentCore.js` |
-| **The treasury only pays against registered charges.** Every settlement comes from a charge stored in PostgreSQL and created by an authenticated user. The destination is a Solana wallet linked to that user in Privy | `createCharge`, `assertWalletOwned`, `settlePayout` |
-| **Free-form treasury payouts are blocked on mainnet.** `POST /treasury` returns 403 outside devnet | `netlify/functions/treasury.js`, `sendTreasuryPayout` |
+| **The treasury only pays against registered charges.** Every settlement comes from a charge stored in PostgreSQL and created by an authenticated user. The destination is the Arc wallet linked to that user in Privy | `createCharge`, `assertWalletOwned`, `settlePayout` |
+| **Sandbox payments never release real USDC.** The Mercado Pago test environment is disabled on Arc Mainnet, and free-form treasury payouts (`POST /treasury`) return 403 | `paymentSettings`, `netlify/functions/treasury.js` |
 | **Authenticated webhooks.** HMAC-SHA256 with a constant-time comparison. The notification body never authorizes a money movement | `verifyWebhook` |
-| **Fresh quotes only.** Every charge requires a Chainlink USD/ARS round no older than `CHAINLINK_MAX_AGE_SECONDS` (25 hours). A stale price cannot be arbitraged against the treasury | `validateRound` in `src/priceFeed.js`, `paymentQuoteSettings` |
-| **Settlement built to financial-infrastructure standards.** The signed transaction is stored before it is sent, the same bytes are always rebroadcast, delivery is recorded only at `finalized`, and an ambiguous signature goes to review instead of being re-signed | `lib/paymentWorker.js` |
-| **No double spending of treasury funds.** Liquidity reservations are taken under advisory locks before each charge is accepted | `createCharge` |
-| **End-to-end idempotency.** Uniqueness constraints on the key, reference, order, payment and signature. Mercado Pago calls carry `X-Idempotency-Key` | `db/migrations/20261013_mercadopago.sql` |
-| **Network safety.** Mint and genesis hash per network; the RPC's genesis hash is checked before funds are reserved | `src/network.js`, `treasuryLiquidity` |
-| **Verifiable on Solana Explorer.** Every receipt and every Activity row with a signature links to the explorer. The memo identifies the charge | `src/App.jsx`, `src/chain.js` |
+| **Fresh quotes only.** Every charge requires a Chainlink USD/ARS round no older than `CHAINLINK_MAX_AGE_SECONDS` (25 hours) | `validateRound` in `src/priceFeed.js`, `paymentQuoteSettings` |
+| **Settlement built to financial-infrastructure standards.** Treasury nonces are assigned under a database lock, the signed transaction is stored before it is sent, the same bytes are always rebroadcast, and a reverted receipt or a nonce consumed elsewhere goes to review instead of being re-signed | `lib/paymentWorker.js` |
+| **No double spending of treasury funds.** Liquidity reservations are taken under advisory locks before each charge is accepted, and a fixed gas reserve is never counted as payout liquidity | `createCharge`, `treasuryLiquidity` |
+| **End-to-end idempotency.** Uniqueness constraints on the key, reference, order, payment and transaction hash. Mercado Pago calls carry `X-Idempotency-Key` | `db/migrations/20261013_mercadopago.sql` |
+| **Network safety.** Every RPC is checked against chain ID 5042 before funds are reserved or transactions are prepared; outcomes are verified from the receipt's USDC `Transfer` log | `src/network.js`, `lib/arcRpc.js`, `lib/transferWorker.js` |
+| **User transfers without blind signing.** The server prepares the exact transaction, the embedded wallet signs it after an in-app approval that shows the gas in USDC, and the server checks it is byte-identical, signed by the sender and simulates it before storing | `lib/transferChain.js`, `lib/transferService.js`, `src/TransferApproval.jsx` |
+| **Verifiable on the Arc explorer.** Every receipt and every Activity row with a transaction hash links to the explorer. The memo identifies the charge | `src/Movimientos.jsx`, `src/chain.js` |
 | **Server-only secrets.** The build aborts if a `VITE_*` variable looks private | `vite.config.js`, `scripts/public-env-policy.js` |
-| **Broad test suite.** 16 files and 115 tests (77 top-level tests and 38 subtests) covering the fee, HMAC, order validation, idempotency, store-before-send, finalization, refunds, quote freshness and migrations, including an embedded PostgreSQL database. CI runs with both devnet and mainnet configurations | `test/`, `.github/workflows/mercadopago-review.yml` |
-| **Accounting export.** The admin CSV includes the ARS amount, fee, USDC, rate, Mercado Pago IDs and Solana signature | `src/paymentReports.js` |
+| **Broad test suite.** 27 test files and 193 tests covering the fee, HMAC, order validation, idempotency, store-before-send, nonce assignment, receipts, refunds, quote freshness, EIP-681 parsing, user-signed transfers and migrations, with an embedded PostgreSQL database and a simulated Arc RPC | `test/`, `.github/workflows/mercadopago-review.yml` |
+| **Accounting export.** The admin CSV includes the ARS amount, fee, USDC, rate, Mercado Pago IDs and transaction hash | `src/paymentReports.js` |
 | **Business model in the code.** The 0.5% fee is enforced in the function, in the insert and in a database constraint | `quoteCharge`, `CHECK(fee_bps = 50)` |
 
 ---
@@ -56,29 +55,28 @@ Mercado Pago does not settle in USDC: MidatoPay is the conversion layer.
 1. Mercado Pago credits the ARS to the platform's seller account.
 2. MidatoPay's prefunded treasury delivers the USDC equivalent.
 
-On Solana, settlement uses native USDC issued by Circle, with no bridges. Each payout is a public SPL transfer with its memo:
+On Arc, USDC is the network's native asset. Each payout is a public transaction through Arc's Memo contract, which forwards the USDC transfer and emits the memo:
 
 ```
 MIDATO|v1|inv:<mp_reference>|kind:charge_mercadopago|cur:ARS|amt:<ARS>|fx:<rate>|usdc:<amount>
 ```
 
-That record makes it possible to reconcile each sale with its Mercado Pago order. It also gives the merchant a basis for invoicing, because the peso amount, the exchange rate and the signature are linked.
+That record makes it possible to reconcile each sale with its Mercado Pago order. It also gives the merchant a basis for invoicing, because the peso amount, the exchange rate and the transaction hash are linked.
 
 ---
 
-## 4. Why Solana matters for the product
+## 4. Why Arc matters for the product
 
-| Product need | Solana feature | How MidatoPay uses it |
+| Product need | Arc feature | How MidatoPay uses it |
 |---|---|---|
-| Settle each charge at a cost far below a 0.5% fee | Base fee of 5,000 lamports per signature, independent of the amount | Each settlement carries a single treasury signature. Even on ARS 10,000 (a fee of about 0.03 USD at 1,650 ARS/USD), the base fee would only equal the fee with SOL at about 6,000 USD. |
-| The merchant sees the money arrive at the counter | `confirmed` within seconds and `finalized` shortly after | The UI shows "Confirmed, finalizing…", and delivery is only recorded at `finalized`. |
-| Merchants without crypto knowledge | Embedded Solana wallets (Privy) | The wallet is created at login with email or phone. No seed phrases. |
-| A dollar balance without bridges | Native Circle USDC as an SPL token | Mainnet mint `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, checked with `TransferChecked` decimals |
-| The merchant needs no SOL to receive | The fee payer can be a different account | The treasury pays the fee and the creation of the merchant's USDC account |
-| Auditability | SPL Memo and public explorers | `MIDATO|v1` memo on every settlement |
-| Growth toward institutional custody and a better experience | Squads, Solana Pay, fee sponsorship | Already part of the product roadmap (Stack screen, `src/i18n.jsx`) |
+| One currency end to end | USDC is the gas token | Balances, payouts, fees and gas are all in USDC. The merchant never needs a second token, and the treasury funds payouts and gas from one balance. |
+| Settle each charge at a cost far below a 0.5% fee | Stable, USDC-denominated fees (EIP-1559 with a 20 gwei floor; Arc targets about US$0.001 per ERC-20 transfer) | On ARS 10,000 the fee is about 0.03 USD; a payout's gas is a small fraction of that. |
+| Know when the money has really arrived | Deterministic finality (no reorgs, no confirmation counting) | A successful receipt is final, so delivery and the fee are recorded once, as soon as the receipt exists. |
+| Merchants without crypto knowledge | Standard EVM wallets | Privy creates the wallet at login with email or phone. No seed phrases. |
+| Auditability | Memo contract and public explorer | `MIDATO|v1` memo on every settlement. |
+| Familiar tooling | EVM compatibility | `ethers` v6, EIP-1559 transactions and EIP-681 payment requests in the scanner. |
 
-Solana is not decoration in this architecture: it is the settlement rail. It provides native USDC, a low and predictable cost per operation, embedded wallets and public traceability.
+Arc is not decoration in this architecture: it is the settlement rail. It provides native USDC as both money and gas, predictable cost per operation, deterministic finality and public traceability.
 
 ---
 
@@ -98,10 +96,10 @@ Why this structure supports adoption:
 
 - **It is transparent.** One percentage, no hidden spread, easy to compare.
 - **It is predictable.** The merchant knows how much USDC they will receive before charging.
-- **The merchant pays no extra costs.** MidatoPay absorbs Mercado Pago's processing costs and Solana network fees (`docs/MERCADOPAGO_PRODUCCION.md`).
+- **The merchant pays no extra costs on charges.** MidatoPay absorbs Mercado Pago's processing costs and the Arc gas of each payout. When merchants send USDC themselves, they pay that transfer's gas in USDC, shown before they confirm.
 - **Settlement is automatic.** There is no manual step between the peso payment and the USDC balance.
-- **It scales with volume.** Revenue grows in proportion to processed volume, while the on-chain cost per operation is minimal and does not depend on the amount.
-- **It can be audited.** Each fee is recorded exactly once in `commission_ledger`, when delivery is finalized. Admin reports show recorded, estimated and under-review fees.
+- **It scales with volume.** Revenue grows in proportion to processed volume, while the on-chain cost per operation is small and does not depend on the amount.
+- **It can be audited.** Each fee is recorded exactly once in `commission_ledger`, when delivery is final. Admin reports show recorded, estimated and under-review fees.
 
 ---
 
@@ -121,7 +119,7 @@ MidatoPay has two letters of intent that cover both sides of adoption: a **distr
   - run a pilot with selected merchants, followed by training, onboarding and progressive scale-up;
   - open its communication channels with merchants;
   - move toward an NDA, a framework partnership agreement and a technical annex.
-- **Validation of the thesis:** the letter describes exactly MidatoPay's proposition. The customer pays in pesos with their usual methods and the merchant receives stable assets, without passing crypto complexity on to the end consumer.
+- **Validation of the thesis:** the customer pays in pesos with their usual methods and the merchant receives stable assets, without passing crypto complexity on to the end consumer.
 
 ### 6.2 Supermercado Soler
 
@@ -132,40 +130,39 @@ MidatoPay has two letters of intent that cover both sides of adoption: a **distr
 - **What attracts it most:** MidatoPay's model of **pooled volume purchasing with other supermarkets**, which could offer better conversion rates and operational benefits.
 - **Next step it asks for:** a product demo and the evaluation of a pilot in its operations.
 
-### 6.3 Why it matters for Solana
+### 6.3 Why it matters for Arc
 
 - The two letters validate the thesis from both ends: a channel that reaches hundreds of locations, and a merchant that asks to try the product in its own operations.
-- Food-service chains and supermarkets have high sales frequency. Every merchant onboarded generates recurring USDC settlements on Solana.
+- Food-service chains and supermarkets have high sales frequency. Every merchant onboarded generates recurring USDC settlements on Arc.
 - A single distribution partner shortens the onboarding of hundreds of locations.
-- Pooled volume across merchants is a natural driver of larger, recurring USDC flows on Solana.
+- Pooled volume across merchants is a natural driver of larger, recurring USDC flows.
 
 ---
 
 ## 7. Adoption potential within the ecosystem
 
-**What already exists:**
+**What exists in the code:**
 
-- every Mercado Pago charge produces a mainnet USDC transfer with its memo;
-- one Solana wallet per merchant;
+- every Mercado Pago charge produces an Arc Mainnet USDC transfer with its memo;
+- one Arc wallet per merchant;
 - one Mercado Pago point of sale per merchant;
+- user-signed USDC transfers by text, QR (EIP-681) and voice;
 - reports and export for administration.
 
 **Expansion opportunities:**
 
 - **More merchants.** Rollout across the Deenex network, from 500 to the projected 2,000 locations, following a pilot → onboarding → scale plan, and a pilot with Supermercado Soler.
-- **Pooled volume purchasing.** Grouping the conversion volume of several supermarkets to obtain better conversion rates, as Supermercado Soler highlights.
+- **Pooled volume purchasing.** Grouping the conversion volume of several supermarkets to obtain better conversion rates.
 - **New flows:**
   - partial conversion, where the merchant chooses how much to keep in USDC;
   - supplier payments in USDC from the merchant's balance;
-  - USDT as an alternative, as the LOI mentions.
-- **Solana ecosystem integrations:**
-  - **Solana Pay** with `reference`, to reconcile every charge on-chain and accept USDC payments;
-  - **Squads**, for treasury custody;
-  - **fee sponsorship** (Kora / Privy), so the merchant never needs SOL, not even when paying suppliers;
-  - **Helius webhooks**, to observe settlements without polling.
-- **On-chain reconciliation and traceability.** A reference plus a memo on every settlement, plus an export for the merchant's accountant. That way Solana records serve accounting.
+  - other Circle stablecoins on Arc where suppliers need them.
+- **Circle ecosystem integrations:**
+  - CCTP to move USDC between Arc and other networks (treasury funding, supplier payments);
+  - institutional treasury custody;
+  - gas sponsorship for merchant-initiated transfers, if the product decides to absorb it.
+- **On-chain reconciliation and traceability.** A reference plus a memo on every settlement, plus an export for the merchant's accountant.
 - **Cross-border use.** The merchant can pay foreign suppliers in USDC from their balance.
-- **More on-chain volume.** Every merchant sale produces a settlement on Solana, so on-chain volume grows with real commercial activity.
 
 ---
 
@@ -174,17 +171,18 @@ MidatoPay has two letters of intent that cover both sides of adoption: a **distr
 - **Integration with a real PSP:**
   - Mercado Pago Orders API with HMAC-verified webhooks;
   - canonical re-validation of every order (seller, point of sale, currency, amount, `live_mode`);
-  - separation between test and production sellers.
+  - separation between test and production sellers, with sandbox payments unable to release real USDC.
 - **Settlement engineering at the level of financial infrastructure**, all covered by tests:
+  - nonce assignment under a lock;
   - signed transactions stored before they are sent;
   - identical rebroadcast;
-  - recording only at `finalized`;
+  - recording only on a successful receipt;
   - manual review instead of blind re-signing;
-  - liquidity reservations under locks;
+  - liquidity reservations under locks, with a gas reserve;
   - a fee ledger with a single entry per charge;
   - a mandatory quote-freshness limit;
   - repeatable migrations.
-- **Running on Solana mainnet**, with mint and genesis-hash checks per network. The [treasury](https://explorer.solana.com/address/7pCp94zA14dSoQC9wiqoNiPtS96XXEEirAqwbrYmbL5L) and a [real transaction](https://explorer.solana.com/tx/3hsY2qzqthv6VHXPuNC7F1cvGCq333Gkk5SDyJbWVaeFbEEYaDyco6pzEY72qjip8BKZUPNCp22w16G1STchL4hv) are publicly visible on Solana Explorer.
+- **Built for Arc Mainnet**, with chain ID checks on every RPC and receipt-based verification of what moved.
 - **An implemented monetization model:** 0.5% enforced at three levels (function, insert and database constraint).
 - **Documented commercial interest:** two letters of intent, one from a distribution platform with 500 active locations and one from a supermarket that asks for a demo and a pilot.
 - **A team with experience in the target market:** the CEO has spent more than five years working with small merchants on QR payment adoption and at payment companies.
@@ -193,10 +191,10 @@ MidatoPay has two letters of intent that cover both sides of adoption: a **distr
 
 ## 9. Conclusion
 
-MidatoPay has the potential to become an infrastructure layer that brings everyday commercial payments and stablecoin settlement to the Solana ecosystem.
+MidatoPay has the potential to become an infrastructure layer that brings everyday commercial payments and stablecoin settlement to Arc.
 
 | Axis | Summary |
 |---|---|
-| **Demonstrated value** | The full path from charge to settlement is built with production-grade code. A peso payment through Mercado Pago, verified server-side, becomes a finalized USDC transfer on Solana mainnet to the merchant's embedded wallet, with its memo and with the 0.5% fee recorded exactly once. |
-| **Adoption potential** | Two letters of intent point to concrete demand: a platform with 500 active locations, projecting 2,000, and a supermarket that wants to pilot the product. Every onboarded merchant turns daily peso sales into recurring USDC settlements on Solana, without changing anything for the customer. |
-| **Solana's role** | Solana is the product's settlement rail: native USDC, low and predictable cost, embedded wallets, public traceability, and a clear path toward Solana Pay, Squads and fee sponsorship. |
+| **Demonstrated value** | The full path from charge to settlement is built with production-grade code: a peso payment through Mercado Pago, verified server-side, becomes a final USDC transfer on Arc to the merchant's embedded wallet, with its memo and with the 0.5% fee recorded exactly once. The first Arc Mainnet operations are still to be executed and published. |
+| **Adoption potential** | Two letters of intent point to concrete demand: a platform with 500 active locations, projecting 2,000, and a supermarket that wants to pilot the product. Every onboarded merchant turns daily peso sales into recurring USDC settlements, without changing anything for the customer. |
+| **Arc's role** | Arc is the product's settlement rail: USDC as both money and gas, predictable fees, deterministic finality and public traceability. |

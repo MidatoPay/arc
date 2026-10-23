@@ -1,4 +1,4 @@
-import { isAddress } from "@solana/kit";
+import { isAddress } from "./arc.js";
 
 // Cliente HTTP de la agenda de contactos, con cache stale-while-revalidate
 // en localStorage. La fuente de verdad es Postgres (vía la Netlify Function
@@ -36,7 +36,7 @@ function toWire({ name, alias, addr, note }) {
 }
 
 function fromWire(row) {
-  return { id: row.id, name: row.name, alias: row.alias, addr: row.address, note: row.note || "", solanaCompatible:isAddress(row.address || '') };
+  return { id: row.id, name: row.name, alias: row.alias, addr: row.address, note: row.note || "", arcCompatible:isAddress(row.address || '') };
 }
 
 async function api(path, token, options = {}) {
