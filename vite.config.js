@@ -9,6 +9,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      rolldownOptions: {
+        // @privy-io/react-auth importa módulos de otras cadenas declarados como peer deps
+        // opcionales. La app usa solo wallets EVM (walletChainType "ethereum-only"), así que
+        // esos módulos no se instalan: sus imports se reemplazan por exports vacíos que nunca
+        // se ejecutan, en lugar de fallar el build.
+        shimMissingExports: true,
+      },
+    },
     define: {
       global: "globalThis",
     },
