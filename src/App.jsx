@@ -1364,7 +1364,7 @@ function Home({
         }}
       >
         <img
-          src="/banner/banner2.png"
+          src="/banner/banner.png"
           alt=""
           style={{
             display: "block",
