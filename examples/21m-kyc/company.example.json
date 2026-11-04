@@ -1,0 +1,66 @@
+{
+  "customer": {
+    "email": "administracion@ejemplo-pagos.example.com",
+    "verification_type": "company",
+    "country": "AR",
+    "fiscal_id": "30712345671"
+  },
+  "kyc": {
+    "address": {
+      "address_line_1": "Av. Leandro N. Alem 500",
+      "address_line_2": "Piso 4",
+      "city": "Ciudad Autónoma de Buenos Aires",
+      "country": "AR",
+      "post_code": "C1001",
+      "state": "AR-C"
+    },
+    "beneficial_owners": [
+      {
+        "date_of_birth": "1978-09-12",
+        "email": "carlos.gomez@example.com",
+        "first_name": "Carlos",
+        "last_name": "Gómez",
+        "nationality": "AR",
+        "ownership_percentage": 60,
+        "title": "Presidente"
+      }
+    ],
+    "business_description": "Venta minorista de artículos para el hogar.",
+    "business_operating_address": {
+      "address_line_1": "Av. Leandro N. Alem 500",
+      "address_line_2": "Piso 4",
+      "city": "Ciudad Autónoma de Buenos Aires",
+      "country": "AR",
+      "post_code": "C1001",
+      "state": "AR-C"
+    },
+    "company_email": "administracion@ejemplo-pagos.example.com",
+    "company_name": "Ejemplo Pagos S.A.",
+    "company_telephone": "+541155550100",
+    "company_type": "corporation",
+    "country": "AR",
+    "estimated_annual_revenue": "$500,000 - $999,999",
+    "expected_annual_volume": "USD 500.000",
+    "first_name": "Carlos",
+    "funds_operation_type": "own",
+    "high_risk_activities": [
+      "none"
+    ],
+    "incorporation_date": "2021-03-01",
+    "is_dao": false,
+    "last_name": "Gómez",
+    "operates_in_different_country": false,
+    "operates_in_sanctioned_countries": false,
+    "primary_account_usage": "Pago a proveedores",
+    "primary_source_of_funds": "business_revenue",
+    "receiving_third_party_funds": false,
+    "registration_number": "1234567",
+    "sending_third_party_funds": false,
+    "source_of_funds_description": "Ingresos por ventas de la actividad comercial.",
+    "tax_id": "30712345671",
+    "transfers_on_behalf": false,
+    "transmits_customer_funds": "No",
+    "type_of_entity": "Sociedad anónima",
+    "website": "https://ejemplo-pagos.example.com"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "customer": {
+    "country": "AR",
+    "email": "ana.perez@example.com",
+    "first_name": "Ana",
+    "fiscal_id": "20-11223344-0",
+    "last_name": "Pérez",
+    "verification_type": "individual"
+  },
+  "kyc": {
+    "account_purpose_code": "personal",
+    "address": {
+      "address_line_1": "Av. Corrientes 1234",
+      "address_line_2": "Piso 3 B",
+      "city": "Ciudad Autónoma de Buenos Aires",
+      "country": "AR",
+      "post_code": "C1043",
+      "state": "AR-C"
+    },
+    "country": "AR",
+    "date_of_birth": "1990-04-15",
+    "document_number": "11223344",
+    "document_type": "dni",
+    "email": "ana.perez@example.com",
+    "expected_monthly_volume_ars": "2000000",
+    "first_name": "Ana",
+    "issuing_country": "AR",
+    "last_name": "Pérez",
+    "monthly_salary_ars": "850000",
+    "nationality": "AR",
+    "occupation_code": "employed",
+    "phone_country_code": "54",
+    "phone_number": "1155550123",
+    "tin": "20112233440"
+  }
+}

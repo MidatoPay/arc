@@ -1,0 +1,10 @@
+{
+  "name": "21m-kyc-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env web/server.mjs",
+    "test": "node --test web/*.test.mjs"
+  },
+  "dependencies": { "web-push": "^3.6.7" }
+}
