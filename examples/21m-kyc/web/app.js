@@ -22,10 +22,11 @@ function render(){for(const id of ['customerFields','kycFields'])$(id).replaceCh
 function read(form){const out={};for(const el of form.elements){if(!el.name||el.value==='')continue;let v=el.value;if(el.dataset.kind==='array')v=JSON.parse(v);if(el.dataset.kind==='boolean')v=v==='true';if(['number','integer'].includes(el.dataset.kind))v=Number(v);let node=out;const parts=el.name.split('.');for(const p of parts.slice(0,-1))node=node[p]??={};node[parts.at(-1)]=v;}return out;}
 function display(data){$('result').textContent=JSON.stringify(data,null,2);}
 async function call(action,body){
- document.querySelectorAll('button').forEach(b=>b.disabled=true);$('message').textContent='Procesando…';
+ const buttons=[...document.querySelectorAll('#customer button, #kyc button, #check, #session')];
+ const disabled=buttons.map(button=>button.disabled);buttons.forEach(button=>button.disabled=true);$('message').textContent='Procesando…';
  try{const response=await fetch('/api',{method:'POST',headers:{'content-type':'application/json','x-local-token':config.token},body:JSON.stringify({action,body,customerId:$('customerId').value.trim(),fiscalId:read($('customer')).fiscal_id})});const data=await response.json();display(data);if(!response.ok)throw new Error(`Error ${response.status}. Revisá el detalle debajo.`);$('message').textContent='Pedido completado.';if(action==='create'&&data.customer_id)$('customerId').value=data.customer_id;
  if(action==='status'||action==='session'){const link=data.onboarding?.identity?.url||data.url;$('identity').replaceChildren();if(link&&new URL(link).protocol==='https:'){const a=document.createElement('a');a.href=link;a.target='_blank';a.rel='noreferrer';a.textContent='Abrir verificación de identidad';$('identity').append(a);} $('rails').textContent=JSON.stringify({onboarding:data.onboarding,rails:data.rails},null,2);}
- }catch(e){$('message').textContent=e.message;}finally{document.querySelectorAll('button').forEach(b=>b.disabled=false);}
+ }catch(e){$('message').textContent=e.message;}finally{buttons.forEach((button,index)=>button.disabled=disabled[index]);}
 }
 $('type').onchange=render;
 $('customer').onsubmit=e=>{e.preventDefault();call('create',{...read($('customer')),verification_type:$('type').value});};

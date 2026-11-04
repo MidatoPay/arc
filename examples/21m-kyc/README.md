@@ -1,8 +1,52 @@
-# Prueba de concepto: alta y KYC de 21Millions
+# Laboratorio de APIs de 21Millions: KYC y consultas
+
+## Preparar una copia nueva
+
+Desde `examples/21m-kyc`, con Node 24:
+
+```powershell
+npm ci
+Copy-Item .env.example .env
+```
+
+Completar `TWENTYONE_API_KEY` en el archivo privado `.env` con una clave de staging `nx_test_`. El punto de entrada de Windows es **`abrir-web.cmd`**; `npm start` usa el mismo lanzador. Ambos abren http://127.0.0.1:3210 cuando el servidor está listo. Si falta `.env`, se crea la plantilla y se indica completarla antes de iniciar. Si el puerto está ocupado, cerrar la ventana anterior del servidor y volver a ejecutar el CMD. `.env`, `node_modules/` y `.data/` quedan fuera de Git. No copiar credenciales de producción.
+
+El CMD actualizado también puede ejecutarse desde el worktree anterior: si allí no existe `launch.mjs`, encuentra el laboratorio del checkout principal a través de Git. Usa el código actualizado y conserva el `.env` y la carpeta `.data/` junto al CMD original, sin copiar secretos ni reiniciar las suscripciones. La ventana muestra las carpetas de código y configuración que está utilizando.
+
+## Consultas de APIs
+
+Abrir **Consultas de APIs** desde la navegación de la pantalla o **Consultar APIs de este cliente** debajo del ID del bloque de KYC. Ambos enlaces llevan el ID actual a la sección de consultas, dentro de la misma página y sin borrar el formulario KYC. Elegir una consulta y pulsar **Consultar**. También se puede usar **Usar el cliente del alta** o escribir otro cliente existente. Abrir el enlace no envía pedidos a 21Millions.
+
+| Consulta | Endpoint GET bajo `/v1/partner` | Filtros |
+|---|---|---|
+| Cuentas de depósito | `/customers/{customer_id}/deposit-accounts` | Cliente |
+| Depósitos acreditados de toda la cartera | `/deposits` | Desde/hasta obligatorios, límite y desplazamiento |
+| Saldos del cliente | `/customers/{customer_id}/balances` | Cliente |
+| Saldos de toda la cartera | `/balances` | Sin filtros |
+| Movimientos del cliente | `/customers/{customer_id}/movements` | Cliente, fechas opcionales, tipo, límite y desplazamiento |
+| Movimientos de toda la cartera | `/movements` | Desde/hasta obligatorios, tipo, límite y desplazamiento |
+| Swaps del cliente | `/customers/{customer_id}/orders?type=swap` | Cliente, estado, límite y desplazamiento |
+| Retiros bancarios del cliente | `/customers/{customer_id}/orders?type=bank_withdrawal` | Cliente, estado, límite y desplazamiento |
+| Retiros cripto del cliente | `/customers/{customer_id}/orders?type=crypto_withdrawal` | Cliente, estado, límite y desplazamiento |
+| Detalle de una orden | `/customers/{customer_id}/orders/{order_id}` | Cliente y orden |
+
+Swaps y retiros muestran las órdenes existentes y su estado (`PROCESSING`, `COMPLETED` o `FAILED`). Esta sección no crea órdenes, cotiza ni mueve fondos. Los depósitos acreditados corresponden a toda la cartera: el contrato no admite un filtro `customer_id` en ese listado.
+
+Las cuentas de depósito muestran únicamente rails aprobados. Las direcciones pueden cambiar: volver a consultar antes de cada depósito y no reutilizar una respuesta guardada. Un resultado vacío puede indicar que el cliente aún no tiene rails aprobados.
+
+Las fechas se ingresan en hora local y se convierten a UTC. Las ventanas son `[from, to)`, con un máximo de 400 días. Las consultas globales con fechas obligatorias comienzan con los últimos siete días. Si se usan fechas opcionales, completar ambos extremos. El límite es de 1 a 100 filas y el desplazamiento comienza en 0. **Anterior/Siguiente** conservan los filtros de la consulta ejecutada; **Consultar** usa los valores actuales del formulario.
+
+Se muestra la ruta consultada, una tabla y la respuesta JSON completa, incluidos errores y comprobantes. Los importes conservan sus decimales originales. Los resultados no se guardan en disco ni en almacenamiento del navegador. Las credenciales permanecen en el servidor local.
+
+### Agregar otra consulta
+
+`web/query-catalog.js` es el catálogo compartido por la pantalla y el servidor. Cada entrada define etiqueta, ruta GET permitida, necesidad de cliente/orden, filtros, clave de la lista y columnas. `web/queries.js` construye el formulario y los resultados con ese catálogo. `buildReadQuery` valida los filtros y arma la ruta: no se reciben URLs arbitrarias desde el navegador. Agregar una prueba de ruta/filtros en `web/query-catalog.test.mjs` y verificar `npm test`.
+
+Rutas y filtros cotejados con el contrato público `https://api.21millions.com/partner-api.json` el 2026-11-04, versión 1.0.0. Las pruebas usan servicios simulados; no acreditan acceso, datos ni permisos reales de una cuenta de staging.
 
 ## Web local
 
-En Windows, hacer doble clic en `abrir-web.cmd`. Abre http://127.0.0.1:3210 y carga la clave desde el `.env` de esta carpeta. Requiere Node 24 (ya disponible en este equipo). Mantener abierta la ventana del servidor mientras se usa la web.
+En Windows, hacer doble clic en `abrir-web.cmd`. El lanzador carga la configuración local y abre http://127.0.0.1:3210 después de iniciar el servidor. Requiere Node 24 (ya disponible en este equipo). Mantener abierta la ventana del servidor mientras se usa la web.
 
 La pantalla permite elegir persona o empresa, completar los campos del contrato, ver los datos antes de enviarlos, crear/buscar un cliente, enviar KYC, consultar el estado y obtener el enlace de identidad. Los campos de listas de empresa se completan como JSON, por ejemplo los beneficiarios finales; su descripción figura debajo del campo.
 
