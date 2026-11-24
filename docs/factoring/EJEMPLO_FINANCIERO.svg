@@ -1,0 +1,302 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1930" height="1580" viewBox="0 0 1930 1580" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<rect x="0" y="0" width="1930" height="1580" rx="0" fill="#F7F7F9"/>
+<text x="20" y="46" font-size="26" font-weight="700" fill="#16161A">Adelanto de facturas con el pool de MidatoPay: ejemplo financiero a 30, 60 y 90 días</text>
+<text x="20" y="74" font-size="14" font-weight="400" fill="#7A7A85">Cifras ilustrativas, sin impuestos. Interés simple, base 365, tasa nominal anual vencida (TNA). Tasas de mercado de noviembre de 2026.</text>
+<text x="20" y="96" font-size="14" font-weight="400" fill="#7A7A85">Supuestos: margen de MidatoPay 4 pp en pesos y 2,5 pp en dólares; pérdida esperada 2% y 1,5% anual; pool 80% senior y 20% junior, con 85% del capital colocado.</text>
+<rect x="20" y="116" width="925" height="46" rx="12" fill="#FF5A00"/>
+<text x="40" y="146" font-size="19" font-weight="700" fill="#FFFFFF">Empresa que cede la factura</text>
+<text x="925" y="146" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="end">cuánto recibe hoy y cuánto le cuesta</text>
+<rect x="985" y="116" width="925" height="46" rx="12" fill="#15803D"/>
+<text x="1005" y="146" font-size="19" font-weight="700" fill="#FFFFFF">Inversor del pool MidatoPay</text>
+<text x="1890" y="146" font-size="14" font-weight="400" fill="#FFFFFF" text-anchor="end">cuánto invierte y cuánto gana</text>
+<text x="20" y="200" font-size="16" font-weight="700" fill="#16161A">Factura de ARS 100.000</text>
+<rect x="20" y="212" width="925" height="34" rx="8" fill="#16161A"/>
+<text x="34" y="234" font-size="13" font-weight="700" fill="#FFFFFF">Plazo</text>
+<text x="286" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Tasa (TNA)</text>
+<text x="516" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Recibe hoy</text>
+<text x="716" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Costo</text>
+<text x="931" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">% del nominal</text>
+<rect x="20" y="246" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="34" y="268" font-size="14" font-weight="700" fill="#16161A">30 días</text>
+<text x="286" y="268" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">34%</text>
+<text x="516" y="268" font-size="14" font-weight="700" fill="#FF5A00" text-anchor="end">ARS 97.281,45</text>
+<text x="716" y="268" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">ARS 2.718,55</text>
+<text x="931" y="268" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">2,72%</text>
+<rect x="20" y="280" width="925" height="34" rx="0" fill="#F7F7F9"/>
+<text x="34" y="302" font-size="14" font-weight="700" fill="#16161A">60 días</text>
+<text x="286" y="302" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">36%</text>
+<text x="516" y="302" font-size="14" font-weight="700" fill="#FF5A00" text-anchor="end">ARS 94.412,83</text>
+<text x="716" y="302" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">ARS 5.587,17</text>
+<text x="931" y="302" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">5,59%</text>
+<rect x="20" y="314" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="34" y="336" font-size="14" font-weight="700" fill="#16161A">90 días</text>
+<text x="286" y="336" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">38%</text>
+<text x="516" y="336" font-size="14" font-weight="700" fill="#FF5A00" text-anchor="end">ARS 91.432,87</text>
+<text x="716" y="336" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">ARS 8.567,13</text>
+<text x="931" y="336" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">8,57%</text>
+<line x1="20" y1="348" x2="945" y2="348" stroke="#ECECF0"/>
+<text x="20" y="388" font-size="16" font-weight="700" fill="#16161A">Factura de USD 10.000</text>
+<rect x="20" y="400" width="925" height="34" rx="8" fill="#16161A"/>
+<text x="34" y="422" font-size="13" font-weight="700" fill="#FFFFFF">Plazo</text>
+<text x="286" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Tasa (TNA)</text>
+<text x="516" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Recibe hoy</text>
+<text x="716" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Costo</text>
+<text x="931" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">% del nominal</text>
+<rect x="20" y="434" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="34" y="456" font-size="14" font-weight="700" fill="#16161A">30 días</text>
+<text x="286" y="456" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">13%</text>
+<text x="516" y="456" font-size="14" font-weight="700" fill="#FF5A00" text-anchor="end">USD 9.894,28</text>
+<text x="716" y="456" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">USD 105,72</text>
+<text x="931" y="456" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">1,06%</text>
+<rect x="20" y="468" width="925" height="34" rx="0" fill="#F7F7F9"/>
+<text x="34" y="490" font-size="14" font-weight="700" fill="#16161A">60 días</text>
+<text x="286" y="490" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">14%</text>
+<text x="516" y="490" font-size="14" font-weight="700" fill="#FF5A00" text-anchor="end">USD 9.775,04</text>
+<text x="716" y="490" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">USD 224,96</text>
+<text x="931" y="490" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">2,25%</text>
+<rect x="20" y="502" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="34" y="524" font-size="14" font-weight="700" fill="#16161A">90 días</text>
+<text x="286" y="524" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">15%</text>
+<text x="516" y="524" font-size="14" font-weight="700" fill="#FF5A00" text-anchor="end">USD 9.643,33</text>
+<text x="716" y="524" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">USD 356,67</text>
+<text x="931" y="524" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">3,57%</text>
+<line x1="20" y1="536" x2="945" y2="536" stroke="#ECECF0"/>
+<text x="985" y="200" font-size="16" font-weight="700" fill="#16161A">Compra de una factura de ARS 100.000</text>
+<rect x="985" y="212" width="925" height="34" rx="8" fill="#16161A"/>
+<text x="999" y="234" font-size="13" font-weight="700" fill="#FFFFFF">Plazo</text>
+<text x="1296" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Invierte</text>
+<text x="1501" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Cobra</text>
+<text x="1686" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Ganancia</text>
+<text x="1896" y="234" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">TNA (neta)</text>
+<rect x="985" y="246" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="999" y="268" font-size="14" font-weight="700" fill="#16161A">30 días</text>
+<text x="1296" y="268" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">97.281,45</text>
+<text x="1501" y="268" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">99.680,17</text>
+<text x="1686" y="268" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">2.398,72</text>
+<text x="1896" y="268" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">30% (28%)</text>
+<rect x="985" y="280" width="925" height="34" rx="0" fill="#F7F7F9"/>
+<text x="999" y="302" font-size="14" font-weight="700" fill="#16161A">60 días</text>
+<text x="1296" y="302" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">94.412,83</text>
+<text x="1501" y="302" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">99.379,20</text>
+<text x="1686" y="302" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">4.966,37</text>
+<text x="1896" y="302" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">32% (30%)</text>
+<rect x="985" y="314" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="999" y="336" font-size="14" font-weight="700" fill="#16161A">90 días</text>
+<text x="1296" y="336" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">91.432,87</text>
+<text x="1501" y="336" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">99.098,20</text>
+<text x="1686" y="336" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">7.665,33</text>
+<text x="1896" y="336" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">34% (32%)</text>
+<line x1="985" y1="348" x2="1910" y2="348" stroke="#ECECF0"/>
+<text x="985" y="388" font-size="16" font-weight="700" fill="#16161A">Compra de una factura de USD 10.000</text>
+<rect x="985" y="400" width="925" height="34" rx="8" fill="#16161A"/>
+<text x="999" y="422" font-size="13" font-weight="700" fill="#FFFFFF">Plazo</text>
+<text x="1296" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Invierte</text>
+<text x="1501" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Cobra</text>
+<text x="1686" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Ganancia</text>
+<text x="1896" y="422" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">TNA (neta)</text>
+<rect x="985" y="434" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="999" y="456" font-size="14" font-weight="700" fill="#16161A">30 días</text>
+<text x="1296" y="456" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">9.894,28</text>
+<text x="1501" y="456" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">9.979,67</text>
+<text x="1686" y="456" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">85,39</text>
+<text x="1896" y="456" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">10,5% (9%)</text>
+<rect x="985" y="468" width="925" height="34" rx="0" fill="#F7F7F9"/>
+<text x="999" y="490" font-size="14" font-weight="700" fill="#16161A">60 días</text>
+<text x="1296" y="490" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">9.775,04</text>
+<text x="1501" y="490" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">9.959,83</text>
+<text x="1686" y="490" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">184,79</text>
+<text x="1896" y="490" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">11,5% (10%)</text>
+<rect x="985" y="502" width="925" height="34" rx="0" fill="#FFFFFF"/>
+<text x="999" y="524" font-size="14" font-weight="700" fill="#16161A">90 días</text>
+<text x="1296" y="524" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">9.643,33</text>
+<text x="1501" y="524" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">9.940,55</text>
+<text x="1686" y="524" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">297,23</text>
+<text x="1896" y="524" font-size="14" font-weight="400" fill="#16161A" text-anchor="end">12,5% (11%)</text>
+<line x1="985" y1="536" x2="1910" y2="536" stroke="#ECECF0"/>
+<text x="985" y="558" font-size="12" font-weight="400" fill="#7A7A85">Neta: descontada la pérdida esperada. MidatoPay retiene su margen del cobro (por ejemplo, ARS 319,83 a 30 días).</text>
+<rect x="20" y="572" width="925" height="470" rx="14" fill="#FFFFFF" stroke="#ECECF0"/>
+<rect x="985" y="572" width="925" height="470" rx="14" fill="#FFFFFF" stroke="#ECECF0"/>
+<text x="44" y="606" font-size="15" font-weight="700" fill="#16161A">Lo que paga la empresa por financiarse, en pesos (TNA)</text>
+<line x1="344" y1="620" x2="344" y2="770" stroke="#ECECF0"/>
+<text x="344" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">0%</text>
+<line x1="461.5" y1="620" x2="461.5" y2="770" stroke="#ECECF0"/>
+<text x="461.5" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">10%</text>
+<line x1="579" y1="620" x2="579" y2="770" stroke="#ECECF0"/>
+<text x="579" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">20%</text>
+<line x1="696.5" y1="620" x2="696.5" y2="770" stroke="#ECECF0"/>
+<text x="696.5" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">30%</text>
+<line x1="814" y1="620" x2="814" y2="770" stroke="#ECECF0"/>
+<text x="814" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">40%</text>
+<text x="44" y="640" font-size="13" font-weight="700" fill="#16161A">Adelanto MidatoPay (30 a 90 días)</text>
+<rect x="344" y="626" width="399.5" height="18" rx="4" fill="#FF5A00"/>
+<rect x="743.5" y="626" width="47" height="18" rx="4" fill="#FFB98F"/>
+<text x="798.5" y="640" font-size="13" font-weight="700" fill="#FF5A00">34% a 38%</text>
+<text x="44" y="670" font-size="13" font-weight="400" fill="#3A3A42">Cheque avalado en el MAV</text>
+<rect x="344" y="656" width="287.875" height="18" rx="4" fill="#B4B4BE"/>
+<rect x="631.875" y="656" width="41.125" height="18" rx="4" fill="#DCDCE3"/>
+<text x="681" y="670" font-size="13" font-weight="700" fill="#3A3A42">24,5% a 28%</text>
+<text x="44" y="700" font-size="13" font-weight="400" fill="#3A3A42">Índice de Financiamiento PyME (ago-26)</text>
+<rect x="344" y="686" width="326.18" height="18" rx="4" fill="#B4B4BE"/>
+<text x="678.1800000000001" y="700" font-size="13" font-weight="700" fill="#3A3A42">27,76%</text>
+<text x="44" y="730" font-size="13" font-weight="400" fill="#3A3A42">Adelanto en cuenta corriente (promedio)</text>
+<rect x="344" y="716" width="301.505" height="18" rx="4" fill="#B4B4BE"/>
+<text x="653.505" y="730" font-size="13" font-weight="700" fill="#3A3A42">25,66%</text>
+<text x="44" y="760" font-size="13" font-weight="400" fill="#3A3A42">Descuento de cheques Banco Nación (30 d)</text>
+<rect x="344" y="746" width="270.25" height="18" rx="4" fill="#B4B4BE"/>
+<text x="622.25" y="760" font-size="13" font-weight="700" fill="#3A3A42">23%</text>
+<text x="44" y="826" font-size="15" font-weight="700" fill="#16161A">Lo que paga la empresa por financiarse, en dólares (TNA)</text>
+<line x1="344" y1="840" x2="344" y2="900" stroke="#ECECF0"/>
+<text x="344" y="916" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">0%</text>
+<line x1="461.5" y1="840" x2="461.5" y2="900" stroke="#ECECF0"/>
+<text x="461.5" y="916" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">4%</text>
+<line x1="579" y1="840" x2="579" y2="900" stroke="#ECECF0"/>
+<text x="579" y="916" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">8%</text>
+<line x1="696.5" y1="840" x2="696.5" y2="900" stroke="#ECECF0"/>
+<text x="696.5" y="916" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">12%</text>
+<line x1="814" y1="840" x2="814" y2="900" stroke="#ECECF0"/>
+<text x="814" y="916" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">16%</text>
+<text x="44" y="860" font-size="13" font-weight="700" fill="#16161A">Adelanto MidatoPay (30 a 90 días)</text>
+<rect x="344" y="846" width="381.875" height="18" rx="4" fill="#FF5A00"/>
+<rect x="725.875" y="846" width="58.75" height="18" rx="4" fill="#FFB98F"/>
+<text x="792.625" y="860" font-size="13" font-weight="700" fill="#FF5A00">13% a 15%</text>
+<text x="44" y="890" font-size="13" font-weight="400" fill="#3A3A42">Líneas bancarias en dólares</text>
+<rect x="344" y="876" width="146.875" height="18" rx="4" fill="#B4B4BE"/>
+<rect x="490.875" y="876" width="235" height="18" rx="4" fill="#DCDCE3"/>
+<text x="733.875" y="890" font-size="13" font-weight="700" fill="#3A3A42">5% a 13%</text>
+<rect x="44" y="936" width="877" height="70" rx="10" fill="#FFEADF"/>
+<text x="60" y="958" font-size="13" font-weight="700" fill="#16161A">Variante con aforo del 10% (USD 10.000 a 60 días)</text>
+<text x="60" y="978" font-size="13" font-weight="400" fill="#16161A">Recibe hoy USD 8.797,54 y, cuando el deudor paga, un remanente de USD 1.000. La tasa no cambia (14% TNA).</text>
+<text x="60" y="996" font-size="13" font-weight="400" fill="#16161A">Protege al pool si el deudor paga menos: no hay pérdida mientras se cobre al menos el 89,6% del nominal.</text>
+<text x="44" y="1024" font-size="12" font-weight="400" fill="#7A7A85">Las líneas bancarias exigen calificación y garantías; el adelanto compite por acceso y velocidad.</text>
+<text x="1009" y="606" font-size="15" font-weight="700" fill="#16161A">Lo que gana el inversor, en pesos (anual)</text>
+<line x1="1309" y1="620" x2="1309" y2="770" stroke="#ECECF0"/>
+<text x="1309" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">0%</text>
+<line x1="1426.5" y1="620" x2="1426.5" y2="770" stroke="#ECECF0"/>
+<text x="1426.5" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">10%</text>
+<line x1="1544" y1="620" x2="1544" y2="770" stroke="#ECECF0"/>
+<text x="1544" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">20%</text>
+<line x1="1661.5" y1="620" x2="1661.5" y2="770" stroke="#ECECF0"/>
+<text x="1661.5" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">30%</text>
+<line x1="1779" y1="620" x2="1779" y2="770" stroke="#ECECF0"/>
+<text x="1779" y="786" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">40%</text>
+<text x="1009" y="640" font-size="13" font-weight="700" fill="#16161A">Pool MidatoPay, tramo junior</text>
+<rect x="1309" y="626" width="405.375" height="18" rx="4" fill="#FF5A00"/>
+<text x="1722.375" y="640" font-size="13" font-weight="700" fill="#FF5A00">34,5%</text>
+<text x="1009" y="670" font-size="13" font-weight="700" fill="#16161A">Compra por factura (neta)</text>
+<rect x="1309" y="656" width="329" height="18" rx="4" fill="#FF5A00"/>
+<rect x="1638" y="656" width="47" height="18" rx="4" fill="#FFB98F"/>
+<text x="1693" y="670" font-size="13" font-weight="700" fill="#FF5A00">28% a 32%</text>
+<text x="1009" y="700" font-size="13" font-weight="700" fill="#16161A">Pool MidatoPay, tramo senior</text>
+<rect x="1309" y="686" width="317.25" height="18" rx="4" fill="#FF5A00"/>
+<text x="1634.25" y="700" font-size="13" font-weight="700" fill="#FF5A00">27%</text>
+<text x="1009" y="730" font-size="13" font-weight="400" fill="#3A3A42">Cheque avalado en el MAV</text>
+<rect x="1309" y="716" width="287.875" height="18" rx="4" fill="#B4B4BE"/>
+<rect x="1596.875" y="716" width="41.125" height="18" rx="4" fill="#DCDCE3"/>
+<text x="1646" y="730" font-size="13" font-weight="700" fill="#3A3A42">24,5% a 28%</text>
+<text x="1009" y="760" font-size="13" font-weight="400" fill="#3A3A42">Plazo fijo a 30 días (promedio)</text>
+<rect x="1309" y="746" width="248.86499999999998" height="18" rx="4" fill="#B4B4BE"/>
+<text x="1565.865" y="760" font-size="13" font-weight="700" fill="#3A3A42">21,18%</text>
+<text x="1009" y="826" font-size="15" font-weight="700" fill="#16161A">Lo que gana el inversor, en dólares (anual)</text>
+<line x1="1309" y1="840" x2="1309" y2="1020" stroke="#ECECF0"/>
+<text x="1309" y="1036" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">0%</text>
+<line x1="1426.5" y1="840" x2="1426.5" y2="1020" stroke="#ECECF0"/>
+<text x="1426.5" y="1036" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">4%</text>
+<line x1="1544" y1="840" x2="1544" y2="1020" stroke="#ECECF0"/>
+<text x="1544" y="1036" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">8%</text>
+<line x1="1661.5" y1="840" x2="1661.5" y2="1020" stroke="#ECECF0"/>
+<text x="1661.5" y="1036" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">12%</text>
+<line x1="1779" y1="840" x2="1779" y2="1020" stroke="#ECECF0"/>
+<text x="1779" y="1036" font-size="11" font-weight="400" fill="#7A7A85" text-anchor="middle">16%</text>
+<text x="1009" y="860" font-size="13" font-weight="700" fill="#16161A">Pool MidatoPay, tramo junior</text>
+<rect x="1309" y="846" width="425.9375" height="18" rx="4" fill="#FF5A00"/>
+<text x="1742.9375" y="860" font-size="13" font-weight="700" fill="#FF5A00">14,5%</text>
+<text x="1009" y="890" font-size="13" font-weight="700" fill="#16161A">Compra por factura (neta)</text>
+<rect x="1309" y="876" width="264.375" height="18" rx="4" fill="#FF5A00"/>
+<rect x="1573.375" y="876" width="58.75" height="18" rx="4" fill="#FFB98F"/>
+<text x="1640.125" y="890" font-size="13" font-weight="700" fill="#FF5A00">9% a 11%</text>
+<text x="1009" y="920" font-size="13" font-weight="400" fill="#3A3A42">Huma PayFi Strategy Token</text>
+<rect x="1309" y="906" width="235" height="18" rx="4" fill="#B4B4BE"/>
+<text x="1552" y="920" font-size="13" font-weight="700" fill="#3A3A42">8%</text>
+<text x="1009" y="950" font-size="13" font-weight="700" fill="#16161A">Pool MidatoPay, tramo senior</text>
+<rect x="1309" y="936" width="205.625" height="18" rx="4" fill="#FF5A00"/>
+<text x="1522.625" y="950" font-size="13" font-weight="700" fill="#FF5A00">7%</text>
+<text x="1009" y="980" font-size="13" font-weight="400" fill="#3A3A42">Aave, suministro de USDC</text>
+<rect x="1309" y="966" width="111.625" height="18" rx="4" fill="#B4B4BE"/>
+<rect x="1420.625" y="966" width="41.12500000000001" height="18" rx="4" fill="#DCDCE3"/>
+<text x="1469.75" y="980" font-size="13" font-weight="700" fill="#3A3A42">3,8% a 5,2%</text>
+<text x="1009" y="1010" font-size="13" font-weight="400" fill="#3A3A42">Plazo fijo en dólares</text>
+<rect x="1309" y="996" width="17.91875" height="18" rx="4" fill="#B4B4BE"/>
+<rect x="1326.91875" y="996" width="34.95625" height="18" rx="4" fill="#DCDCE3"/>
+<text x="1369.875" y="1010" font-size="13" font-weight="700" fill="#3A3A42">0,61% a 1,8%</text>
+<rect x="20" y="1076" width="925" height="320" rx="14" fill="#FFFFFF" stroke="#ECECF0"/>
+<text x="44" y="1112" font-size="17" font-weight="700" fill="#16161A">Ejemplo: factura de USD 10.000 a 60 días</text>
+<rect x="44" y="1132" width="200" height="136" rx="12" fill="#F7F7F9" stroke="#ECECF0"/>
+<text x="58" y="1158" font-size="14" font-weight="700" fill="#16161A">Hoy</text>
+<text x="58" y="1182" font-size="13" font-weight="400" fill="#16161A">La empresa cede la</text>
+<text x="58" y="1200" font-size="13" font-weight="400" fill="#16161A">factura y recibe</text>
+<text x="58" y="1228" font-size="19" font-weight="700" fill="#16161A">USD 9.775,04</text>
+<text x="58" y="1250" font-size="12" font-weight="400" fill="#7A7A85">(14% TNA)</text>
+<text x="255" y="1206" font-size="18" font-weight="400" fill="#7A7A85" text-anchor="middle">→</text>
+<rect x="266" y="1132" width="200" height="136" rx="12" fill="#F7F7F9" stroke="#ECECF0"/>
+<text x="280" y="1158" font-size="14" font-weight="700" fill="#16161A">Día 60</text>
+<text x="280" y="1182" font-size="13" font-weight="400" fill="#16161A">El deudor paga</text>
+<text x="280" y="1200" font-size="13" font-weight="400" fill="#16161A">el nominal:</text>
+<text x="280" y="1228" font-size="19" font-weight="700" fill="#16161A">USD 10.000</text>
+<text x="477" y="1206" font-size="18" font-weight="400" fill="#7A7A85" text-anchor="middle">→</text>
+<rect x="488" y="1132" width="200" height="136" rx="12" fill="#E7F6EC" stroke="#ECECF0"/>
+<text x="502" y="1158" font-size="14" font-weight="700" fill="#15803D">Pool</text>
+<text x="502" y="1182" font-size="13" font-weight="400" fill="#16161A">Recupera USD 9.959,83:</text>
+<text x="502" y="1200" font-size="13" font-weight="400" fill="#16161A">capital más</text>
+<text x="502" y="1228" font-size="19" font-weight="700" fill="#16161A">USD 184,79</text>
+<text x="502" y="1250" font-size="12" font-weight="400" fill="#7A7A85">(11,5% TNA)</text>
+<text x="699" y="1206" font-size="18" font-weight="400" fill="#7A7A85" text-anchor="middle">→</text>
+<rect x="710" y="1132" width="200" height="136" rx="12" fill="#FFEADF" stroke="#ECECF0"/>
+<text x="724" y="1158" font-size="14" font-weight="700" fill="#FF5A00">MidatoPay</text>
+<text x="724" y="1182" font-size="13" font-weight="400" fill="#16161A">Retiene su margen</text>
+<text x="724" y="1200" font-size="13" font-weight="400" fill="#16161A">del cobro:</text>
+<text x="724" y="1228" font-size="19" font-weight="700" fill="#16161A">USD 40,17</text>
+<text x="724" y="1250" font-size="12" font-weight="400" fill="#7A7A85">(2,5 pp)</text>
+<text x="44" y="1290" font-size="13" font-weight="700" fill="#16161A">Cómo se reparte el costo de USD 224,96 que paga la empresa</text>
+<rect x="44" y="1298" width="720.3984263869132" height="26" rx="6" fill="#15803D"/>
+<rect x="764.3984263869132" y="1298" width="156.60157361308677" height="26" rx="6" fill="#FF5A00"/>
+<rect x="44" y="1336" width="14" height="14" rx="3" fill="#15803D"/>
+<text x="66" y="1348" font-size="13" font-weight="700" fill="#16161A">Inversores del pool: USD 184,79 (82%)</text>
+<rect x="404" y="1336" width="14" height="14" rx="3" fill="#FF5A00"/>
+<text x="426" y="1348" font-size="13" font-weight="700" fill="#16161A">MidatoPay: USD 40,17 (18%)</text>
+<text x="44" y="1374" font-size="12" font-weight="400" fill="#7A7A85">MidatoPay cobra del pago del deudor: si el deudor no paga, MidatoPay tampoco cobra.</text>
+<rect x="985" y="1076" width="925" height="320" rx="14" fill="#FFFFFF" stroke="#ECECF0"/>
+<text x="1009" y="1112" font-size="17" font-weight="700" fill="#16161A">Pool prefondeado con tramos: un año, caso base</text>
+<text x="1009" y="1134" font-size="16" font-weight="700" fill="#16161A"></text>
+<rect x="1009" y="1146" width="877" height="34" rx="8" fill="#16161A"/>
+<text x="1023" y="1168" font-size="13" font-weight="700" fill="#FFFFFF">Concepto</text>
+<text x="1595" y="1168" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Pool USD 100.000</text>
+<text x="1872" y="1168" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="end">Pool ARS 100 millones</text>
+<rect x="1009" y="1180" width="877" height="34" rx="0" fill="#FFFFFF"/>
+<text x="1023" y="1202" font-size="14" font-weight="700" fill="#16161A">Ingreso bruto (85% colocado)</text>
+<text x="1595" y="1202" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">9,78%</text>
+<text x="1872" y="1202" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">30,20%</text>
+<rect x="1009" y="1214" width="877" height="34" rx="0" fill="#F7F7F9"/>
+<text x="1023" y="1236" font-size="14" font-weight="700" fill="#16161A">Pérdida esperada</text>
+<text x="1595" y="1236" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">−1,28%</text>
+<text x="1872" y="1236" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">−1,70%</text>
+<rect x="1009" y="1248" width="877" height="34" rx="0" fill="#FFFFFF"/>
+<text x="1023" y="1270" font-size="14" font-weight="700" fill="#16161A">Tramo senior (80%)</text>
+<text x="1595" y="1270" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">7,0%</text>
+<text x="1872" y="1270" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">27,0%</text>
+<rect x="1009" y="1282" width="877" height="34" rx="0" fill="#F7F7F9"/>
+<text x="1023" y="1304" font-size="14" font-weight="700" fill="#16161A">Tramo junior (20%), primera pérdida</text>
+<text x="1595" y="1304" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">14,5%</text>
+<text x="1872" y="1304" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">34,5%</text>
+<rect x="1009" y="1316" width="877" height="34" rx="0" fill="#FFFFFF"/>
+<text x="1023" y="1338" font-size="14" font-weight="700" fill="#16161A">Junior si se coloca solo el 70%</text>
+<text x="1595" y="1338" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">7,0%</text>
+<text x="1872" y="1338" font-size="14" font-weight="700" fill="#15803D" text-anchor="end">27,0%</text>
+<line x1="1009" y1="1350" x2="1886" y2="1350" stroke="#ECECF0"/>
+<text x="1009" y="1376" font-size="12" font-weight="400" fill="#7A7A85">Con relación 4:1, el senior cobra completo salvo pérdidas severas. El junior gana más solo con utilización alta.</text>
+<text x="20" y="1426" font-size="17" font-weight="700" fill="#16161A">Lectura para la discusión</text>
+<text x="20" y="1454" font-size="14" font-weight="400" fill="#16161A">1. Empresa en pesos: 34% a 38% cuesta entre 6 y 14 pp más que un cheque avalado. El producto apunta a comercios sin acceso a banco ni aval de SGR.</text>
+<text x="20" y="1478" font-size="14" font-weight="400" fill="#16161A">2. Inversor en pesos: el senior (27%) le gana al plazo fijo, pero compite con el cheque avalado (24,5% a 28%), que tiene garantía y mercado secundario.</text>
+<text x="20" y="1502" font-size="14" font-weight="400" fill="#16161A">3. Inversor en dólares: el senior (7%) queda por debajo del PST de Huma (8%). La compra por factura rinde 9% a 11% neto: conviene empezar por ahí y prefondear con volumen estable.</text>
+<text x="20" y="1526" font-size="14" font-weight="400" fill="#16161A">4. Tickets chicos no cubren el costo operativo: una factura de ARS 100.000 a 60 días le deja a MidatoPay unos USD 0,40. La de USD 10.000 es viable a cualquier plazo.</text>
+<text x="20" y="1564" font-size="12" font-weight="400" fill="#7A7A85">Fuentes: BCRA vía El Tablero (04/11/2026), boletines de cheques de la BCR (oct-26), Rosario3 (IFP ago-26), Urgente24 (BNA), El Litoral (líneas en USD), tuplazofijo (10/11/2026), eco.com/DeFiLlama (Aave), huma.finance (09/11/2026). Fórmulas: docs/factoring/EJEMPLO_FINANCIERO.md.</text>
+</svg>

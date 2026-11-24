@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1930" height="1102" viewBox="0 0 1930 1102" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A7A85"/></marker></defs>
+<rect width="1930" height="1102" fill="#F7F7F9"/>
+<text x="20" y="42" font-size="24" font-weight="700" fill="#16161A">Factoring de facturas con el pool de MidatoPay: experiencia del usuario y contratos</text>
+<text x="20" y="68" font-size="14" fill="#7A7A85">Propuesta ilustrativa: los roles y documentos legales dependen del dictamen y de la estructura elegida. Cada columna es una etapa; cada fila, quién actúa y qué documento o registro interviene.</text>
+<line x1="368" y1="104" x2="1770" y2="104" stroke="#7A7A85" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="350" cy="104" r="16" fill="#7A7A85"/>
+<text x="350" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">0</text>
+<text x="350" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Pool habilitado</text>
+<text x="350" y="158" font-size="12" fill="#7A7A85" text-anchor="middle">antes de operar</text>
+<circle cx="590" cy="104" r="16" fill="#FF5A00"/>
+<text x="590" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+<text x="590" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Alta del comercio</text>
+<circle cx="830" cy="104" r="16" fill="#FF5A00"/>
+<text x="830" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+<text x="830" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Carga de la factura</text>
+<circle cx="1070" cy="104" r="16" fill="#FF5A00"/>
+<text x="1070" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+<text x="1070" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Aprobación y oferta</text>
+<circle cx="1310" cy="104" r="16" fill="#FF5A00"/>
+<text x="1310" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">4</text>
+<text x="1310" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Cesión y desembolso</text>
+<circle cx="1550" cy="104" r="16" fill="#FF5A00"/>
+<text x="1550" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">5</text>
+<text x="1550" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Cobro al vencimiento</text>
+<circle cx="1790" cy="104" r="16" fill="#E4483D"/>
+<text x="1790" y="109" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">6</text>
+<text x="1790" y="142" font-size="15" font-weight="700" fill="#16161A" text-anchor="middle">Si el deudor no paga</text>
+<rect x="20" y="172" width="200" height="138" rx="14" fill="#16161A"/>
+<text x="120" y="228" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Comercio</text>
+<text x="120" y="246" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">experiencia en la</text>
+<text x="120" y="264" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">app MidatoPay</text>
+<rect x="236" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="248" y="198" font-size="13" fill="#16161A">Todavía no interviene.</text>
+<text x="248" y="216" font-size="13" fill="#16161A">El pool se arma antes</text>
+<text x="248" y="234" font-size="13" fill="#16161A">de ofrecer adelantos.</text>
+<rect x="476" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="488" y="198" font-size="13" fill="#16161A">Se registra con email o SMS</text>
+<text x="488" y="216" font-size="13" fill="#16161A">y obtiene su wallet.</text>
+<text x="488" y="234" font-size="13" fill="#16161A">Carga su CUIT y completa</text>
+<text x="488" y="252" font-size="13" fill="#16161A">el KYB.</text>
+<text x="488" y="270" font-size="13" fill="#16161A">Acepta el contrato marco.</text>
+<rect x="716" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="728" y="198" font-size="13" fill="#16161A">Sube el PDF o una foto.</text>
+<text x="728" y="216" font-size="13" fill="#16161A">Ve los datos del QR y los</text>
+<text x="728" y="234" font-size="13" fill="#16161A">corrige si hace falta.</text>
+<text x="728" y="252" font-size="13" fill="#16161A">Ve dos estados: «Lectura»</text>
+<text x="728" y="270" font-size="13" fill="#16161A">y «ARCA: constatada».</text>
+<rect x="956" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="968" y="198" font-size="13" fill="#16161A">Toca «Pedir adelanto».</text>
+<text x="968" y="216" font-size="13" fill="#16161A">Ve la oferta: cuánto recibe</text>
+<text x="968" y="234" font-size="13" fill="#16161A">hoy, costo total, aforo</text>
+<text x="968" y="252" font-size="13" fill="#16161A">y vencimiento.</text>
+<text x="968" y="270" font-size="13" fill="#16161A">Acepta o rechaza.</text>
+<rect x="1196" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1208" y="198" font-size="13" fill="#16161A">Firma el anexo de cesión</text>
+<text x="1208" y="216" font-size="13" fill="#16161A">y autoriza la transacción</text>
+<text x="1208" y="234" font-size="13" fill="#16161A">dentro de la app.</text>
+<text x="1208" y="252" font-size="13" fill="#16161A">Recibe USDC en su wallet</text>
+<text x="1208" y="270" font-size="13" fill="#16161A">y el comprobante.</text>
+<rect x="1436" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1448" y="198" font-size="13" fill="#16161A">Ve la factura «Cobrada».</text>
+<text x="1448" y="216" font-size="13" fill="#16161A">Recibe el remanente del</text>
+<text x="1448" y="234" font-size="13" fill="#16161A">aforo, si corresponde.</text>
+<text x="1448" y="252" font-size="13" fill="#16161A">Puede pedir otro adelanto.</text>
+<rect x="1676" y="172" width="228" height="138" rx="12" fill="#FFFFFF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1688" y="198" font-size="13" fill="#16161A">Recibe el aviso de mora.</text>
+<text x="1688" y="216" font-size="13" fill="#16161A">Si la cesión fue con</text>
+<text x="1688" y="234" font-size="13" fill="#16161A">recurso, debe reponer</text>
+<text x="1688" y="252" font-size="13" fill="#16161A">el importe adeudado.</text>
+<rect x="20" y="322" width="200" height="138" rx="14" fill="#FF5A00"/>
+<text x="120" y="378" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">MidatoPay</text>
+<text x="120" y="396" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">crédito, operaciones</text>
+<text x="120" y="414" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">y cobranza</text>
+<rect x="236" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="248" y="348" font-size="13" fill="#16161A">Como dueño del pool define</text>
+<text x="248" y="366" font-size="13" fill="#16161A">los parámetros y aporta</text>
+<text x="248" y="384" font-size="13" fill="#16161A">la primera pérdida (first</text>
+<text x="248" y="402" font-size="13" fill="#16161A">loss) y parte del junior.</text>
+<rect x="476" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="488" y="348" font-size="13" fill="#16161A">Verifica el KYB y la</text>
+<text x="488" y="366" font-size="13" fill="#16161A">titularidad del CUIT.</text>
+<text x="488" y="384" font-size="13" fill="#16161A">Da de alta al comercio</text>
+<text x="488" y="402" font-size="13" fill="#16161A">como tomador del pool.</text>
+<rect x="716" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="728" y="348" font-size="13" fill="#16161A">Valida el QR y constata</text>
+<text x="728" y="366" font-size="13" fill="#16161A">la factura en ARCA (WSCDC).</text>
+<text x="728" y="384" font-size="13" fill="#16161A">Controla duplicados y</text>
+<text x="728" y="402" font-size="13" fill="#16161A">guarda el original.</text>
+<rect x="956" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="968" y="348" font-size="13" fill="#16161A">Evalúa al deudor y al</text>
+<text x="968" y="366" font-size="13" fill="#16161A">comercio. El comité de</text>
+<text x="968" y="384" font-size="13" fill="#16161A">crédito aprueba la factura</text>
+<text x="968" y="402" font-size="13" fill="#16161A">y fija tasa y advance rate.</text>
+<rect x="1196" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="1208" y="348" font-size="13" fill="#16161A">Notifica la cesión al</text>
+<text x="1208" y="366" font-size="13" fill="#16161A">deudor con la nueva</text>
+<text x="1208" y="384" font-size="13" fill="#16161A">instrucción de pago.</text>
+<text x="1208" y="402" font-size="13" fill="#16161A">Re-constata en ARCA antes</text>
+<text x="1208" y="420" font-size="13" fill="#16161A">de desembolsar.</text>
+<rect x="1436" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="1448" y="348" font-size="13" fill="#16161A">Recibe el pago del deudor</text>
+<text x="1448" y="366" font-size="13" fill="#16161A">en la cuenta del factor.</text>
+<text x="1448" y="384" font-size="13" fill="#16161A">Lo convierte a USDC y</text>
+<text x="1448" y="402" font-size="13" fill="#16161A">repaga al pool.</text>
+<text x="1448" y="420" font-size="13" fill="#16161A">Devuelve el aforo.</text>
+<rect x="1676" y="322" width="228" height="138" rx="12" fill="#FFF4EC" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1688" y="348" font-size="13" fill="#16161A">Gestiona la cobranza.</text>
+<text x="1688" y="366" font-size="13" fill="#16161A">Vencida la gracia, el</text>
+<text x="1688" y="384" font-size="13" fill="#16161A">comité declara el default.</text>
+<text x="1688" y="402" font-size="13" fill="#16161A">Inicia el recupero.</text>
+<rect x="20" y="472" width="200" height="138" rx="14" fill="#6D4AFF"/>
+<text x="120" y="528" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Contratos legales</text>
+<text x="120" y="546" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">fuera de la</text>
+<text x="120" y="564" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">blockchain</text>
+<rect x="236" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#D8CEFF" stroke-width="1"/>
+<text x="248" y="498" font-size="13" fill="#16161A">Documentos del pool o del</text>
+<text x="248" y="516" font-size="13" fill="#16161A">vehículo: tramos y</text>
+<text x="248" y="534" font-size="13" fill="#16161A">distribución de pérdidas.</text>
+<text x="248" y="552" font-size="13" fill="#16161A">Acuerdo de inversión y</text>
+<text x="248" y="570" font-size="13" fill="#16161A">perfil del inversor.</text>
+<rect x="476" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#D8CEFF" stroke-width="1"/>
+<text x="488" y="498" font-size="13" fill="#16161A">Contrato marco de</text>
+<text x="488" y="516" font-size="13" fill="#16161A">factoraje factor-comercio:</text>
+<text x="488" y="534" font-size="13" fill="#16161A">anticipo, aforo, recurso</text>
+<text x="488" y="552" font-size="13" fill="#16161A">y garantías.</text>
+<text x="488" y="570" font-size="13" fill="#16161A">Términos y datos personales.</text>
+<rect x="716" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#D8CEFF" stroke-width="1"/>
+<text x="728" y="498" font-size="13" fill="#16161A">Sin documento nuevo.</text>
+<text x="728" y="516" font-size="13" fill="#16161A">La factura y su</text>
+<text x="728" y="534" font-size="13" fill="#16161A">constatación respaldan</text>
+<text x="728" y="552" font-size="13" fill="#16161A">el crédito.</text>
+<rect x="956" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#D8CEFF" stroke-width="1"/>
+<text x="968" y="498" font-size="13" fill="#16161A">Oferta o term sheet por</text>
+<text x="968" y="516" font-size="13" fill="#16161A">factura: precio, tasa,</text>
+<text x="968" y="534" font-size="13" fill="#16161A">aforo y vencimiento.</text>
+<rect x="1196" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#D8CEFF" stroke-width="1"/>
+<text x="1208" y="498" font-size="13" fill="#16161A">Anexo de cesión por</text>
+<text x="1208" y="516" font-size="13" fill="#16161A">factura, que identifica</text>
+<text x="1208" y="534" font-size="13" fill="#16161A">el crédito registrado.</text>
+<text x="1208" y="552" font-size="13" fill="#16161A">Notificación fehaciente</text>
+<text x="1208" y="570" font-size="13" fill="#16161A">al deudor cedido.</text>
+<rect x="1436" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#D8CEFF" stroke-width="1"/>
+<text x="1448" y="498" font-size="13" fill="#16161A">Constancia de pago y</text>
+<text x="1448" y="516" font-size="13" fill="#16161A">cancelación del crédito</text>
+<text x="1448" y="534" font-size="13" fill="#16161A">cedido.</text>
+<text x="1448" y="552" font-size="13" fill="#16161A">Liquidación del aforo.</text>
+<rect x="1676" y="472" width="228" height="138" rx="12" fill="#F4F1FF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1688" y="498" font-size="13" fill="#16161A">Intimación al deudor.</text>
+<text x="1688" y="516" font-size="13" fill="#16161A">Recurso contra el comercio</text>
+<text x="1688" y="534" font-size="13" fill="#16161A">si se pactó.</text>
+<text x="1688" y="552" font-size="13" fill="#16161A">Acción judicial según el</text>
+<text x="1688" y="570" font-size="13" fill="#16161A">contrato marco.</text>
+<rect x="20" y="622" width="200" height="138" rx="14" fill="#1F6FEB"/>
+<text x="120" y="678" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Pool MidatoPay</text>
+<text x="120" y="696" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">sistema y USDC</text>
+<text x="120" y="714" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">en Arc</text>
+<rect x="236" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#C6DBFA" stroke-width="1"/>
+<text x="248" y="648" font-size="13" fill="#16161A">Configuración del pool:</text>
+<text x="248" y="666" font-size="13" fill="#16161A">advance rate, ratio</text>
+<text x="248" y="684" font-size="13" fill="#16161A">senior/junior y first loss</text>
+<text x="248" y="702" font-size="13" fill="#16161A">mínima. Los inversores</text>
+<text x="248" y="720" font-size="13" fill="#16161A">aprobados aportan USDC.</text>
+<rect x="476" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#C6DBFA" stroke-width="1"/>
+<text x="488" y="648" font-size="13" fill="#16161A">Se registra la línea del</text>
+<text x="488" y="666" font-size="13" fill="#16161A">comercio: límite, plazo,</text>
+<text x="488" y="684" font-size="13" fill="#16161A">tasa y fecha de inicio.</text>
+<rect x="716" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#C6DBFA" stroke-width="1"/>
+<text x="728" y="648" font-size="13" fill="#16161A">Se registra la factura</text>
+<text x="728" y="666" font-size="13" fill="#16161A">como crédito candidato,</text>
+<text x="728" y="684" font-size="13" fill="#16161A">con un identificador</text>
+<text x="728" y="702" font-size="13" fill="#16161A">opaco. Sin datos</text>
+<text x="728" y="720" font-size="13" fill="#16161A">personales on-chain.</text>
+<rect x="956" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#C6DBFA" stroke-width="1"/>
+<text x="968" y="648" font-size="13" fill="#16161A">Se aprueba la factura.</text>
+<text x="968" y="666" font-size="13" fill="#16161A">Tope del anticipo:</text>
+<text x="968" y="684" font-size="13" fill="#16161A">nominal × advance rate.</text>
+<text x="968" y="702" font-size="13" fill="#16161A">Se reserva la liquidez</text>
+<text x="968" y="720" font-size="13" fill="#16161A">del pool.</text>
+<rect x="1196" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#C6DBFA" stroke-width="1"/>
+<text x="1208" y="648" font-size="13" fill="#16161A">Desembolso en Arc: USDC</text>
+<text x="1208" y="666" font-size="13" fill="#16161A">del pool a la wallet del</text>
+<text x="1208" y="684" font-size="13" fill="#16161A">comercio vía Memo, con</text>
+<text x="1208" y="702" font-size="13" fill="#16161A">memo opaco. Se verifica</text>
+<text x="1208" y="720" font-size="13" fill="#16161A">en el receipt.</text>
+<rect x="1436" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#C6DBFA" stroke-width="1"/>
+<text x="1448" y="648" font-size="13" fill="#16161A">Ingresa el repago en</text>
+<text x="1448" y="666" font-size="13" fill="#16161A">USDC al pool.</text>
+<text x="1448" y="684" font-size="13" fill="#16161A">Se cierra el crédito y</text>
+<text x="1448" y="702" font-size="13" fill="#16161A">se acredita el</text>
+<text x="1448" y="720" font-size="13" fill="#16161A">rendimiento por época.</text>
+<rect x="1676" y="622" width="228" height="138" rx="12" fill="#EEF5FF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1688" y="648" font-size="13" fill="#16161A">Recargo por mora tras</text>
+<text x="1688" y="666" font-size="13" fill="#16161A">la gracia. Default: cubren</text>
+<text x="1688" y="684" font-size="13" fill="#16161A">first loss, junior y</text>
+<text x="1688" y="702" font-size="13" fill="#16161A">senior, en ese orden.</text>
+<text x="1688" y="720" font-size="13" fill="#16161A">Recuperos en orden inverso.</text>
+<rect x="20" y="772" width="200" height="138" rx="14" fill="#15803D"/>
+<text x="120" y="837" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Inversores</text>
+<text x="120" y="855" font-size="13" font-weight="400" fill="#FFFFFF" text-anchor="middle">y deudor</text>
+<rect x="236" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#C4E8D1" stroke-width="1"/>
+<text x="248" y="798" font-size="13" fill="#16161A">Inversores: KYC/KYB y</text>
+<text x="248" y="816" font-size="13" fill="#16161A">perfil de inversor</text>
+<text x="248" y="834" font-size="13" fill="#16161A">calificado. Firman el</text>
+<text x="248" y="852" font-size="13" fill="#16161A">acuerdo, son aprobados</text>
+<text x="248" y="870" font-size="13" fill="#16161A">y aportan USDC.</text>
+<rect x="476" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#C4E8D1" stroke-width="1"/>
+<text x="488" y="798" font-size="13" fill="#7A7A85">Sin participación.</text>
+<rect x="716" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#C4E8D1" stroke-width="1"/>
+<text x="728" y="798" font-size="13" fill="#16161A">Deudor: recibió la factura</text>
+<text x="728" y="816" font-size="13" fill="#16161A">del comercio y debe</text>
+<text x="728" y="834" font-size="13" fill="#16161A">pagarla al vencimiento.</text>
+<rect x="956" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#C4E8D1" stroke-width="1"/>
+<text x="968" y="798" font-size="13" fill="#16161A">Deudor (opcional):</text>
+<text x="968" y="816" font-size="13" fill="#16161A">confirma la deuda, el</text>
+<text x="968" y="834" font-size="13" fill="#16161A">monto y el vencimiento.</text>
+<rect x="1196" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#C4E8D1" stroke-width="1"/>
+<text x="1208" y="798" font-size="13" fill="#16161A">Deudor: recibe la</text>
+<text x="1208" y="816" font-size="13" fill="#16161A">notificación y desde</text>
+<text x="1208" y="834" font-size="13" fill="#16161A">ahora debe pagar al</text>
+<text x="1208" y="852" font-size="13" fill="#16161A">factor, no al comercio.</text>
+<rect x="1436" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#C4E8D1" stroke-width="1"/>
+<text x="1448" y="798" font-size="13" fill="#16161A">Deudor: paga el nominal.</text>
+<text x="1448" y="816" font-size="13" fill="#16161A">Inversores: cobran</text>
+<text x="1448" y="834" font-size="13" fill="#16161A">rendimiento por época.</text>
+<text x="1448" y="852" font-size="13" fill="#16161A">Rescates con prioridad</text>
+<text x="1448" y="870" font-size="13" fill="#16161A">para el senior.</text>
+<rect x="1676" y="772" width="228" height="138" rx="12" fill="#EFFAF3" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1688" y="798" font-size="13" fill="#16161A">Inversores: la pérdida la</text>
+<text x="1688" y="816" font-size="13" fill="#16161A">absorben la first loss y</text>
+<text x="1688" y="834" font-size="13" fill="#16161A">el junior antes que el</text>
+<text x="1688" y="852" font-size="13" fill="#16161A">senior.</text>
+<text x="20" y="946" font-size="15" font-weight="700" fill="#16161A">Notas</text>
+<text x="20" y="972" font-size="13" fill="#16161A">1. Los acuerdos legales se firman fuera de la blockchain. El registro del crédito y los movimientos de USDC ejecutan las reglas financieras; no reemplazan la cesión ni la notificación al deudor.</text>
+<text x="20" y="996" font-size="13" fill="#16161A">2. ARC-RULES hoy no permite contratos ni tokens propios. Propuesta inicial: registro del pool y de los tramos en Postgres, y USDC movido en Arc por el contrato Memo. Contratos propios del pool requieren cambiar la regla y auditar.</text>
+<text x="20" y="1020" font-size="13" fill="#16161A">3. Guardar el USDC de los inversores en una wallet de MidatoPay es custodia: hay que definir el vehículo (por ejemplo, un fideicomiso) y su encuadre CNV antes de captar capital.</text>
+<text x="20" y="1044" font-size="13" fill="#16161A">4. Cobrar al deudor en pesos y convertir a USDC depende del proveedor de cuentas y de la restricción del BCRA sobre activos digitales (FACTORING_HANDOFF.md, sección 6.6).</text>
+<text x="20" y="1086" font-size="12" fill="#7A7A85">Estructura de pool basada en el esquema de Huma Institutional (docs.huma.finance, consultado el 09/11/2026). Detalle en docs/factoring/FACTORING_HANDOFF.md y EJEMPLO_FINANCIERO.md.</text>
+</svg>
