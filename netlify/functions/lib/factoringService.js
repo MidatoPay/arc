@@ -105,10 +105,10 @@ export async function createInvoice(db, userId, input, idempotencyKey, { now, se
 
 export async function sendInvoice(db, userId, invoiceId, { now, settings, issuerWallet }) {
   if (!settings.frameworkSha256) throw new PaymentError('factoring_framework_missing', 503);
-  if (!/^0x[0-9a-fA-F]{40}$/.test(issuerWallet || '')) throw new PaymentError('primary_wallet_required', 403);
   return inTransaction(db, async client => {
     const invoice = await lockInvoice(client, invoiceId);
     if (!invoice || invoice.issuer_user_id !== userId) throw new PaymentError('invoice_not_found', 404);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(issuerWallet || '')) throw new PaymentError('primary_wallet_required', 403);
     const tokenId = invoiceTokenId(invoice.id), at = iso(nowMs(now));
     return transition(client, invoice, 'enviada', { actor: 'issuer', actorUserId: userId, now, settings,
       set: { sent_at: at, token_id: tokenId, issuer_wallet: issuerWallet, framework_sha256: settings.frameworkSha256 },

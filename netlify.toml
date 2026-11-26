@@ -71,6 +71,16 @@
   force = true
 
 [[redirects]]
+  from = "/invoices/*"
+  to = "/.netlify/functions/invoices/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/invoices"
+  to = "/.netlify/functions/invoices"
+  status = 200
+  force = true
+[[redirects]]
   from = "/merchant-profile"
   to = "/.netlify/functions/merchant-profile"
   status = 200
