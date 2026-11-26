@@ -25,7 +25,7 @@ for(const name of ['rpc','eth-rpc','balance','quote']) {
  const fn=functions.find(entry=>entry.name===name);
  if(fn?.runtimeAPIVersion!==2 || !fn.trafficRules || !fn.routes?.some(route=>route.pattern==='/'+name))throw new Error(`Missing packaged rate limit for ${name}`);
 }
-for(const name of ["wallet","contacts","balance","quote","rpc","eth-rpc","treasury","treasury-export-access","transfers","transfers-worker-background","charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background","invoices","invoice-offers","factoring-worker-background","factoring-admin"]) {
+for(const name of ["wallet","contacts","balance","quote","rpc","eth-rpc","treasury","treasury-export-access","transfers","transfers-worker-background","charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background","invoices","invoice-offers","factoring-worker-background","factoring-admin","twentyone-webhook"]) {
  const entry=functions.find(fn=>fn.name===name);
  if(!entry)throw new Error(`Missing packaged function: ${name}`);
  await writeFile(resolve(entry.path,"package.json"),JSON.stringify({type:entry.runtimeAPIVersion===2?'module':'commonjs'}));
@@ -48,7 +48,7 @@ const smoke=spawnSync(process.execPath,["--input-type=commonjs","-e",`
  (async()=>{
   for(const {name,path,v2} of JSON.parse(process.argv[1])) {
    console.log('Checking '+name);
-   const method=["mercadopago-webhook","quote"].includes(name)?"POST":"GET";
+   const method=["mercadopago-webhook","twentyone-webhook","quote"].includes(name)?"POST":"GET";
    let status;
    if(v2) {
     const module=await import(require('node:url').pathToFileURL(path).href);

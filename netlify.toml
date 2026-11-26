@@ -129,6 +129,11 @@
   force = true
 
 [[redirects]]
+  from = "/webhooks/21millions"
+  to = "/.netlify/functions/twentyone-webhook"
+  status = 200
+  force = true
+[[redirects]]
   from = "/webhooks/mercadopago"
   to = "/.netlify/functions/mercadopago-webhook"
   status = 200
