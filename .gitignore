@@ -5,3 +5,5 @@ dist
 !.env.example
 !.env.production.example
 .netlify
+# Factoring pilot parties carry real CUITs: they live outside the repo (defense in depth).
+factoring-parties*.json
