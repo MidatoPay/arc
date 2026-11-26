@@ -1,0 +1,338 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1952" height="1518" viewBox="0 0 1952 1518" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A7A85"/></marker></defs>
+<rect x="0" y="0" width="1952" height="1518" rx="0" fill="#F7F7F9"/>
+<text x="20" y="42" font-size="24" fill="#16161A" font-weight="700">Cesión de una factura a un inversor: flujo del piloto de MidatoPay</text>
+<text x="20" y="68" font-size="14" fill="#7A7A85">Una factura se cede a un único inversor, sin fracciones. Los pagos son reales, en pesos y fuera de la cadena, vía 21 Millions. Un NFT ERC-721 por factura en Arc Mainnet funciona como registro público.</text>
+<text x="20" y="88" font-size="14" fill="#7A7A85">Precio: 35% TNA vencida, base 365, desde la acreditación (cuando el inversor acepta) hasta el vencimiento. Comisión de MidatoPay: 2,5% del descuento, a cargo del inversor. Cada columna es una etapa; cada fila, un actor.</text>
+<text x="20" y="124" font-size="13" fill="#7A7A85" font-weight="600">Referencias:</text>
+<rect x="112" y="108" width="215" height="24" rx="12" fill="#E7F5EC" stroke="#15803D" stroke-width="1"/>
+<text x="124" y="125" font-size="12" fill="#15803D" font-weight="600">Neto N − D: inversor → emisor</text>
+<rect x="337" y="108" width="288" height="24" rx="12" fill="#FFF1E8" stroke="#FF5A00" stroke-width="1"/>
+<text x="349" y="125" font-size="12" fill="#FF5A00" font-weight="600">Comisión 2,5% de D: inversor → MidatoPay</text>
+<rect x="635" y="108" width="209" height="24" rx="12" fill="#E8F0FE" stroke="#1F6FEB" stroke-width="1"/>
+<text x="647" y="125" font-size="12" fill="#1F6FEB" font-weight="600">Nominal N: deudor → inversor</text>
+<rect x="854" y="108" width="341" height="24" rx="12" fill="#F0ECFF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="866" y="125" font-size="12" fill="#6D4AFF" font-weight="600">Evento on-chain (gas en USDC, lo paga MidatoPay)</text>
+<rect x="1205" y="108" width="150" height="24" rx="12" fill="#FFFFFF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1217" y="125" font-size="12" fill="#E4483D" font-weight="600">Camino de excepción</text>
+<line x1="370" y1="170" x2="1794" y2="170" stroke="#7A7A85" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="352" cy="170" r="16" fill="#FF5A00"/>
+<text x="352" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">1</text>
+<text x="352" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Carga y envío</text>
+<text x="352" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">la crea el emisor</text>
+<rect x="285.5" y="234" width="133" height="22" rx="11" fill="#ECECF0"/>
+<text x="352" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">cargada → enviada</text>
+<circle cx="596" cy="170" r="16" fill="#FF5A00"/>
+<text x="596" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">2</text>
+<text x="596" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Aceptación del deudor</text>
+<text x="596" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">expresa o tácita a 21 días</text>
+<rect x="520" y="234" width="152" height="22" rx="11" fill="#ECECF0"/>
+<text x="596" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">aceptada · rechazada</text>
+<circle cx="840" cy="170" r="16" fill="#FF5A00"/>
+<text x="840" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">3</text>
+<text x="840" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Publicación</text>
+<text x="840" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">72 horas para tomarla</text>
+<rect x="745" y="234" width="190" height="22" rx="11" fill="#ECECF0"/>
+<text x="840" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">publicada · oferta vencida</text>
+<circle cx="1084" cy="170" r="16" fill="#FF5A00"/>
+<text x="1084" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">4</text>
+<rect x="1108" y="159" width="70" height="22" rx="11" fill="#15803D"/>
+<text x="1143" y="174" font-size="12" fill="#FFFFFF" font-weight="700" text-anchor="middle">mueve $</text>
+<text x="1084" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Toma y pagos</text>
+<text x="1084" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">al aceptar el inversor</text>
+<rect x="998.5" y="234" width="171" height="22" rx="11" fill="#ECECF0"/>
+<text x="1084" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">tomada → pagos en curso</text>
+<circle cx="1328" cy="170" r="16" fill="#FF5A00"/>
+<text x="1328" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">5</text>
+<text x="1328" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Cesión</text>
+<text x="1328" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">NFT al inversor</text>
+<rect x="1297" y="234" width="62" height="22" rx="11" fill="#ECECF0"/>
+<text x="1328" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">cedida</text>
+<circle cx="1572" cy="170" r="16" fill="#FF5A00"/>
+<text x="1572" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">6</text>
+<rect x="1596" y="159" width="70" height="22" rx="11" fill="#15803D"/>
+<text x="1631" y="174" font-size="12" fill="#FFFFFF" font-weight="700" text-anchor="middle">mueve $</text>
+<text x="1572" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Cobro al vencimiento</text>
+<text x="1572" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">desde el día del vencimiento</text>
+<rect x="1537.5" y="234" width="69" height="22" rx="11" fill="#ECECF0"/>
+<text x="1572" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">cobrada</text>
+<circle cx="1816" cy="170" r="16" fill="#E4483D"/>
+<text x="1816" y="175" font-size="14" fill="#FFFFFF" font-weight="700" text-anchor="middle">7</text>
+<text x="1816" y="208" font-size="15" fill="#16161A" font-weight="700" text-anchor="middle">Si el deudor no paga</text>
+<text x="1816" y="225" font-size="12" fill="#7A7A85" text-anchor="middle">mora al día siguiente</text>
+<rect x="1781.5" y="234" width="69" height="22" rx="11" fill="#ECECF0"/>
+<text x="1816" y="249" font-size="12" fill="#16161A" font-weight="600" text-anchor="middle">en mora</text>
+<rect x="20" y="274" width="200" height="148" rx="14" fill="#16161A"/>
+<text x="120" y="336" font-size="16" fill="#FFFFFF" font-weight="700" text-anchor="middle">Emisor</text>
+<text x="120" y="356" font-size="12" fill="#FFFFFF" text-anchor="middle">quien emite la factura y</text>
+<text x="120" y="372" font-size="12" fill="#FFFFFF" text-anchor="middle">la cede</text>
+<rect x="236" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="248" y="296" font-size="13" fill="#16161A">Crea la factura con el</text>
+<text x="248" y="314" font-size="13" fill="#16161A">formulario (queda «SIMULADA»)</text>
+<text x="248" y="332" font-size="13" fill="#16161A">o sube el archivo y se lee el</text>
+<text x="248" y="350" font-size="13" fill="#16161A">QR fiscal.</text>
+<text x="248" y="374" font-size="13" fill="#16161A">Elige al deudor de la lista</text>
+<text x="248" y="392" font-size="13" fill="#16161A">curada y se la envía.</text>
+<rect x="480" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="492" y="296" font-size="13" fill="#16161A">Ve «Enviada» y cuántos días</text>
+<text x="492" y="314" font-size="13" fill="#16161A">quedan para la aceptación</text>
+<text x="492" y="332" font-size="13" fill="#16161A">tácita.</text>
+<rect x="724" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="736" y="296" font-size="13" fill="#16161A">Ve «Publicada» y la oferta:</text>
+<text x="736" y="314" font-size="13" fill="#16161A">cuánto recibe hoy (N − D) al</text>
+<text x="736" y="332" font-size="13" fill="#16161A">35% TNA.</text>
+<rect x="968" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="980" y="296" font-size="13" fill="#16161A">No firma nada al momento de</text>
+<text x="980" y="314" font-size="13" fill="#16161A">la toma.</text>
+<rect x="980" y="324" width="208" height="42" rx="8" fill="#E7F5EC" stroke="#15803D" stroke-width="1"/>
+<text x="990" y="340" font-size="12" fill="#15803D" font-weight="700">+ recibe el neto N − D en</text>
+<text x="990" y="356" font-size="12" fill="#15803D" font-weight="700">su CVU</text>
+<rect x="1212" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1224" y="296" font-size="13" fill="#16161A">Ve «Cedida» y el comprobante</text>
+<text x="1224" y="314" font-size="13" fill="#16161A">de la operación.</text>
+<rect x="1456" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1468" y="296" font-size="13" fill="#16161A">Ve «Cobrada». No interviene</text>
+<text x="1468" y="314" font-size="13" fill="#16161A">en el pago.</text>
+<rect x="1700" y="274" width="232" height="148" rx="12" fill="#FFFFFF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1712" y="296" font-size="13" fill="#16161A">Ve el aviso «En mora».</text>
+<text x="1712" y="320" font-size="13" fill="#7A7A85">En una FCE el emisor no</text>
+<text x="1712" y="338" font-size="13" fill="#7A7A85">garantiza el pago (art. 9).</text>
+<rect x="20" y="434" width="200" height="132" rx="14" fill="#4A4A55"/>
+<text x="120" y="488" font-size="16" fill="#FFFFFF" font-weight="700" text-anchor="middle">Deudor</text>
+<text x="120" y="508" font-size="12" fill="#FFFFFF" text-anchor="middle">de la lista curada, con</text>
+<text x="120" y="524" font-size="12" fill="#FFFFFF" text-anchor="middle">cuenta en MidatoPay</text>
+<rect x="236" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="248" y="456" font-size="13" fill="#16161A">Recibe el aviso en la app:</text>
+<text x="248" y="474" font-size="13" fill="#16161A">tiene una factura para</text>
+<text x="248" y="492" font-size="13" fill="#16161A">aceptar o rechazar.</text>
+<rect x="480" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="492" y="456" font-size="13" fill="#16161A">Acepta en la app, o queda</text>
+<text x="492" y="474" font-size="13" fill="#16161A">aceptada en forma tácita a</text>
+<text x="492" y="492" font-size="13" fill="#16161A">los 21 días desde la emisión.</text>
+<rect x="492" y="502" width="208" height="42" rx="8" fill="#FDECEA" stroke="#E4483D" stroke-width="1"/>
+<text x="502" y="518" font-size="12" fill="#E4483D" font-weight="700">Si rechaza, la factura</text>
+<text x="502" y="534" font-size="12" fill="#E4483D" font-weight="700">termina.</text>
+<rect x="724" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="736" y="456" font-size="13" fill="#16161A">Sin acción.</text>
+<rect x="968" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="980" y="456" font-size="13" fill="#16161A">Sin acción.</text>
+<rect x="1212" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1224" y="456" font-size="13" fill="#16161A">Recibe la notificación de la</text>
+<text x="1224" y="474" font-size="13" fill="#16161A">cesión y el CVU del inversor</text>
+<text x="1224" y="492" font-size="13" fill="#16161A">donde va a pagar.</text>
+<rect x="1456" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1468" y="456" font-size="13" fill="#16161A">Desde el vencimiento elige la</text>
+<text x="1468" y="474" font-size="13" fill="#16161A">factura en la app y paga.</text>
+<rect x="1468" y="484" width="208" height="26" rx="8" fill="#E8F0FE" stroke="#1F6FEB" stroke-width="1"/>
+<text x="1478" y="500" font-size="12" fill="#1F6FEB" font-weight="700">− paga el nominal N</text>
+<rect x="1700" y="434" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1712" y="456" font-size="13" fill="#16161A">Sin pago, al día siguiente</text>
+<text x="1712" y="474" font-size="13" fill="#16161A">del vencimiento la factura</text>
+<text x="1712" y="492" font-size="13" fill="#16161A">pasa a mora.</text>
+<text x="1712" y="516" font-size="13" fill="#7A7A85">Si paga después, pasa a</text>
+<text x="1712" y="534" font-size="13" fill="#7A7A85">«Cobrada».</text>
+<rect x="20" y="578" width="200" height="132" rx="14" fill="#1F6FEB"/>
+<text x="120" y="632" font-size="16" fill="#FFFFFF" font-weight="700" text-anchor="middle">Inversor</text>
+<text x="120" y="652" font-size="12" fill="#FFFFFF" text-anchor="middle">habilitado por lista, KYC</text>
+<text x="120" y="668" font-size="12" fill="#FFFFFF" text-anchor="middle">aprobado a mano</text>
+<rect x="236" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="248" y="600" font-size="13" fill="#16161A">Todavía no la ve.</text>
+<rect x="480" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="492" y="600" font-size="13" fill="#16161A">Todavía no la ve.</text>
+<rect x="724" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="736" y="600" font-size="13" fill="#16161A">Ve la oferta: nominal,</text>
+<text x="736" y="618" font-size="13" fill="#16161A">vencimiento, deudor,</text>
+<text x="736" y="636" font-size="13" fill="#16161A">desembolso, ganancia y TNA</text>
+<text x="736" y="654" font-size="13" fill="#16161A">(~34,1%).</text>
+<text x="736" y="678" font-size="13" fill="#16161A">Tiene 72 horas para tomarla.</text>
+<rect x="968" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="980" y="600" font-size="13" fill="#16161A">Acepta la oferta (quedan más</text>
+<text x="980" y="618" font-size="13" fill="#16161A">de 0 días) y autoriza el</text>
+<text x="980" y="636" font-size="13" fill="#16161A">débito inmediato.</text>
+<rect x="980" y="646" width="208" height="42" rx="8" fill="#FFE9DB" stroke="#FF5A00" stroke-width="1"/>
+<text x="990" y="662" font-size="12" fill="#FF5A00" font-weight="700">− desembolsa N − D +</text>
+<text x="990" y="678" font-size="12" fill="#FF5A00" font-weight="700">comisión</text>
+<rect x="1212" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1224" y="600" font-size="13" fill="#16161A">Ve la factura en su cartera y</text>
+<text x="1224" y="618" font-size="13" fill="#16161A">el NFT en su wallet.</text>
+<rect x="1456" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<rect x="1468" y="586" width="208" height="42" rx="8" fill="#E8F0FE" stroke="#1F6FEB" stroke-width="1"/>
+<text x="1478" y="602" font-size="12" fill="#1F6FEB" font-weight="700">+ cobra el nominal N en su</text>
+<text x="1478" y="618" font-size="12" fill="#1F6FEB" font-weight="700">CVU</text>
+<text x="1468" y="644" font-size="13" fill="#16161A">Gana el 97,5% del descuento.</text>
+<rect x="1700" y="578" width="232" height="132" rx="12" fill="#FFFFFF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1712" y="600" font-size="13" fill="#16161A">Ve «En mora». Conserva el</text>
+<text x="1712" y="618" font-size="13" fill="#16161A">crédito y el NFT.</text>
+<rect x="20" y="722" width="200" height="150" rx="14" fill="#FF5A00"/>
+<text x="120" y="785" font-size="16" fill="#FFFFFF" font-weight="700" text-anchor="middle">MidatoPay</text>
+<text x="120" y="805" font-size="12" fill="#FFFFFF" text-anchor="middle">plataforma; recibe solo la</text>
+<text x="120" y="821" font-size="12" fill="#FFFFFF" text-anchor="middle">comisión</text>
+<rect x="236" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="248" y="744" font-size="13" fill="#16161A">Valida los datos y controla</text>
+<text x="248" y="762" font-size="13" fill="#16161A">que el deudor esté en la</text>
+<text x="248" y="780" font-size="13" fill="#16161A">lista.</text>
+<text x="248" y="804" font-size="13" fill="#16161A">Constatación en ARCA (WSCDC)</text>
+<text x="248" y="822" font-size="13" fill="#16161A">si está activada.</text>
+<rect x="480" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="492" y="744" font-size="13" fill="#16161A">Cuenta los 21 días</text>
+<text x="492" y="762" font-size="13" fill="#16161A">(configurable) y registra</text>
+<text x="492" y="780" font-size="13" fill="#16161A">aceptación expresa, tácita o</text>
+<text x="492" y="798" font-size="13" fill="#16161A">rechazo.</text>
+<rect x="724" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="736" y="744" font-size="13" fill="#16161A">Publica la factura y abre la</text>
+<text x="736" y="762" font-size="13" fill="#16161A">ventana de 72 h.</text>
+<rect x="736" y="772" width="208" height="42" rx="8" fill="#FDECEA" stroke="#E4483D" stroke-width="1"/>
+<text x="746" y="788" font-size="12" fill="#E4483D" font-weight="700">Si nadie la toma, la oferta</text>
+<text x="746" y="804" font-size="12" fill="#E4483D" font-weight="700">vence.</text>
+<rect x="968" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="980" y="744" font-size="13" fill="#16161A">Consulta el saldo del</text>
+<text x="980" y="762" font-size="13" fill="#16161A">inversor y ordena dos retiros</text>
+<text x="980" y="780" font-size="13" fill="#16161A">con Idempotency-Key: primero</text>
+<text x="980" y="798" font-size="13" fill="#16161A">el neto, después la comisión.</text>
+<rect x="980" y="808" width="208" height="42" rx="8" fill="#FFE9DB" stroke="#FF5A00" stroke-width="1"/>
+<text x="990" y="824" font-size="12" fill="#FF5A00" font-weight="700">+ cobra la comisión (no</text>
+<text x="990" y="840" font-size="12" fill="#FF5A00" font-weight="700">custodia)</text>
+<rect x="1212" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="1224" y="744" font-size="13" fill="#16161A">Con los dos pagos completos</text>
+<text x="1224" y="762" font-size="13" fill="#16161A">marca «Cedida», avisa al</text>
+<text x="1224" y="780" font-size="13" fill="#16161A">deudor y encola la</text>
+<text x="1224" y="798" font-size="13" fill="#16161A">transferencia del NFT.</text>
+<rect x="1456" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#FFCFB0" stroke-width="1"/>
+<text x="1468" y="744" font-size="13" fill="#16161A">Ordena el retiro del nominal</text>
+<text x="1468" y="762" font-size="13" fill="#16161A">desde la cuenta del deudor y</text>
+<text x="1468" y="780" font-size="13" fill="#16161A">confirma el pago.</text>
+<rect x="1700" y="722" width="232" height="150" rx="12" fill="#FFF4EC" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1712" y="744" font-size="13" fill="#16161A">Marca la mora y avisa a las</text>
+<text x="1712" y="762" font-size="13" fill="#16161A">partes dentro de la app.</text>
+<rect x="20" y="884" width="200" height="132" rx="14" fill="#15803D"/>
+<text x="120" y="938" font-size="16" fill="#FFFFFF" font-weight="700" text-anchor="middle">21 Millions</text>
+<text x="120" y="958" font-size="12" fill="#FFFFFF" text-anchor="middle">pagos en pesos, fuera de</text>
+<text x="120" y="974" font-size="12" fill="#FFFFFF" text-anchor="middle">la cadena</text>
+<rect x="236" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#C6E8D1" stroke-width="1"/>
+<text x="248" y="906" font-size="13" fill="#16161A">Sin movimientos.</text>
+<rect x="480" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#C6E8D1" stroke-width="1"/>
+<text x="492" y="906" font-size="13" fill="#16161A">Sin movimientos.</text>
+<rect x="724" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#C6E8D1" stroke-width="1"/>
+<text x="736" y="906" font-size="13" fill="#16161A">Sin movimientos.</text>
+<rect x="968" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#C6E8D1" stroke-width="1"/>
+<text x="980" y="906" font-size="13" fill="#16161A">Desde la cuenta del inversor:</text>
+<rect x="980" y="916" width="208" height="26" rx="8" fill="#E7F5EC" stroke="#15803D" stroke-width="1"/>
+<text x="990" y="932" font-size="12" fill="#15803D" font-weight="700">neto → CVU del emisor</text>
+<rect x="980" y="944" width="208" height="26" rx="8" fill="#FFE9DB" stroke="#FF5A00" stroke-width="1"/>
+<text x="990" y="960" font-size="12" fill="#FF5A00" font-weight="700">comisión → CVU de MidatoPay</text>
+<text x="980" y="986" font-size="13" fill="#7A7A85">Confirma con order.completed.</text>
+<rect x="1212" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#C6E8D1" stroke-width="1"/>
+<text x="1224" y="906" font-size="13" fill="#16161A">Sin movimientos.</text>
+<rect x="1456" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#C6E8D1" stroke-width="1"/>
+<rect x="1468" y="892" width="208" height="42" rx="8" fill="#E8F0FE" stroke="#1F6FEB" stroke-width="1"/>
+<text x="1478" y="908" font-size="12" fill="#1F6FEB" font-weight="700">nominal: deudor → CVU del</text>
+<text x="1478" y="924" font-size="12" fill="#1F6FEB" font-weight="700">inversor</text>
+<text x="1468" y="950" font-size="13" fill="#7A7A85">Confirma con order.completed.</text>
+<rect x="1700" y="884" width="232" height="132" rx="12" fill="#EEF8F1" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1712" y="906" font-size="13" fill="#16161A">Sin movimientos hasta que el</text>
+<text x="1712" y="924" font-size="13" fill="#16161A">deudor pague.</text>
+<rect x="20" y="1028" width="200" height="134" rx="14" fill="#6D4AFF"/>
+<text x="120" y="1091" font-size="16" fill="#FFFFFF" font-weight="700" text-anchor="middle">Registro NFT en Arc</text>
+<text x="120" y="1111" font-size="12" fill="#FFFFFF" text-anchor="middle">ERC-721 en Arc Mainnet</text>
+<rect x="236" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#DCD3FF" stroke-width="1"/>
+<text x="248" y="1050" font-size="13" fill="#16161A">Se emite el NFT a la wallet</text>
+<text x="248" y="1068" font-size="13" fill="#16161A">del emisor.</text>
+<rect x="248" y="1078" width="208" height="26" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="258" y="1094" font-size="12" fill="#6D4AFF" font-weight="700">evento: enviada</text>
+<rect x="480" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#DCD3FF" stroke-width="1"/>
+<rect x="492" y="1036" width="208" height="42" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="502" y="1052" font-size="12" fill="#6D4AFF" font-weight="700">evento: aceptada (expresa o</text>
+<text x="502" y="1068" font-size="12" fill="#6D4AFF" font-weight="700">tácita)</text>
+<rect x="492" y="1080" width="208" height="26" rx="8" fill="#FDECEA" stroke="#E4483D" stroke-width="1"/>
+<text x="502" y="1096" font-size="12" fill="#E4483D" font-weight="700">evento: rechazada</text>
+<rect x="724" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#DCD3FF" stroke-width="1"/>
+<rect x="736" y="1036" width="208" height="26" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="746" y="1052" font-size="12" fill="#6D4AFF" font-weight="700">evento: publicada</text>
+<rect x="736" y="1064" width="208" height="26" rx="8" fill="#FDECEA" stroke="#E4483D" stroke-width="1"/>
+<text x="746" y="1080" font-size="12" fill="#E4483D" font-weight="700">evento: oferta vencida</text>
+<rect x="968" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#DCD3FF" stroke-width="1"/>
+<rect x="980" y="1036" width="208" height="26" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="990" y="1052" font-size="12" fill="#6D4AFF" font-weight="700">evento: tomada</text>
+<rect x="980" y="1064" width="208" height="26" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="990" y="1080" font-size="12" fill="#6D4AFF" font-weight="700">evento: pagos confirmados</text>
+<text x="980" y="1106" font-size="13" fill="#7A7A85">Montos: nominal, descuento,</text>
+<text x="980" y="1124" font-size="13" fill="#7A7A85">comisión y vencimiento.</text>
+<rect x="1212" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#DCD3FF" stroke-width="1"/>
+<text x="1224" y="1050" font-size="13" fill="#16161A">La clave de cesión de</text>
+<text x="1224" y="1068" font-size="13" fill="#16161A">MidatoPay pasa el NFT al</text>
+<text x="1224" y="1086" font-size="13" fill="#16161A">inversor, sin firma del</text>
+<text x="1224" y="1104" font-size="13" fill="#16161A">emisor.</text>
+<rect x="1224" y="1114" width="208" height="26" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="1234" y="1130" font-size="12" fill="#6D4AFF" font-weight="700">evento: cedida</text>
+<rect x="1456" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#DCD3FF" stroke-width="1"/>
+<rect x="1468" y="1036" width="208" height="26" rx="8" fill="#ECE6FF" stroke="#6D4AFF" stroke-width="1"/>
+<text x="1478" y="1052" font-size="12" fill="#6D4AFF" font-weight="700">evento: cobrada</text>
+<text x="1468" y="1078" font-size="13" fill="#7A7A85">El NFT queda en la wallet del</text>
+<text x="1468" y="1096" font-size="13" fill="#7A7A85">inversor como registro.</text>
+<rect x="1700" y="1028" width="232" height="134" rx="12" fill="#F6F3FF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="1712" y="1036" width="208" height="26" rx="8" fill="#FDECEA" stroke="#E4483D" stroke-width="1"/>
+<text x="1722" y="1052" font-size="12" fill="#E4483D" font-weight="700">evento: en mora</text>
+<text x="1712" y="1078" font-size="13" fill="#7A7A85">El NFT queda con su titular</text>
+<text x="1712" y="1096" font-size="13" fill="#7A7A85">(el inversor).</text>
+<rect x="20" y="1174" width="200" height="106" rx="14" fill="#FFFFFF" stroke="#16161A" stroke-width="1.5"/>
+<text x="120" y="1215" font-size="16" fill="#16161A" font-weight="700" text-anchor="middle">Contratos legales</text>
+<text x="120" y="1235" font-size="12" fill="#16161A" text-anchor="middle">documentos con hash</text>
+<text x="120" y="1251" font-size="12" fill="#16161A" text-anchor="middle">on-chain</text>
+<rect x="236" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="248" y="1196" font-size="13" fill="#16161A">Contrato marco del emisor:</text>
+<text x="248" y="1214" font-size="13" fill="#16161A">acepta que MidatoPay</text>
+<text x="248" y="1232" font-size="13" fill="#16161A">transfiera el NFT. Términos</text>
+<text x="248" y="1250" font-size="13" fill="#16161A">del deudor para el piloto.</text>
+<rect x="480" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="492" y="1196" font-size="13" fill="#16161A">Queda registrada la</text>
+<text x="492" y="1214" font-size="13" fill="#16161A">aceptación del deudor. Sin</text>
+<text x="492" y="1232" font-size="13" fill="#16161A">aceptación no se publica.</text>
+<rect x="724" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="736" y="1196" font-size="13" fill="#16161A">Términos publicados: tasa,</text>
+<text x="736" y="1214" font-size="13" fill="#16161A">comisión, plazo y</text>
+<text x="736" y="1232" font-size="13" fill="#16161A">vencimiento.</text>
+<rect x="968" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="980" y="1196" font-size="13" fill="#16161A">Anexo de cesión entre emisor</text>
+<text x="980" y="1214" font-size="13" fill="#16161A">e inversor. Términos del</text>
+<text x="980" y="1232" font-size="13" fill="#16161A">inversor con el débito</text>
+<text x="980" y="1250" font-size="13" fill="#16161A">inmediato.</text>
+<rect x="1212" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1224" y="1196" font-size="13" fill="#16161A">Notificación de la cesión al</text>
+<text x="1224" y="1214" font-size="13" fill="#16161A">deudor. El NFT registra la</text>
+<text x="1224" y="1232" font-size="13" fill="#16161A">cesión, no la reemplaza.</text>
+<rect x="1456" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#DADAE0" stroke-width="1"/>
+<text x="1468" y="1196" font-size="13" fill="#16161A">Comprobante de pago. Cierra</text>
+<text x="1468" y="1214" font-size="13" fill="#16161A">la operación.</text>
+<rect x="1700" y="1174" width="232" height="106" rx="12" fill="#FFFFFF" stroke="#E4483D" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="1712" y="1196" font-size="13" fill="#16161A">Acciones de cobro según el</text>
+<text x="1712" y="1214" font-size="13" fill="#16161A">anexo y la ley aplicable [P].</text>
+<text x="20" y="1312" font-size="16" fill="#16161A" font-weight="700">Notas</text>
+<rect x="20" y="1326" width="372.8" height="142" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="34" y="1352" font-size="14" fill="#16161A" font-weight="700">Factura simulada</text>
+<text x="34" y="1374" font-size="13" fill="#16161A">Las facturas del formulario se marcan «SIMULADA»</text>
+<text x="34" y="1392" font-size="13" fill="#16161A">y no tienen valor legal. El piloto valida el</text>
+<text x="34" y="1410" font-size="13" fill="#16161A">flujo y los pagos, no la cesión.</text>
+<rect x="404.8" y="1326" width="372.8" height="142" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="418.8" y="1352" font-size="14" fill="#16161A" font-weight="700">Cesión y NFT</text>
+<text x="418.8" y="1374" font-size="13" fill="#16161A">La cesión requiere el anexo de cesión y la</text>
+<text x="418.8" y="1392" font-size="13" fill="#16161A">notificación al deudor. Transferir el NFT no es</text>
+<text x="418.8" y="1410" font-size="13" fill="#16161A">la cesión: es su registro público.</text>
+<rect x="789.6" y="1326" width="372.8" height="142" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="803.6" y="1352" font-size="14" fill="#16161A" font-weight="700">Reglas de FCE (Ley 27.440)</text>
+<text x="803.6" y="1374" font-size="13" fill="#16161A">Art. 13: fuera de un mercado autorizado por la</text>
+<text x="803.6" y="1392" font-size="13" fill="#16161A">CNV, solo compran FCE las entidades financieras</text>
+<text x="803.6" y="1410" font-size="13" fill="#16161A">o los proveedores no financieros de crédito.</text>
+<text x="803.6" y="1428" font-size="13" fill="#16161A">Art. 18: no se cede en los 3 días hábiles</text>
+<text x="803.6" y="1446" font-size="13" fill="#16161A">bancarios previos al vencimiento.</text>
+<rect x="1174.4" y="1326" width="372.8" height="142" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="1188.4" y="1352" font-size="14" fill="#16161A" font-weight="700">Contrato propio en Arc</text>
+<text x="1188.4" y="1374" font-size="13" fill="#16161A">ARC-RULES.md hoy prohíbe contratos propios. El</text>
+<text x="1188.4" y="1392" font-size="13" fill="#16161A">NFT requiere un cambio explícito y aprobado. El</text>
+<text x="1188.4" y="1410" font-size="13" fill="#16161A">despliegue es irreversible y paga gas real.</text>
+<rect x="1559.2" y="1326" width="372.8" height="142" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="1573.2" y="1352" font-size="14" fill="#16161A" font-weight="700">Datos on-chain</text>
+<text x="1573.2" y="1374" font-size="13" fill="#16161A">Hashes de documentos, estados, fechas y montos</text>
+<text x="1573.2" y="1392" font-size="13" fill="#16161A">(nominal, descuento, comisión, vencimiento).</text>
+<text x="1573.2" y="1410" font-size="13" fill="#16161A">Ningún dato personal: sin CUIT ni nombres.</text>
+<text x="20" y="1496" font-size="12" fill="#7A7A85">Fuente: docs/factoring/DECISIONES_MOCK_CESION.md (11/11/2026) y docs/factoring/PLAN_IMPLEMENTACION_PILOTO.md. Imagen generada el 26/11/2026. [P] = propuesta. Nada de esto es asesoramiento legal.</text>
+</svg>

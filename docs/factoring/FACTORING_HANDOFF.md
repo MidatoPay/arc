@@ -3,6 +3,8 @@
 Fecha: 09/11/2026. Branch: `factoring`, creado desde `main` en `3670809`. Estado: análisis y diseño propuesto. No hay código de esta funcionalidad todavía.
 
 > **Aviso, 11/11/2026:** los pools de liquidez quedaron descartados por motivos regulatorios. El modelo vigente es la cesión de cada factura a un único inversor: ver `DECISIONES_MOCK_CESION.md` y el borrador `PLAN_PILOTO_CESION.md`. Las secciones de pools (5.4 a 5.6, 8.7, 9 y FD-08 a FD-13) se van a reescribir en la tarea 2 del plan.
+>
+> **Imágenes, 26/11/2026:** `FLUJO_FACTORING_MIDATOPAY.svg/.jpg` y `EJEMPLO_FINANCIERO.svg/.jpg` muestran el modelo de pools y quedan como historial. Las vigentes son `FLUJO_CESION_INVERSOR.svg/.jpg` (flujo de la cesión) y `EJEMPLO_FINANCIERO_CESION.svg/.jpg` (ejemplo financiero).
 
 Este documento reúne lo analizado sobre factoring de facturas electrónicas argentinas: producto, procedimientos, marco legal, competencia y diseño técnico sobre el código actual. Está escrito para que otro modelo o desarrollador continúe la implementación sin repetir la investigación.
 

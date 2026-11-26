@@ -3,6 +3,8 @@
 Fecha: 09/11/2026. Complementa `FACTORING_HANDOFF.md` (sección 5).
 
 > **Aviso, 11/11/2026:** los pools quedaron descartados; el modelo y el cálculo vigentes (cesión a un único inversor, 35% TNA y comisión del 2,5% del descuento) están en `DECISIONES_MOCK_CESION.md`. Las secciones 4.2 y 6 se van a reescribir en la tarea 2 de `PLAN_PILOTO_CESION.md`.
+>
+> **Imágenes, 26/11/2026:** `EJEMPLO_FINANCIERO.svg/.jpg` muestra el modelo de pools y queda como historial. La vigente es `EJEMPLO_FINANCIERO_CESION.svg/.jpg`, con el cálculo de la cesión a un único inversor.
 
 **Las cifras son ilustrativas.** Sirven para discutir precios y estructura con CEO, CFO y CBO. No son una oferta ni una tasa aprobada. Las tasas de referencia del mercado cambian todos los meses y hay que recalibrarlas antes de usarlas.
 

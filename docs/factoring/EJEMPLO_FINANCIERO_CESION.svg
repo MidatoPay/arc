@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1250" viewBox="0 0 1840 1250" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<defs><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#15803D"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF5A00"/></marker><marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F6FEB"/></marker></defs>
+<rect x="0" y="0" width="1840" height="1250" rx="0" fill="#F7F7F9"/>
+<text x="20" y="42" font-size="24" fill="#16161A" font-weight="700">Ejemplo financiero de la cesión a un inversor: quién paga, quién cobra y cuánto</text>
+<text x="20" y="68" font-size="14" fill="#7A7A85">Cifras ilustrativas, sin impuestos. Interés simple, base 365. Tasa de descuento de 35% TNA vencida desde la acreditación (el momento en que el inversor acepta) hasta el vencimiento.</text>
+<text x="20" y="88" font-size="14" fill="#7A7A85">Comisión de MidatoPay: 2,5% del descuento, a cargo del inversor y cobrada al acreditar. El emisor paga exactamente el 35% TNA. Sin plazo mínimo: se bloquea solo con 0 días.</text>
+<rect x="20" y="112" width="528" height="330" rx="14" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="40" y="146" font-size="17" fill="#16161A" font-weight="700">Fórmulas</text>
+<text x="40" y="166" font-size="12" fill="#7A7A85">N = nominal; días = desde la acreditación hasta el vencimiento</text>
+<rect x="40" y="182" width="6" height="26" rx="3" fill="#16161A"/>
+<text x="58" y="200" font-size="14" fill="#16161A" font-weight="600">x = 0,35 × días / 365</text>
+<text x="528" y="200" font-size="12" fill="#7A7A85" text-anchor="end">tasa del período</text>
+<rect x="40" y="216" width="6" height="26" rx="3" fill="#16161A"/>
+<text x="58" y="234" font-size="14" fill="#16161A" font-weight="600">D = N − N / (1 + x)</text>
+<text x="528" y="234" font-size="12" fill="#7A7A85" text-anchor="end">descuento: costo del emisor</text>
+<rect x="40" y="250" width="6" height="26" rx="3" fill="#15803D"/>
+<text x="58" y="268" font-size="14" fill="#16161A" font-weight="600">Acreditación = N − D</text>
+<text x="528" y="268" font-size="12" fill="#7A7A85" text-anchor="end">neto al CVU del emisor</text>
+<rect x="40" y="284" width="6" height="26" rx="3" fill="#FF5A00"/>
+<text x="58" y="302" font-size="14" fill="#16161A" font-weight="600">Comisión = 0,025 × D</text>
+<text x="528" y="302" font-size="12" fill="#7A7A85" text-anchor="end">al CVU de MidatoPay</text>
+<rect x="40" y="318" width="6" height="26" rx="3" fill="#16161A"/>
+<text x="58" y="336" font-size="14" fill="#16161A" font-weight="600">Desembolso = N − D + comisión</text>
+<text x="528" y="336" font-size="12" fill="#7A7A85" text-anchor="end">sale de la cuenta del inversor</text>
+<rect x="40" y="352" width="6" height="26" rx="3" fill="#1F6FEB"/>
+<text x="58" y="370" font-size="14" fill="#16161A" font-weight="600">Ganancia = 0,975 × D</text>
+<text x="528" y="370" font-size="12" fill="#7A7A85" text-anchor="end">el inversor cobra N al vencimiento</text>
+<rect x="40" y="386" width="6" height="26" rx="3" fill="#1F6FEB"/>
+<text x="58" y="404" font-size="14" fill="#16161A" font-weight="600">TNA inversor = ganancia / desembolso × 365 / días</text>
+<rect x="564" y="112" width="560" height="330" rx="14" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="584" y="146" font-size="17" fill="#16161A" font-weight="700">Factura de ARS 100</text>
+<text x="584" y="166" font-size="12" fill="#7A7A85">Las tres columnas suman el nominal (acreditación + comisión + ganancia)</text>
+<text x="882.6666666666666" y="198" font-size="13" fill="#7A7A85" font-weight="700" text-anchor="end">30 días</text>
+<text x="989.3333333333334" y="198" font-size="13" fill="#7A7A85" font-weight="700" text-anchor="end">60 días</text>
+<text x="1096" y="198" font-size="13" fill="#7A7A85" font-weight="700" text-anchor="end">90 días</text>
+<line x1="584" y1="208" x2="1104" y2="208" stroke="#ECECF0" stroke-width="1.5"/>
+<text x="584" y="236" font-size="13" fill="#16161A" font-weight="500">Descuento total (D)</text>
+<text x="882.6666666666666" y="236" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">2,7963</text>
+<text x="989.3333333333334" y="236" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">5,4404</text>
+<text x="1096" y="236" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">7,9445</text>
+<rect x="576" y="246" width="536" height="30" rx="6" fill="#F7F7F9"/>
+<text x="584" y="266" font-size="13" fill="#16161A" font-weight="500">Acreditación al emisor</text>
+<text x="882.6666666666666" y="266" font-size="13.5" fill="#15803D" font-weight="700" text-anchor="end">97,2037</text>
+<text x="989.3333333333334" y="266" font-size="13.5" fill="#15803D" font-weight="700" text-anchor="end">94,5596</text>
+<text x="1096" y="266" font-size="13.5" fill="#15803D" font-weight="700" text-anchor="end">92,0555</text>
+<text x="584" y="296" font-size="13" fill="#16161A" font-weight="500">Comisión MidatoPay</text>
+<text x="882.6666666666666" y="296" font-size="13.5" fill="#FF5A00" font-weight="700" text-anchor="end">0,0699</text>
+<text x="989.3333333333334" y="296" font-size="13.5" fill="#FF5A00" font-weight="700" text-anchor="end">0,1360</text>
+<text x="1096" y="296" font-size="13.5" fill="#FF5A00" font-weight="700" text-anchor="end">0,1986</text>
+<rect x="576" y="306" width="536" height="30" rx="6" fill="#F7F7F9"/>
+<text x="584" y="326" font-size="13" fill="#16161A" font-weight="500">Desembolso del inversor</text>
+<text x="882.6666666666666" y="326" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">97,2736</text>
+<text x="989.3333333333334" y="326" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">94,6956</text>
+<text x="1096" y="326" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">92,2541</text>
+<text x="584" y="356" font-size="13" fill="#16161A" font-weight="500">Ganancia del inversor</text>
+<text x="882.6666666666666" y="356" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">2,7264</text>
+<text x="989.3333333333334" y="356" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">5,3044</text>
+<text x="1096" y="356" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">7,7459</text>
+<rect x="576" y="366" width="536" height="30" rx="6" fill="#F7F7F9"/>
+<text x="584" y="386" font-size="13" fill="#16161A" font-weight="500">TNA del inversor</text>
+<text x="882.6666666666666" y="386" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">34,10%</text>
+<text x="989.3333333333334" y="386" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">34,08%</text>
+<text x="1096" y="386" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">34,05%</text>
+<line x1="584" y1="404" x2="1104" y2="404" stroke="#ECECF0" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="584" y="426" font-size="13" fill="#7A7A85">Suma (= nominal)</text>
+<text x="882.6666666666666" y="426" font-size="13.5" fill="#7A7A85" font-weight="500" text-anchor="end">100,0000</text>
+<text x="989.3333333333334" y="426" font-size="13.5" fill="#7A7A85" font-weight="500" text-anchor="end">100,0000</text>
+<text x="1096" y="426" font-size="13.5" fill="#7A7A85" font-weight="500" text-anchor="end">100,0000</text>
+<rect x="1140" y="112" width="680" height="330" rx="14" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="1160" y="146" font-size="17" fill="#16161A" font-weight="700">Factura de ARS 17.000.000</text>
+<text x="1160" y="166" font-size="12" fill="#7A7A85">Las tres columnas suman el nominal (acreditación + comisión + ganancia)</text>
+<text x="1512" y="198" font-size="13" fill="#7A7A85" font-weight="700" text-anchor="end">30 días</text>
+<text x="1652" y="198" font-size="13" fill="#7A7A85" font-weight="700" text-anchor="end">60 días</text>
+<text x="1792" y="198" font-size="13" fill="#7A7A85" font-weight="700" text-anchor="end">90 días</text>
+<line x1="1160" y1="208" x2="1800" y2="208" stroke="#ECECF0" stroke-width="1.5"/>
+<text x="1160" y="236" font-size="13" fill="#16161A" font-weight="500">Descuento total (D)</text>
+<text x="1512" y="236" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">475.366,18</text>
+<text x="1652" y="236" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">924.870,47</text>
+<text x="1792" y="236" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">1.350.567,47</text>
+<rect x="1152" y="246" width="656" height="30" rx="6" fill="#F7F7F9"/>
+<text x="1160" y="266" font-size="13" fill="#16161A" font-weight="500">Acreditación al emisor</text>
+<text x="1512" y="266" font-size="13.5" fill="#15803D" font-weight="700" text-anchor="end">16.524.633,82</text>
+<text x="1652" y="266" font-size="13.5" fill="#15803D" font-weight="700" text-anchor="end">16.075.129,53</text>
+<text x="1792" y="266" font-size="13.5" fill="#15803D" font-weight="700" text-anchor="end">15.649.432,53</text>
+<text x="1160" y="296" font-size="13" fill="#16161A" font-weight="500">Comisión MidatoPay</text>
+<text x="1512" y="296" font-size="13.5" fill="#FF5A00" font-weight="700" text-anchor="end">11.884,15</text>
+<text x="1652" y="296" font-size="13.5" fill="#FF5A00" font-weight="700" text-anchor="end">23.121,76</text>
+<text x="1792" y="296" font-size="13.5" fill="#FF5A00" font-weight="700" text-anchor="end">33.764,19</text>
+<rect x="1152" y="306" width="656" height="30" rx="6" fill="#F7F7F9"/>
+<text x="1160" y="326" font-size="13" fill="#16161A" font-weight="500">Desembolso del inversor</text>
+<text x="1512" y="326" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">16.536.517,97</text>
+<text x="1652" y="326" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">16.098.251,29</text>
+<text x="1792" y="326" font-size="13.5" fill="#16161A" font-weight="500" text-anchor="end">15.683.196,72</text>
+<text x="1160" y="356" font-size="13" fill="#16161A" font-weight="500">Ganancia del inversor</text>
+<text x="1512" y="356" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">463.482,03</text>
+<text x="1652" y="356" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">901.748,71</text>
+<text x="1792" y="356" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">1.316.803,28</text>
+<rect x="1152" y="366" width="656" height="30" rx="6" fill="#F7F7F9"/>
+<text x="1160" y="386" font-size="13" fill="#16161A" font-weight="500">TNA del inversor</text>
+<text x="1512" y="386" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">34,10%</text>
+<text x="1652" y="386" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">34,08%</text>
+<text x="1792" y="386" font-size="13.5" fill="#1F6FEB" font-weight="700" text-anchor="end">34,05%</text>
+<line x1="1160" y1="404" x2="1800" y2="404" stroke="#ECECF0" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="1160" y="426" font-size="13" fill="#7A7A85">Suma (= nominal)</text>
+<text x="1512" y="426" font-size="13.5" fill="#7A7A85" font-weight="500" text-anchor="end">17.000.000,00</text>
+<text x="1652" y="426" font-size="13.5" fill="#7A7A85" font-weight="500" text-anchor="end">17.000.000,00</text>
+<text x="1792" y="426" font-size="13.5" fill="#7A7A85" font-weight="500" text-anchor="end">17.000.000,00</text>
+<rect x="20" y="458" width="1000" height="524" rx="14" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="40" y="492" font-size="17" fill="#16161A" font-weight="700">Paso a paso: factura de ARS 17.000.000 a 60 días</text>
+<text x="40" y="512" font-size="12" fill="#7A7A85">x = 0,35 × 60 / 365 = 5,7534%. Descuento D = ARS 924.870,47: es el costo del emisor, exactamente 35% TNA vencida.</text>
+<rect x="40" y="534" width="120" height="24" rx="12" fill="#16161A"/>
+<text x="100" y="550" font-size="12" fill="#FFFFFF" font-weight="700" text-anchor="middle">Hoy (día 0)</text>
+<text x="172" y="550" font-size="12" fill="#7A7A85">El inversor acepta la oferta; MidatoPay ordena las dos transferencias desde su cuenta de 21 Millions.</text>
+<rect x="40" y="614" width="270" height="82" rx="12" fill="#FFFFFF" stroke="#16161A" stroke-width="1.5"/>
+<text x="54" y="638" font-size="13" fill="#16161A" font-weight="600">Inversor desembolsa</text>
+<text x="54" y="664" font-size="19" fill="#16161A" font-weight="800">ARS 16.098.251,29</text>
+<text x="54" y="684" font-size="12" fill="#7A7A85">desde su CVU de 21 Millions</text>
+<rect x="440" y="572" width="290" height="82" rx="12" fill="#EEF8F1" stroke="#15803D" stroke-width="1.5"/>
+<text x="454" y="596" font-size="13" fill="#16161A" font-weight="600">Emisor recibe (neto N − D)</text>
+<text x="454" y="622" font-size="19" fill="#15803D" font-weight="800">ARS 16.075.129,53</text>
+<text x="454" y="642" font-size="12" fill="#7A7A85">en su CVU, al instante</text>
+<rect x="440" y="668" width="290" height="82" rx="12" fill="#FFF4EC" stroke="#FF5A00" stroke-width="1.5"/>
+<text x="454" y="692" font-size="13" fill="#16161A" font-weight="600">MidatoPay cobra (2,5% de D)</text>
+<text x="454" y="718" font-size="19" fill="#FF5A00" font-weight="800">ARS 23.121,76</text>
+<text x="454" y="738" font-size="12" fill="#7A7A85">en el CVU de MidatoPay</text>
+<path d="M312,644 C374,644 374,613 436,613" fill="none" stroke="#15803D" stroke-width="2.5" marker-end="url(#ag)"/>
+<text x="372" y="616" font-size="12" fill="#15803D" font-weight="700" text-anchor="middle">neto</text>
+<path d="M312,666 C374,666 374,709 436,709" fill="none" stroke="#FF5A00" stroke-width="2.5" marker-end="url(#ao)"/>
+<text x="356" y="724" font-size="12" fill="#FF5A00" font-weight="700" text-anchor="middle">comisión</text>
+<rect x="760" y="572" width="240" height="178" rx="12" fill="#F7F7F9"/>
+<text x="774" y="600" font-size="13" fill="#7A7A85">Desembolso</text>
+<text x="986" y="600" font-size="13" fill="#16161A" font-weight="600" text-anchor="end">16.098.251,29</text>
+<text x="774" y="622" font-size="13" fill="#7A7A85">= neto</text>
+<text x="986" y="622" font-size="13" fill="#16161A" font-weight="600" text-anchor="end">16.075.129,53</text>
+<text x="774" y="644" font-size="13" fill="#7A7A85">+ comisión</text>
+<text x="986" y="644" font-size="13" fill="#16161A" font-weight="600" text-anchor="end">23.121,76</text>
+<text x="774" y="680" font-size="12" fill="#7A7A85">El emisor no firma nada al</text>
+<text x="774" y="696" font-size="12" fill="#7A7A85">tomarse la oferta. MidatoPay</text>
+<text x="774" y="712" font-size="12" fill="#7A7A85">solo recibe la comisión.</text>
+<rect x="40" y="772" width="120" height="24" rx="12" fill="#1F6FEB"/>
+<text x="100" y="788" font-size="12" fill="#FFFFFF" font-weight="700" text-anchor="middle">Día 60</text>
+<text x="172" y="788" font-size="12" fill="#7A7A85">Vencimiento: el deudor elige la factura en la app y paga el nominal al CVU del inversor.</text>
+<rect x="40" y="808" width="270" height="82" rx="12" fill="#FFFFFF" stroke="#16161A" stroke-width="1.5"/>
+<text x="54" y="832" font-size="13" fill="#16161A" font-weight="600">Deudor paga el nominal (N)</text>
+<text x="54" y="858" font-size="19" fill="#16161A" font-weight="800">ARS 17.000.000,00</text>
+<text x="54" y="878" font-size="12" fill="#7A7A85">desde su cuenta</text>
+<rect x="440" y="808" width="290" height="82" rx="12" fill="#EEF4FE" stroke="#1F6FEB" stroke-width="1.5"/>
+<text x="454" y="832" font-size="13" fill="#16161A" font-weight="600">Inversor cobra</text>
+<text x="454" y="858" font-size="19" fill="#1F6FEB" font-weight="800">ARS 17.000.000,00</text>
+<text x="454" y="878" font-size="12" fill="#7A7A85">en su CVU de 21 Millions</text>
+<path d="M312,849 C374,849 374,849 436,849" fill="none" stroke="#1F6FEB" stroke-width="2.5" marker-end="url(#ab)"/>
+<text x="374" y="841" font-size="12" fill="#1F6FEB" font-weight="700" text-anchor="middle">nominal</text>
+<rect x="760" y="808" width="240" height="82" rx="12" fill="#EEF4FE" stroke="#1F6FEB" stroke-width="1"/>
+<text x="774" y="832" font-size="13" fill="#16161A" font-weight="600">Ganancia del inversor</text>
+<text x="774" y="858" font-size="19" fill="#1F6FEB" font-weight="800">ARS 901.748,71</text>
+<text x="774" y="878" font-size="12" fill="#7A7A85">34,08% TNA sobre lo desembolsado</text>
+<text x="40" y="912" font-size="14" fill="#16161A" font-weight="700">Cómo se reparte el descuento de ARS 924.870,47</text>
+<rect x="40" y="924" width="700" height="30" rx="8" fill="#FF5A00"/>
+<rect x="40" y="924" width="682.5" height="30" rx="8" fill="#1F6FEB"/>
+<rect x="712.5" y="924" width="10" height="30" rx="0" fill="#1F6FEB"/>
+<text x="54" y="944" font-size="13" fill="#FFFFFF" font-weight="700">Inversor 97,5%: ARS 901.748,71</text>
+<line x1="731" y1="954" x2="731" y2="964" stroke="#FF5A00" stroke-width="1.5"/>
+<text x="752" y="944" font-size="13" fill="#FF5A00" font-weight="700">MidatoPay 2,5%: ARS 23.121,76</text>
+<rect x="1036" y="458" width="784" height="524" rx="14" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<text x="1056" y="492" font-size="17" fill="#16161A" font-weight="700">Comparativa de tasas (TNA, noviembre de 2026)</text>
+<text x="1056" y="512" font-size="12" fill="#7A7A85">Tasas de mercado de docs/factoring/EJEMPLO_FINANCIERO.md, sección 2</text>
+<line x1="1306" y1="544" x2="1306" y2="844" stroke="#ECECF0" stroke-width="1"/>
+<text x="1306" y="860" font-size="11" fill="#7A7A85" text-anchor="middle">0%</text>
+<line x1="1406" y1="544" x2="1406" y2="844" stroke="#ECECF0" stroke-width="1"/>
+<text x="1406" y="860" font-size="11" fill="#7A7A85" text-anchor="middle">10%</text>
+<line x1="1506" y1="544" x2="1506" y2="844" stroke="#ECECF0" stroke-width="1"/>
+<text x="1506" y="860" font-size="11" fill="#7A7A85" text-anchor="middle">20%</text>
+<line x1="1606" y1="544" x2="1606" y2="844" stroke="#ECECF0" stroke-width="1"/>
+<text x="1606" y="860" font-size="11" fill="#7A7A85" text-anchor="middle">30%</text>
+<line x1="1706" y1="544" x2="1706" y2="844" stroke="#ECECF0" stroke-width="1"/>
+<text x="1706" y="860" font-size="11" fill="#7A7A85" text-anchor="middle">40%</text>
+<text x="1056" y="560" font-size="13" fill="#16161A" font-weight="700">Para el emisor: costo de financiarse</text>
+<text x="1056" y="590" font-size="12.5" fill="#16161A">MidatoPay (tasa de descuento)</text>
+<rect x="1306" y="576" width="350" height="20" rx="4" fill="#FF5A00"/>
+<text x="1664" y="591" font-size="12.5" fill="#FF5A00" font-weight="700">35%</text>
+<text x="1056" y="620" font-size="12.5" fill="#16161A">Cheque avalado (MAV)</text>
+<rect x="1306" y="606" width="245" height="20" rx="4" fill="#C9C9D1"/>
+<rect x="1551" y="606" width="35" height="20" rx="0" fill="#9A9AA5"/>
+<text x="1594" y="621" font-size="12.5" fill="#7A7A85" font-weight="700">24,5% a 28%</text>
+<text x="1056" y="650" font-size="12.5" fill="#16161A">Índice de Financiamiento PyME (ago-26)</text>
+<rect x="1306" y="636" width="277.5999999999999" height="20" rx="4" fill="#9A9AA5"/>
+<text x="1591.6" y="651" font-size="12.5" fill="#7A7A85" font-weight="700">27,76%</text>
+<text x="1056" y="680" font-size="12.5" fill="#16161A">Adelanto en cuenta corriente</text>
+<rect x="1306" y="666" width="256.5999999999999" height="20" rx="4" fill="#9A9AA5"/>
+<text x="1570.6" y="681" font-size="12.5" fill="#7A7A85" font-weight="700">25,66%</text>
+<text x="1056" y="710" font-size="12.5" fill="#16161A">Descuento de cheques BNA</text>
+<rect x="1306" y="696" width="230" height="20" rx="4" fill="#9A9AA5"/>
+<text x="1544" y="711" font-size="12.5" fill="#7A7A85" font-weight="700">23%</text>
+<text x="1056" y="742" font-size="13" fill="#16161A" font-weight="700">Para el inversor: rendimiento</text>
+<text x="1056" y="772" font-size="12.5" fill="#16161A">MidatoPay (después de la comisión)</text>
+<rect x="1306" y="758" width="341" height="20" rx="4" fill="#1F6FEB"/>
+<text x="1655" y="773" font-size="12.5" fill="#1F6FEB" font-weight="700">~34,1%</text>
+<text x="1056" y="802" font-size="12.5" fill="#16161A">Plazo fijo a 30 días</text>
+<rect x="1306" y="788" width="211.79999999999995" height="20" rx="4" fill="#9A9AA5"/>
+<text x="1525.8" y="803" font-size="12.5" fill="#7A7A85" font-weight="700">21,18%</text>
+<text x="1056" y="832" font-size="12.5" fill="#16161A">Cheque avalado (MAV)</text>
+<rect x="1306" y="818" width="245" height="20" rx="4" fill="#C9C9D1"/>
+<rect x="1551" y="818" width="35" height="20" rx="0" fill="#9A9AA5"/>
+<text x="1594" y="833" font-size="12.5" fill="#7A7A85" font-weight="700">24,5% a 28%</text>
+<text x="1056" y="888" font-size="12" fill="#7A7A85">Para el emisor, 35% está por encima del MAV, del adelanto en cuenta corriente y del descuento de cheques: compite</text>
+<text x="1056" y="905" font-size="12" fill="#7A7A85">por acceso y velocidad, no por precio. Para el inversor, ~34,1% supera al plazo fijo por unos 13 puntos y al MAV</text>
+<text x="1056" y="922" font-size="12" fill="#7A7A85">por 6 a 9,6 puntos. En el MAV, la parte oscura de la barra marca el rango.</text>
+<text x="20" y="1018" font-size="17" fill="#16161A" font-weight="700">Lectura</text>
+<rect x="20" y="1032" width="441" height="148" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<rect x="20" y="1032" width="6" height="148" rx="3" fill="#1F6FEB"/>
+<text x="40" y="1062" font-size="15" fill="#1F6FEB" font-weight="700">El inversor siempre gana</text>
+<text x="40" y="1094" font-size="13" fill="#16161A">En cualquier plazo mayor a 0 días gana ~34,1% TNA</text>
+<text x="40" y="1113" font-size="13" fill="#16161A">(34,10% a 30 días, 34,05% a 90). La comisión le resta</text>
+<text x="40" y="1132" font-size="13" fill="#16161A">unos 0,9 puntos anuales.</text>
+<rect x="473" y="1032" width="441" height="148" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<rect x="473" y="1032" width="6" height="148" rx="3" fill="#FF5A00"/>
+<text x="493" y="1062" font-size="15" fill="#FF5A00" font-weight="700">La comisión de MidatoPay es chica</text>
+<text x="493" y="1094" font-size="13" fill="#16161A">En ARS 17 M: ~USD 7,7 a 30 días, USD 15 a 60 y USD 21,9</text>
+<text x="493" y="1113" font-size="13" fill="#16161A">a 90, a ARS 1.545 por USD. Con un costo operativo</text>
+<text x="493" y="1132" font-size="13" fill="#16161A">supuesto de USD 10 por factura, la de 30 días no lo</text>
+<text x="493" y="1151" font-size="13" fill="#16161A">cubre.</text>
+<rect x="926" y="1032" width="441" height="148" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<rect x="926" y="1032" width="6" height="148" rx="3" fill="#16161A"/>
+<text x="946" y="1062" font-size="15" fill="#16161A" font-weight="700">ARS 17 M puede ser una FCE</text>
+<text x="946" y="1094" font-size="13" fill="#16161A">Supera el mínimo de FCE de ARS 5.549.862 [S]. Si el</text>
+<text x="946" y="1113" font-size="13" fill="#16161A">emisor es MiPyME y el deudor una empresa grande, sería</text>
+<text x="946" y="1132" font-size="13" fill="#16161A">FCE: fuera del mercado CNV solo la compran entidades</text>
+<text x="946" y="1151" font-size="13" fill="#16161A">financieras o PNFC (art. 13).</text>
+<rect x="1379" y="1032" width="441" height="148" rx="12" fill="#FFFFFF" stroke="#ECECF0" stroke-width="1"/>
+<rect x="1379" y="1032" width="6" height="148" rx="3" fill="#E4483D"/>
+<text x="1399" y="1062" font-size="15" fill="#E4483D" font-weight="700">Alternativa descartada</text>
+<text x="1399" y="1094" font-size="13" fill="#16161A">Comisión del 2,5% del nominal, dentro del 35%: el</text>
+<text x="1399" y="1113" font-size="13" fill="#16161A">inversor perdía plata por debajo de ~26,7 días (sobre</text>
+<text x="1399" y="1132" font-size="13" fill="#16161A">ARS 100.000, −1.550 a 10 días). Se descartó porque el</text>
+<text x="1399" y="1151" font-size="13" fill="#16161A">inversor siempre tiene que ganar.</text>
+<text x="20" y="1210" font-size="12" fill="#7A7A85">Fuentes: docs/factoring/DECISIONES_MOCK_CESION.md, sección 2 (11/11/2026). Tasas de mercado: docs/factoring/EJEMPLO_FINANCIERO.md, sección 2 (BCRA vía El Tablero, boletines de la BCR, Rosario3 y Urgente24; noviembre de 2026).</text>
+<text x="20" y="1228" font-size="12" fill="#7A7A85">Redondeo: acreditación y comisión al centavo; la ganancia es la diferencia, así cada columna suma el nominal (D-01). [S] = fuente secundaria. Imagen generada el 26/11/2026. Nada de esto es asesoramiento legal ni financiero.</text>
+</svg>
