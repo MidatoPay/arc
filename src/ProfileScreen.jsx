@@ -21,6 +21,9 @@ const IconExplorer = () => <Svg><circle cx="11" cy="11" r="6.5" {...stroke} /><p
 const IconGlobe = () => <Svg><circle cx="12" cy="12" r="9" {...stroke} /><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3Z" {...stroke} /></Svg>;
 const IconFaucet = () => <Svg><path d="M8 4h8M12 4v3M7 10h10a2 2 0 0 1 2 2v2H5v-2a2 2 0 0 1 2-2Z" {...stroke} /><path d="M12 17.5c0 1.2-.8 2.5-1.5 2.5s-1.5-1.3-1.5-2.5S10.5 15 10.5 15s1.5 1.3 1.5 2.5Z" {...stroke} /></Svg>;
 const IconChart = () => <Svg><path d="M4 19h16M7 16v-5M12 16V8M17 16v-8" {...stroke} /></Svg>;
+const IconInvoice = () => <Svg><path d="M7 3h7l4 4v14l-2.5-1.5L13 21l-2.5-1.5L8 21l-2-1.2V4a1 1 0 0 1 1-1Z" {...stroke} /><path d="M9 9h6M9 13h6" {...stroke} /></Svg>;
+const IconInbox = () => <Svg><path d="M4 13l2.5-8h11L20 13v6H4v-6Z" {...stroke} /><path d="M4 13h4.5l1 2h5l1-2H20" {...stroke} /></Svg>;
+const IconTrend = () => <Svg><path d="M4 17l5-5 4 3 7-8" {...stroke} /><path d="M15 7h5v5" {...stroke} /></Svg>;
 const IconLogout = () => <Svg><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" {...stroke} /><path d="M15 16l4-4-4-4M19 12H9" {...stroke} /></Svg>;
 
 export function Section({ title, children }) {
@@ -92,7 +95,23 @@ function LogoutSheet({ onConfirm, onClose }) {
   );
 }
 
-export default function ProfileScreen({ email, address, nombre, onLogout, goReports, privyId, merchantProfile, treasuryExportAccess }) {
+export function InvoicesSection({ goInvoices, goOwed, goOffers }) {
+  const { t } = useLanguage();
+  const rows = [
+    goInvoices && <SettingsRow key="invoices" icon={<IconInvoice />} title={t("mas.invoicesTitle")} sub={t("mas.invoicesSub")} onClick={goInvoices} />,
+    goOwed && <SettingsRow key="owed" icon={<IconInbox />} title={t("mas.owedTitle")} sub={t("mas.owedSub")} onClick={goOwed} />,
+    goOffers && <SettingsRow key="offers" icon={<IconTrend />} title={t("mas.offersTitle")} sub={t("mas.offersSub")} onClick={goOffers} />,
+  ].filter(Boolean);
+  // Hidden unless the invoice pilot is enabled for this user and they hold at least one role.
+  if (!rows.length) return null;
+  return (
+    <Section title={t("mas.sectionInvoices")}>
+      {rows.map((row, i) => <Fragment key={row.key}>{i > 0 && <Divider />}{row}</Fragment>)}
+    </Section>
+  );
+}
+
+export default function ProfileScreen({ email, address, nombre, onLogout, goReports, goInvoices, goOwed, goOffers, privyId, merchantProfile, treasuryExportAccess }) {
   const { t, lang } = useLanguage();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [copied, copy] = useCopied();
@@ -132,6 +151,8 @@ export default function ProfileScreen({ email, address, nombre, onLogout, goRepo
         <Divider />
         <SettingsRow icon={<IconGlobe />} title={t("mas.languageTitle")} trailing={<LanguageSelect id="mp-profile-language" />} />
       </Section>
+
+      <InvoicesSection goInvoices={goInvoices} goOwed={goOwed} goOffers={goOffers} />
 
       <InstallApp />
 

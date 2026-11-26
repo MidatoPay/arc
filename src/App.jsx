@@ -9,6 +9,7 @@ import {useWalletTransfers,transferApi,exactUsdc} from './transfers.js';
 import TransferApproval from './TransferApproval.jsx';
 import TransferReceipt from './TransferReceipt.jsx';
 import { useMerchantProfile } from "./merchantProfile.js";
+import { useFactoringAccess } from "./factoring.js";
 import { userDisplayName, merchantDisplayName } from "./merchantIdentity.js";
 import { reportsApi } from "./paymentReports.js";
 import { chargeApi } from "./charges.js";
@@ -2733,6 +2734,9 @@ function AppInner() {
     return ()=>{clearTreasury();clearRpc();};
   }, [ready, authenticated, user?.id, getAccessToken]);
   const merchantProfile = useMerchantProfile(authenticated ? user?.id : null,getAccessToken);
+  // Invoice cession pilot: disabled (and invisible) unless /invoices/access enables it for this user.
+  const factoringAccess = useFactoringAccess(authenticated ? user?.id : null,getAccessToken);
+  const factoringRole = role => factoringAccess.enabled && factoringAccess.roles?.[role] === true;
   const { ready: walletsReady, wallets } = useWallets();
   const { sendTransaction } = useSendTransaction();
   const [tab, setTab] = useState("home");

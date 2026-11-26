@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { zh } from "./i18n.zh.js";
+import { factoringTexts, factoringProfileTexts } from "./i18n.factoring.js";
 
 const STORAGE_KEY = "mp_lang";
 
@@ -14,6 +15,7 @@ export function speechLangFor(lang) {
 
 const translations = {
   en: {
+    ...factoringTexts.en,
     login: {
       welcome: "Welcome to",
       subtitle: "The new way to get paid.",
@@ -441,6 +443,7 @@ const translations = {
         review: "Under review", failed: "Failed", canceled: "Canceled", expired: "Expired", refunded: "Refunded" },
     },
     mas: {
+      ...factoringProfileTexts.en,
       title: "Profile",
       noEmailAccount: "Account with no email",
       walletLabel: "Your wallet",
@@ -767,6 +770,7 @@ const translations = {
     },
   },
   es: {
+    ...factoringTexts.es,
     login: {
       welcome: "Bienvenido a",
       subtitle: "La nueva forma de cobrar.",
@@ -1194,6 +1198,7 @@ const translations = {
         review: "En revisión", failed: "Falló", canceled: "Cancelado", expired: "Vencido", refunded: "Reembolsado" },
     },
     mas: {
+      ...factoringProfileTexts.es,
       title: "Perfil",
       noEmailAccount: "Cuenta sin email",
       walletLabel: "Tu wallet",
