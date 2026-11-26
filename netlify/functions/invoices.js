@@ -1,4 +1,5 @@
-import { authenticatePayment, getPaymentDb, getPaymentPrivy, json, errorResponse } from './lib/paymentRuntime.js';
+import { authenticatePayment, getPaymentDb, getPaymentPrivy, json, errorResponse, kickWorker } from './lib/paymentRuntime.js';
+import { createDebtorPayment } from './lib/factoringPayments.js';
 import { PaymentError } from './lib/paymentCore.js';
 import { primaryArcWallet } from '../../src/primaryWallet.js';
 import { factoringSettings } from './lib/factoringConfig.js';
@@ -55,11 +56,14 @@ export function createInvoicesHandler(adapters = {}) {
         const { invoice, timeline } = await getInvoice(db, userId, id, { settings });
         return json(200, { invoice, timeline });
       }
-      if (action === 'pay') {
-        if (!adapters.pay) return json(404, { error: 'not_found' });
-        return await adapters.pay({ event, db, userId, invoiceId: id.toLowerCase(), settings, now, env });
-      }
       parseBody(event, { empty: true });
+      if (action === 'pay') {
+        await requireRole(db, userId, 'debtor');
+        const { invoice, payment, existing } = await createDebtorPayment(db, userId, id.toLowerCase(), idempotencyHeader(event), {
+          now, settings, env, client: adapters.client,
+          kick: adapters.kick || (() => kickWorker({ functionName: 'factoring-worker-background' })) });
+        return json(existing ? 200 : 202, { invoice, payment });
+      }
       let invoice, view;
       if (action === 'send') {
         await requireRole(db, userId, 'issuer');

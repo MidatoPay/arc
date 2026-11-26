@@ -89,5 +89,8 @@ test('issuer and debtor drive an invoice to published through the API, isolated 
   await call(USERS.issuer, 'POST', `/${other.id}/send`, { body: {} });
   const rejected = await call(USERS.debtor, 'POST', `/${other.id}/reject`, { body: {} });
   assert.equal(rejected.body.invoice.status, 'rechazada');
-  assert.equal((await call(USERS.debtor, 'POST', `/${other.id}/pay`, { body: {} })).status, 404);
+  // A rejected invoice cannot be paid; an issuer has no debtor role.
+  assert.equal((await call(USERS.debtor, 'POST', `/${other.id}/pay`, { body: {}, key: true })).body.error, 'invalid_transition');
+  assert.equal((await call(USERS.issuer, 'POST', `/${other.id}/pay`, { body: {}, key: true })).body.error, 'factoring_role_required');
+  assert.equal((await call(USERS.debtor, 'POST', `/${other.id}/pay`, { body: { amount: '1' }, key: true })).body.error, 'invalid_body');
 });
