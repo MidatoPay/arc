@@ -93,9 +93,9 @@ export function publicTake(take, orders = [], invoiceStatus = null) {
 }
 
 async function takeOrders(db, takeId) {
-  // The live orders of each purpose (a failed fee retried by an admin has a newer row).
+  // One order per purpose: the live one if any (a failed fee retried by an admin has a newer row), else the latest.
   return (await db.query(`SELECT ${ORDER_COLUMNS} FROM factoring_orders o WHERE o.take_id=$1 AND o.purpose IN ('net_to_issuer','fee_to_midatopay')
-    ORDER BY o.created_at,o.id`, [takeId])).rows.reverse()
+    ORDER BY o.purpose,(o.status IN ('failed','cancelled')),o.created_at DESC,o.id`, [takeId])).rows
     .filter((order, i, all) => all.findIndex(o => o.purpose === order.purpose) === i);
 }
 

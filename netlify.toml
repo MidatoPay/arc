@@ -94,6 +94,11 @@
   status = 200
   force = true
 [[redirects]]
+  from = "/factoring-admin/*"
+  to = "/.netlify/functions/factoring-admin/:splat"
+  status = 200
+  force = true
+[[redirects]]
   from = "/merchant-profile"
   to = "/.netlify/functions/merchant-profile"
   status = 200
