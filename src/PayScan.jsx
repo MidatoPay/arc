@@ -7,13 +7,10 @@ import { parseScanTarget } from "./scanTarget.js";
 import { transferErrorText } from "./errorText.js";
 import QrScanner from "./QrScanner.jsx";
 import { AmountKeypad } from "./MercadoPagoCharge.jsx";
+import { C } from "./designTokens.js";
 
 // Pagar: escanear (o pegar) el QR de una wallet EVM / cobro MidatoPay y enviar USDC en Arc.
 // El envío usa el motor existente (onPay → aprobación con Privy → recibo); acá solo cambia la interfaz.
-const C = {
-  bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0",
-  orange: "#FF5A00", accent: "#fe6c1c", orangeSoft: "#FFEADF", red: "#E4483D", redSoft: "#FDECEA",
-};
 const cta = { border: 0, borderRadius: 18, padding: "16px 18px", font: "inherit", fontSize: 16, fontWeight: 600, cursor: "pointer", width: "100%" };
 const NETWORK_NAME = ARC.name;
 

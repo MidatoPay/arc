@@ -5,9 +5,9 @@ import { ARC } from "./chain.js";
 import { searchContacts } from "./contacts.js";
 import { parseScanTarget } from "./scanTarget.js";
 import { AmountStep, Header, IconWallet, scanErrorText } from "./PayScan.jsx";
+import { C } from "./designTokens.js";
 
 // Enviar: elegir destinatario (agenda o dirección EVM pegada) y después el mismo paso de monto que Pagar.
-const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", accent: "#fe6c1c", orangeSoft: "#FFEADF", red: "#E4483D" };
 const page = { display: "flex", flexDirection: "column", height: "100%", minHeight: "100%", padding: "10px 18px 18px", boxSizing: "border-box", background: C.card };
 const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-6)}` : "—");
 

@@ -5,11 +5,11 @@ import { useOptionalLanguage } from "./i18n.jsx";
 import { transferErrorText } from "./errorText.js";
 import { exactAmount, Spinner, NETWORK_LABEL, networkFeeText } from "./TransferApproval.jsx";
 import { isAddress } from "./arc.js";
+import { C } from "./designTokens.js";
 
 // Recibo de un envío USDC: sigue el estado real (polling) hasta completed/failed.
 // Nunca presenta como enviado algo pendiente, fallido o en revisión.
 // useOptionalLanguage: fuera del LanguageProvider (tests estáticos) se muestra en español.
-const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", accent: "#fe6c1c", orangeSoft: "#FFEADF", green: "#21B95B", red: "#E4483D" };
 const TONES = {
   green: { bg: "#E7F7EE", fg: "#15803D" },
   amber: { bg: "#FFF3E6", fg: "#B45309" },

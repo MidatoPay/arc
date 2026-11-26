@@ -55,6 +55,7 @@ import {
 } from "./contacts.js";
 import { loadTransactions, addTransaction, mergeByHash, activityRefreshInterval } from "./transactions.js";
 import { parsePayUrl } from "./payQr.js";
+import { C } from "./designTokens.js";
 
 // ————————————————————————————————————————————————
 // MidatoPay × Arc — Pagos por voz
@@ -85,19 +86,6 @@ function persistArsBalance(address, amount) {
 }
 
 // ————— design tokens (MidatoPay) —————
-const C = {
-  bg: "#F7F7F9",
-  card: "#FFFFFF",
-  ink: "#16161A",
-  mut: "#7A7A85",
-  line: "#ECECF0",
-  orange: "#FF5A00",
-  orangeSoft: "#FFEADF",
-  violet: "#5C4CC7",
-  violetSoft: "#ECEAFA",
-  green: "#21B95B",
-  red: "#E4483D",
-};
 
 /** Paleta del cliente externo (otra “app”, sin naranja MidatoPay). */
 const G = {

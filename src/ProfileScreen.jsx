@@ -5,9 +5,9 @@ import BusinessProfile from "./BusinessProfile.jsx";
 import TreasuryWalletExport from "./TreasuryWalletExport.jsx";
 import LanguageSelect from "./LanguageSelect.jsx";
 import InstallApp from "./InstallApp.jsx";
+import { C } from "./designTokens.js";
 
 // Perfil: identidad, negocio, cuenta, administración (solo admins) y cierre de sesión.
-const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", accent: "#fe6c1c", orangeSoft: "#FFEADF", green: "#21B95B", red: "#E4483D", redSoft: "#FDECEA" };
 const shortAddr = (a) => (a && a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a || "—");
 const cta = { border: 0, borderRadius: 18, padding: "16px 18px", font: "inherit", fontSize: 16, fontWeight: 600, cursor: "pointer", width: "100%" };
 

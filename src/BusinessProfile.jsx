@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage } from './i18n.jsx';
+import { C as TOKENS } from './designTokens.js';
 
 // Nombre del negocio: fila compacta en Perfil que se expande para editar. Misma API (GET/PATCH /merchant-profile).
-const C = { ink: '#16161A', mut: '#7A7A85', line: '#ECECF0', card: '#FFFFFF', orange: '#FF5A00', accent: '#fe6c1c', orangeSoft: '#FFEADF', green: '#15803D', red: '#E4483D' };
+// Local exception kept from before the tokens: green.
+const C = { ...TOKENS, green: '#15803D' };
 const IconStore = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M4 9.5 5.5 4h13L20 9.5M4 9.5h16M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M5.5 12v8h13v-8M10 20v-4.5h4V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />

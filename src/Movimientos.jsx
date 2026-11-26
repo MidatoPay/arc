@@ -4,14 +4,10 @@ import { ARC, explorerAddressUrl, explorerTxUrl } from "./chain.js";
 import { isAddress } from "./arc.js";
 import { paymentReceived, deliveryNoticeKey } from "./chargeStatus.js";
 import { activityStatusKey } from "./transactions.js";
+import { C } from "./designTokens.js";
 
 // Movimientos: lista agrupada por día, carga incremental de a 10, filtros y comprobante.
 // Solo presentación: no cambia estados, importes ni llamadas al backend.
-const C = {
-  bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0",
-  orange: "#FF5A00", accent: "#fe6c1c", orangeSoft: "#FFEADF", orangeTint: "#FFF4ED",
-  violet: "#5C4CC7", violetSoft: "#ECEAFA", green: "#21B95B", red: "#E4483D",
-};
 export const MOVS_PAGE_SIZE = 10;
 export const EMPTY_MOVS_FILTERS = Object.freeze({ date: "all", from: "", to: "", types: [] });
 const DATE_PRESETS = ["all", "today", "7d", "30d", "custom"];

@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useOptionalLanguage } from "./i18n.jsx";
 import { transferErrorText } from "./errorText.js";
+import { C } from "./designTokens.js";
 
 // Confirmación previa a firmar un envío USDC (Enviar, Pagar y voz). Hoja inferior minimalista.
 // Muestra la dirección completa del destinatario, importe exacto, red y costo de red estimado (en USDC,
 // lo paga el usuario aparte del importe). useOptionalLanguage: fuera del LanguageProvider se muestra en español.
-const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", orange: "#FF5A00", accent: "#fe6c1c", orangeSoft: "#FFEADF", red: "#E4483D" };
 export const NETWORK_LABEL = { "arc-mainnet": "Arc Mainnet" };
 
 /** Costo de red en USDC con hasta 6 decimales: "0.003000000000000000" → "0,003". */

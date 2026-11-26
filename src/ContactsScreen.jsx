@@ -2,10 +2,10 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { isAddress } from "./arc.js";
 import { useLanguage } from "./i18n.jsx";
 import { searchContacts, validateContact } from "./contacts.js";
+import { C } from "./designTokens.js";
 
 // Agenda: lista agrupada (como Movimientos/Enviar), búsqueda, alta/edición en página y borrado con confirmación.
 // Solo presentación: la validación y la API de contactos no cambian.
-const C = { bg: "#F7F7F9", card: "#FFFFFF", ink: "#16161A", mut: "#7A7A85", line: "#ECECF0", orange: "#FF5A00", accent: "#fe6c1c", orangeSoft: "#FFEADF", green: "#21B95B", red: "#E4483D", redSoft: "#FDECEA", amber: "#B45309" };
 const shortAddr = (a) => (a && a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a || "—");
 const cta = { border: 0, borderRadius: 18, padding: "16px 18px", font: "inherit", fontSize: 16, fontWeight: 600, cursor: "pointer", width: "100%" };
 
