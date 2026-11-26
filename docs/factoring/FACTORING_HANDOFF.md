@@ -2,7 +2,7 @@
 
 Fecha: 09/11/2026. Branch: `factoring`, creado desde `main` en `3670809`. Estado: análisis y diseño propuesto. No hay código de esta funcionalidad todavía.
 
-> **Aviso, 11/11/2026:** los pools de liquidez quedaron descartados por motivos regulatorios. El modelo vigente es la cesión de cada factura a un único inversor: ver `DECISIONES_MOCK_CESION.md` y el borrador `PLAN_PILOTO_CESION.md`. Las secciones de pools (5.4 a 5.6, 8.7, 9 y FD-08 a FD-13) se van a reescribir en la tarea 2 del plan.
+> **Aviso, 11/11/2026:** los pools de liquidez quedaron descartados por motivos regulatorios. El modelo vigente es la cesión de cada factura a un único inversor: ver `DECISIONES_MOCK_CESION.md` y el borrador `PLAN_PILOTO_CESION.md`. Las secciones de pools (5.4 a 5.6, 8.7, 9 y FD-08 a FD-13) quedan como registro histórico del análisis y no describen el camino del piloto. El plan vigente es `PLAN_IMPLEMENTACION_PILOTO.md`.
 >
 > **Imágenes, 26/11/2026:** `FLUJO_FACTORING_MIDATOPAY.svg/.jpg` y `EJEMPLO_FINANCIERO.svg/.jpg` muestran el modelo de pools y quedan como historial. Las vigentes son `FLUJO_CESION_INVERSOR.svg/.jpg` (flujo de la cesión) y `EJEMPLO_FINANCIERO_CESION.svg/.jpg` (ejemplo financiero).
 
@@ -321,11 +321,17 @@ Un token transferible que da participación en el rendimiento de un pool exige a
 
 ### 6.3 Factura de Crédito Electrónica MiPyME (Ley 27.440)
 
+Texto oficial en argentina.gob.ar, resumido en `DECISIONES_MOCK_CESION.md` (4.2):
+
+- **Arts. 4 a 6:** el plazo de aceptación es de 15 días corridos, con aceptación tácita. La Res. SEPyME 219/2025 lo llevó a 21 días entre el 01/11/2025 y el 31/10/2026; no se verificó si hubo prórroga (MD-01). El piloto lo deja configurable, con 21 días por defecto **[V]**.
+- **Art. 9:** la aceptación es incondicional e irrevocable. Ni el emisor ni los adquirentes sucesivos garantizan el pago: en una FCE no hay recurso contra el emisor **[V]**.
+- **Art. 13:** fuera de un mercado autorizado por la CNV, solo pueden comprar FCE las entidades financieras y los proveedores no financieros de crédito, que son personas jurídicas. Una persona humana no entra en esa excepción **[V]**.
+- **Art. 18:** una FCE no se puede transferir en los 3 días hábiles bancarios anteriores a su vencimiento **[V]**.
 - Tiene un régimen específico, un registro propio y efectos de título ejecutivo **[S]**.
 - Art. 12: negociación en mercados autorizados por la CNV **[S]**. La CNV reglamentó su negociación con la RG 780/2019 **[S]**.
-- Art. 13: permite plataformas de factoraje, cesión o descuento sin autorización como mercado, si los compradores son exclusivamente entidades financieras o proveedores no financieros de crédito **[S]**. **Esa excepción no se traslada a un pool abierto de inversores DeFi.**
+- La excepción del art. 13 no se traslada a un pool abierto de inversores DeFi, otra razón por la que los pools quedaron descartados.
 - Circula por Agente de Depósito Colectivo o por el Sistema de Circulación Abierta **[S]**.
-- **Consecuencia:** la FCE y la factura común no son instrumentos equivalentes en la app (FD-07).
+- **Consecuencia:** la FCE y la factura común no son instrumentos equivalentes en la app (FD-07). El piloto marca cada factura como FCE o común; para una FCE exige un inversor de los tipos del art. 13 y bloquea la cesión en los últimos 3 días hábiles bancarios (`PLAN_IMPLEMENTACION_PILOTO.md`, invariante 10).
 
 ### 6.4 Captación de inversores y tokenización (CNV)
 
@@ -343,7 +349,7 @@ Un token transferible que da participación en el rendimiento de un pool exige a
 
 - RG 1069/2025 (13/06/2025): representación digital de títulos de fideicomisos financieros y cuotapartes de fondos cerrados con oferta pública **[S]**.
 - RG 1081/2025 (20/08/2025): amplió a acciones, obligaciones negociables y CEDEAR **[S]**.
-- RG 1150/2026: amplió a valores con autorización automática y prorrogó el sandbox hasta el 31/12/2027 **[S]**, según varias fuentes coincidentes. También se cita la RG 1087 **[S]**.
+- RG 1150/2026: amplió a valores negociables emitidos con autorización automática y prorrogó el sandbox hasta el 31/12/2027, según el comunicado oficial de la CNV (`DECISIONES_MOCK_CESION.md` 4.3) **[V]**. También se cita la RG 1087 **[S]**. El NFT del piloto es un registro, no un valor negociable ofrecido a inversores.
 - El PSAV interviniente debe estar inscripto en todas las categorías **[S]**.
 
 **Vía a evaluar [P]:** cartera de créditos → fideicomiso financiero → títulos de deuda senior y certificados de participación subordinados → representación digital autorizada. Es una propuesta de estructura, no una autorización existente.

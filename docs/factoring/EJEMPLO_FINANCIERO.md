@@ -2,7 +2,7 @@
 
 Fecha: 09/11/2026. Complementa `FACTORING_HANDOFF.md` (sección 5).
 
-> **Aviso, 11/11/2026:** los pools quedaron descartados; el modelo y el cálculo vigentes (cesión a un único inversor, 35% TNA y comisión del 2,5% del descuento) están en `DECISIONES_MOCK_CESION.md`. Las secciones 4.2 y 6 se van a reescribir en la tarea 2 de `PLAN_PILOTO_CESION.md`.
+> **Aviso, 11/11/2026:** los pools quedaron descartados; el modelo y el cálculo vigentes (cesión a un único inversor, 35% TNA y comisión del 2,5% del descuento) están en `DECISIONES_MOCK_CESION.md`. Las secciones 4.2 y 6 ya describen el modelo vigente; las cifras exactas en centavos están en `PLAN_IMPLEMENTACION_PILOTO.md` (sección 6.3).
 >
 > **Imágenes, 26/11/2026:** `EJEMPLO_FINANCIERO.svg/.jpg` muestra el modelo de pools y queda como historial. La vigente es `EJEMPLO_FINANCIERO_CESION.svg/.jpg`, con el cálculo de la cesión a un único inversor.
 
@@ -112,50 +112,26 @@ Visto como descuento: el inversor compra la factura de ARS 100.000 a 30 días pa
 
 **Lo que no muestra la tabla:** entre una operación y la siguiente, el capital puede quedar sin colocar. Ese es el tema de la sección 4.2.
 
-### 4.2 Pool prefondeado con tramos (modelo B)
+### 4.2 Cesión a un único inversor (modelo vigente del piloto)
 
-Estructura similar a Huma Institutional: 80% senior con tasa objetivo fija y 20% junior que absorbe primero las pérdidas y se queda con el excedente. El junior incluye el aporte de MidatoPay como evaluador.
+Los pools prefondeados con tramos (el antiguo modelo B) quedaron descartados por motivos regulatorios (`DECISIONES_MOCK_CESION.md`). En el piloto, cada factura se cede entera a un único inversor, que paga en pesos desde su cuenta de 21 Millions: el neto va directo al CVU del emisor y la comisión al CVU de MidatoPay. No hay capital ocioso ni tramos.
 
-**Supuestos:**
+Supuestos vigentes: 35% TNA base 365 desde la toma hasta el vencimiento, comisión de MidatoPay del 2,5% del descuento a cargo del inversor y redondeo al centavo, mitad hacia arriba (D-01).
 
-- Pool de USD 100.000 o ARS 100.000.000.
-- Utilización del 85% (capital colocado en facturas), con un plazo promedio de 60 días.
-- Capital sin colocar: rinde 0% en USDC, porque el repo no integra protocolos DeFi en Arc, y un 20% supuesto en pesos (caución o fondo money market).
-- Objetivo senior: 7% en USD y 27% en ARS.
+Factura de ARS 17.000.000 (los mismos centavos que `PLAN_IMPLEMENTACION_PILOTO.md`, sección 6.3):
 
-**Caso base, un año:**
+| Concepto | 30 días | 60 días | 90 días |
+|---|---|---|---|
+| Descuento | 475.366,18 | 924.870,47 | 1.350.567,47 |
+| Acreditación al emisor | 16.524.633,82 | 16.075.129,53 | 15.649.432,53 |
+| Comisión MidatoPay | 11.884,15 | 23.121,76 | 33.764,19 |
+| Desembolso del inversor | 16.536.517,97 | 16.098.251,29 | 15.683.196,72 |
+| Ganancia del inversor | 463.482,03 | 901.748,71 | 1.316.803,28 |
+| TNA del inversor | 34,10% | 34,08% | 34,05% |
 
-| Concepto | Pool USD 100.000 | Pool ARS 100.000.000 |
-|---|---|---|
-| Capital colocado (85%) | 85.000 | 85.000.000 |
-| Ingreso bruto | 9.775 (9,78%) | 30.200.000 (30,20%) |
-| Pérdida esperada | 1.275 | 1.700.000 |
-| Resultado neto del pool | 8.500 (8,50%) | 28.500.000 (28,50%) |
-| Senior (80%) | 5.600 → **7,00%** | 21.600.000 → **27,00%** |
-| Junior (20%) | 2.900 → **14,50%** | 6.900.000 → **34,50%** |
-| Margen de MidatoPay (aparte del pool) | 2.125 | 3.400.000 |
+El inversor gana algo menos que la tasa de descuento porque paga la comisión. Con montos mínimos (ARS 100) el redondeo al centavo pesa más: ver la tabla de ARS 100 en el plan.
 
-**La utilización es la variable principal del modelo B:**
-
-| Utilización | USD: senior / junior | ARS: senior / junior |
-|---|---|---|
-| 100% | 7% / 22% | 27% / 42% |
-| 85% | 7% / 14,5% | 27% / 34,5% |
-| 70% | 7% / 7% | 27% / 27% |
-| 50% | 7% / −3% | 27% / 17% |
-
-Por debajo del 70% de utilización en dólares, el junior gana lo mismo o menos que el senior aunque asume la primera pérdida, y nadie querría ese tramo. En pesos el efecto es menor porque el capital sin colocar igual rinde.
-
-**Estrés de pérdidas** (pérdida anual sobre el capital colocado, con 85% de utilización):
-
-| Pérdida | USD: senior / junior | ARS: senior / junior |
-|---|---|---|
-| 1,5% USD / 2% ARS (base) | 7% / 14,5% | 27% / 34,5% |
-| 6% | 7% / −4,63% | 27% / 17,5% |
-| 15% | 7% / −42,88% | 27% / −20,75% |
-| 30% | 5,34% / −100% | 27% / −84,5% |
-
-Con una relación 4:1, el senior cobra completo hasta pérdidas severas. En el escenario de 30% en dólares, el junior pierde todo y el senior conserva el capital pero cobra 5,34% en lugar de 7%. En pesos, la tasa alta del pool absorbe más pérdida antes de llegar al senior.
+La sección 4.3 compara rendimientos de tramos senior y junior del modelo descartado; queda como contexto de mercado.
 
 ### 4.3 Comparación con las alternativas del inversor
 
@@ -183,20 +159,11 @@ Con una relación 4:1, el senior cobra completo hasta pérdidas severas. En el e
 
 MidatoPay cobra su margen del pago del deudor. Si el deudor no paga, MidatoPay tampoco cobra, lo que alinea incentivos con el pool.
 
-## 6. Pool en USDC que financia facturas en pesos
+## 6. Moneda del piloto
 
-Si el pool fondea en USDC, convierte a pesos para pagar al comercio y vuelve a convertir al cobrar, una devaluación durante el plazo reduce el rendimiento en dólares.
+El piloto opera solo en pesos: el desembolso del inversor, el neto al emisor, la comisión y el cobro al deudor son retiros bancarios en ARS de 21 Millions. No hay fondeo en USDC ni conversión, así que la operación no tiene riesgo cambiario. El registro on-chain en Arc no mueve fondos.
 
-| Plazo | Rinde en pesos en el período | Devaluación máxima para no perder | Devaluación máxima para ganar 11,5% TNA en USD | Ídem con 0,5% de costo en cada conversión |
-|---|---|---|---|---|
-| 30 días | 2,47% | 2,47% | 1,51% en el mes (≈ 20% anualizado) | 0,49% en el mes (≈ 6,2% anualizado) |
-| 60 días | 5,26% | 5,26% | 3,31% (≈ 21,9% anualizado) | 2,28% (≈ 14,7% anualizado) |
-| 90 días | 8,38% | 8,38% | 5,39% (≈ 23,8% anualizado) | 4,34% (≈ 18,8% anualizado) |
-
-**Lectura:**
-
-- Los costos de conversión pesan más en los plazos cortos. A 30 días, con 0,5% por tramo, basta una devaluación de 0,49% en el mes para que el pool no llegue al 11,5% en dólares.
-- Facturar en pesos y fondear en USDC sin cobertura es una apuesta cambiaria. Las alternativas son las de FD-09 del documento de traspaso: facturas en dólares, repago ajustado por tipo de cambio (dollar linked), pool en pesos, o asumir el riesgo y cobrarlo en la tasa.
+El análisis anterior de un pool en USDC que financiaba facturas en pesos quedó descartado junto con los pools. Si en el futuro se fondea en dólares, el riesgo cambiario vuelve y hay que elegir entre las alternativas de FD-09 del documento de traspaso.
 
 ## 7. Ticket mínimo y escala para MidatoPay
 
