@@ -97,7 +97,7 @@ export async function kickWorker({ env=process.env, request=fetch, log=console.e
   };
   if (!origin || !env.INTERNAL_WORKER_SECRET) return failed("payment_worker_not_configured");
   try {
-    if(!['payments-worker-background','transfers-worker-background'].includes(functionName))return failed('invalid_worker');
+    if(!['payments-worker-background','transfers-worker-background','factoring-worker-background'].includes(functionName))return failed('invalid_worker');
     const response=await request(new URL(`/.netlify/functions/${functionName}`, origin), {
       method: "POST", headers: { "x-worker-secret": env.INTERNAL_WORKER_SECRET }, signal: AbortSignal.timeout(4000) });
     if (!response.ok) return failed("payment_worker_dispatch_failed",response.status);

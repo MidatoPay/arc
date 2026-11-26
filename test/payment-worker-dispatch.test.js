@@ -18,4 +18,11 @@ test("worker dispatch reports failures without exposing credentials or losing th
     return {ok:true,status:202};
   }});
   assert.deepEqual(accepted,{accepted:true});
+  const factoring=await kickWorker({env,log,functionName:"factoring-worker-background",request:async(url)=>{
+    assert.equal(url.pathname,"/.netlify/functions/factoring-worker-background");
+    return {ok:true,status:202};
+  }});
+  assert.deepEqual(factoring,{accepted:true});
+  assert.deepEqual(await kickWorker({env,log,functionName:"factoring-anything-else",request:async()=>assert.fail("must not call")}),
+    {accepted:false,code:"invalid_worker"});
 });

@@ -33,6 +33,9 @@
 
 [functions."transfers-dispatch"]
   schedule = "* * * * *"
+# Invoice cession pilot: skips itself while FACTORING_ENABLED is off and the allowlist is empty.
+[functions."factoring-dispatch"]
+  schedule = "* * * * *"
 
 [[headers]]
   for = "/sw.js"
