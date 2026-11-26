@@ -10,6 +10,7 @@ import TransferApproval from './TransferApproval.jsx';
 import TransferReceipt from './TransferReceipt.jsx';
 import { useMerchantProfile } from "./merchantProfile.js";
 import { useFactoringAccess } from "./factoring.js";
+import InvoicesScreen from "./InvoicesScreen.jsx";
 import { userDisplayName, merchantDisplayName } from "./merchantIdentity.js";
 import { reportsApi } from "./paymentReports.js";
 import { chargeApi } from "./charges.js";
@@ -3388,6 +3389,7 @@ function AppInner() {
         />
       )}
       {tab === "reports" && paymentAdmin && <PaymentReports getAccessToken={getAccessToken} onBack={()=>setTab("mas")} />}
+      {tab === "invoices" && factoringRole("issuer") && <InvoicesScreen getAccessToken={getAccessToken} paymentsMode={factoringAccess.paymentsMode} onBack={()=>setTab("mas")} />}
       {tab === "agenda" && (
         <ContactsScreen
           contacts={contacts}
@@ -3408,6 +3410,7 @@ function AppInner() {
           nombre={nombre}
           onLogout={async () => { await logout(); setTab("home"); setTxs([]); setBalance(null); setTreasuryBalance(null); }}
           goReports={paymentAdmin?()=>setTab("reports"):undefined}
+          goInvoices={factoringRole("issuer")?()=>setTab("invoices"):undefined}
           privyId={user.id}
         />
       )}
