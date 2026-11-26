@@ -13,17 +13,27 @@ const columns={
 };
 const indexes=["transactions_user_network_hash_uidx","transactions_charge_uidx","charges_user_idx",
   "charges_jobs_idx","payment_inbox_pending_idx","commission_ledger_period_idx","charges_history_idx","transactions_history_idx"];
-
+// Invoice cession pilot (20261125_factoring_pilot.sql). Kept apart from the
+// payments check: Mercado Pago readiness must not depend on this migration.
+const factoringColumns={
+  invoices:["id","status","token_id","invoice_hash","due_on","nominal_cents"],
+  invoice_offers:["status","expires_at"],
+  invoice_takes:["status","advance_cents","fee_cents"],
+  factoring_orders:["idempotency_key","provider_order_id","status"],
+  factoring_chain_events:["seq","nonce","signed_tx","tx_hash","status"],
+};
+const factoringIndexes=["invoice_offers_active_uidx","invoice_takes_active_uidx","factoring_orders_payment_active_uidx",
+  "factoring_chain_events_jobs_idx"];
 // Only catalog/permission reads; never reads transactions, emails, balances or secrets.
-export async function inspectPaymentDatabase(db) {
+export async function inspectTables(db,required,requiredIndexes) {
   const checks=[];
-  for(const [table,required] of Object.entries(columns)) {
+  for(const [table,names] of Object.entries(required)) {
     const info=await db.query(`SELECT to_regclass($1)::text AS name`,[table]);
     if(!info.rows[0].name){checks.push({table,ready:false,missingTable:true});continue;}
     const actual=await db.query(`SELECT a.attname AS name FROM pg_attribute a
       WHERE a.attrelid=to_regclass($1) AND a.attnum>0 AND NOT a.attisdropped`,[table]);
-    const names=new Set(actual.rows.map(r=>r.name));
-    const missingColumns=required.filter(name=>!names.has(name));
+    const present=new Set(actual.rows.map(r=>r.name));
+    const missingColumns=names.filter(name=>!present.has(name));
     const permissions=(await db.query(`SELECT has_table_privilege(current_user,to_regclass($1),'SELECT') AS can_select,
       has_table_privilege(current_user,to_regclass($1),'INSERT') AS can_insert,
       has_table_privilege(current_user,to_regclass($1),'UPDATE') AS can_update`,[table])).rows[0];
@@ -31,9 +41,15 @@ export async function inspectPaymentDatabase(db) {
     checks.push({table,ready:!missingColumns.length && !missingPermissions.length,missingColumns,missingPermissions});
   }
   const missingIndexes=[];
-  for(const name of indexes) {
+  for(const name of requiredIndexes) {
     const result=await db.query("SELECT to_regclass($1)::text AS name",[name]);
     if(!result.rows[0].name)missingIndexes.push(name);
   }
   return {ready:checks.every(c=>c.ready) && !missingIndexes.length,readOnly:true,tables:checks,missingIndexes};
+}
+export async function inspectPaymentDatabase(db) {
+  return inspectTables(db,columns,indexes);
+}
+export async function inspectFactoringDatabase(db) {
+  return inspectTables(db,factoringColumns,factoringIndexes);
 }
