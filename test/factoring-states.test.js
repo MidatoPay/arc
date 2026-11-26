@@ -52,7 +52,7 @@ test('pairs not in the table and wrong actors are rejected', () => {
   assert.throws(() => assertTransition('enviada', 'aceptada', 'issuer'), /invalid_transition/);
   assert.throws(() => assertTransition('enviada', 'rechazada', 'worker'), /invalid_transition/);
   assert.throws(() => assertTransition('publicada', 'tomada', 'debtor'), /invalid_transition/);
-  assert.throws(() => assertTransition('revision_manual', 'publicada', 'worker'), /invalid_transition/);
+  assert.throws(() => assertTransition('revision_manual', 'publicada', 'investor'), /invalid_transition/);
 });
 
 test('chain arguments are a closed list without personal data', () => {

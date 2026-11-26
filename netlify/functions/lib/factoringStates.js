@@ -21,7 +21,7 @@ export const TRANSITIONS = Object.freeze({
   'pagos_en_curso->publicada': t(['worker'], ['published']), // 10 net failed
   'pagos_en_curso->revision_manual': t(['worker']), // 11
   'revision_manual->cedida': t(['admin', 'worker'], ['cede']), // 12 (worker: an admin retry completed)
-  'revision_manual->publicada': t(['admin'], ['published']), // 13
+  'revision_manual->publicada': t(['admin', 'worker'], ['published']), // 13 (worker: an admin re-check found the net failed)
   'cedida->cobrada': t(['worker'], ['collected']), // 14
   'cedida->en_mora': t(['worker'], ['defaulted']), // 15
   'en_mora->cobrada': t(['worker'], ['collected']), // 16 late payment (D-05)

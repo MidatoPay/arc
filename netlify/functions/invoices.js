@@ -5,18 +5,8 @@ import { factoringSettings } from './lib/factoringConfig.js';
 import { assertFactoringEnabled, factoringEnabledFor, factoringRoles, isFactoringAdmin, requireRole } from './lib/factoringAccess.js';
 import { createInvoice, sendInvoice, acceptInvoice, rejectInvoice, listInvoices, getInvoice, listDebtors, hydrateInvoices } from './lib/factoringService.js';
 // Issuer and debtor API of the invoice cession pilot (plan 7.2).
+import { idempotencyHeader, parseBody } from './lib/factoringHttp.js';
 const ROUTE = /^\/invoices(?:\/(access|debtors)|\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/(send|accept|reject|pay))?)?\/?$/i;
-
-export function parseBody(event, { empty = false } = {}) {
-  let body;
-  try { body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '{}'); }
-  catch { throw new PaymentError('invalid_json', 400); }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new PaymentError('invalid_body', 400);
-  if (empty && Object.keys(body).length) throw new PaymentError('invalid_body', 400);
-  return body;
-}
-
-export const idempotencyHeader = event => event.headers?.['idempotency-key'] || event.headers?.['Idempotency-Key'] || '';
 
 export function createInvoicesHandler(adapters = {}) {
   return async event => {

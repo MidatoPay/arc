@@ -81,6 +81,16 @@
   status = 200
   force = true
 [[redirects]]
+  from = "/invoice-offers/*"
+  to = "/.netlify/functions/invoice-offers/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/invoice-offers"
+  to = "/.netlify/functions/invoice-offers"
+  status = 200
+  force = true
+[[redirects]]
   from = "/merchant-profile"
   to = "/.netlify/functions/merchant-profile"
   status = 200

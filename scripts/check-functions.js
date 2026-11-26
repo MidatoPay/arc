@@ -25,7 +25,7 @@ for(const name of ['rpc','eth-rpc','balance','quote']) {
  const fn=functions.find(entry=>entry.name===name);
  if(fn?.runtimeAPIVersion!==2 || !fn.trafficRules || !fn.routes?.some(route=>route.pattern==='/'+name))throw new Error(`Missing packaged rate limit for ${name}`);
 }
-for(const name of ["wallet","contacts","balance","quote","rpc","eth-rpc","treasury","treasury-export-access","transfers","transfers-worker-background","charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background","invoices"]) {
+for(const name of ["wallet","contacts","balance","quote","rpc","eth-rpc","treasury","treasury-export-access","transfers","transfers-worker-background","charges","merchant-pos","merchant-profile","payment-reports","mercadopago-webhook","payments-worker-background","invoices","invoice-offers"]) {
  const entry=functions.find(fn=>fn.name===name);
  if(!entry)throw new Error(`Missing packaged function: ${name}`);
  await writeFile(resolve(entry.path,"package.json"),JSON.stringify({type:entry.runtimeAPIVersion===2?'module':'commonjs'}));

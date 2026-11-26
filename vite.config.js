@@ -39,6 +39,10 @@ export default defineConfig(({ mode }) => {
           target:"http://127.0.0.1:9999",changeOrigin:true,
           rewrite:(path)=>path.replace(/^\/invoices/,"/.netlify/functions/invoices"),
         },
+        "/invoice-offers": {
+          target:"http://127.0.0.1:9999",changeOrigin:true,
+          rewrite:(path)=>path.replace(/^\/invoice-offers/,"/.netlify/functions/invoice-offers"),
+        },
         "/merchant-pos": {
           target:"http://127.0.0.1:9999",changeOrigin:true,
           rewrite:(path)=>path.replace(/^\/merchant-pos/,"/.netlify/functions/merchant-pos"),
